@@ -1,0 +1,30 @@
+# Start with a Python base image
+FROM python:3.9-slim
+
+# Set working directory in the container
+WORKDIR /app
+
+# Install system dependencies required for PDF processing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    poppler-utils \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file first (for better caching)
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy all application files
+COPY . .
+
+# Create required directories
+RUN mkdir -p /app/tiles_output
+RUN mkdir -p /app/memory_store
+
+# Expose port for Streamlit
+EXPOSE 8501
+
+# Command to run when the container starts
+CMD ["python", "main.py"]
