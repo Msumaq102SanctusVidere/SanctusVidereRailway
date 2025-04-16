@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify
 import os
-import logging
 import sys
+import logging
+import shutil
 from pathlib import Path
+import werkzeug.utils
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -16,6 +18,9 @@ if current_dir not in sys.path:
 # Import modules
 try:
     from modules.construction_drawing_analyzer_rev2_wow_rev6 import ConstructionAnalyzer, Config, DrawingManager
+    from modules.tile_generator_wow import ensure_dir, save_tiles_with_metadata, ensure_landscape
+    from modules.extract_tile_entities_wow_rev4 import analyze_all_tiles
+    from pdf2image import convert_from_path
     logger.info("Successfully imported analyzer modules")
 except ImportError as e:
     logger.error(f"Error importing modules: {e}")
@@ -23,9 +28,16 @@ except ImportError as e:
 
 app = Flask(__name__)
 
+# Configure upload folder
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+ALLOWED_EXTENSIONS = {'pdf'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
+
 # Create required directories
 os.makedirs(Config.DRAWINGS_DIR, exist_ok=True)
 os.makedirs(Config.MEMORY_STORE, exist_ok=True)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Create global instances
 try:
@@ -36,6 +48,10 @@ except Exception as e:
     logger.error(f"ERROR INITIALIZING: {str(e)}", exc_info=True)
     analyzer = None
     drawing_manager = None
+
+def allowed_file(filename):
+    """Check if file has an allowed extension"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -93,3 +109,90 @@ def analyze_query():
     except Exception as e:
         logger.error(f"Error analyzing query: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """Upload a PDF construction drawing and process it"""
+    try:
+        # Check if the post request has the file part
+        if 'file' not in request.files:
+            return jsonify({"error": "No file part"}), 400
+        
+        file = request.files['file']
+        
+        # If user does not select file, browser also
+        # submit an empty part without filename
+        if file.filename == '':
+            return jsonify({"error": "No selected file"}), 400
+        
+        if file and allowed_file(file.filename):
+            filename = werkzeug.utils.secure_filename(file.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            
+            # Save the uploaded file
+            file.save(file_path)
+            logger.info(f"File uploaded: {file_path}")
+            
+            # Process the PDF
+            try:
+                process_pdf(file_path)
+                logger.info(f"Successfully processed {filename}")
+                
+                # Update drawing manager to refresh list of available drawings
+                drawing_manager.refresh_drawings()
+                
+                # Return success with the drawing name
+                sheet_name = Path(file_path).stem.replace(" ", "_").replace("-", "_")
+                return jsonify({
+                    "success": True,
+                    "message": f"Successfully processed {filename}",
+                    "drawing_name": sheet_name
+                })
+            except Exception as e:
+                logger.error(f"Error processing PDF {filename}: {str(e)}", exc_info=True)
+                return jsonify({
+                    "success": False,
+                    "error": f"Error processing PDF: {str(e)}"
+                }), 500
+            finally:
+                # Clean up the uploaded file
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    
+        return jsonify({"error": "File type not allowed"}), 400
+    except Exception as e:
+        logger.error(f"Upload error: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
+    """Process a PDF through the complete workflow:
+       1. Generate tiles
+       2. Extract information
+       3. Analyze the tiles"""
+    
+    pdf_path = Path(pdf_path)
+    sheet_name = pdf_path.stem.replace(" ", "_").replace("-", "_")
+    sheet_output_dir = Config.DRAWINGS_DIR / sheet_name
+    ensure_dir(sheet_output_dir)
+    
+    logger.info(f"📄 Converting {pdf_path.name} to image...")
+    images = convert_from_path(str(pdf_path), dpi=dpi)
+    full_image = images[0]  # Only first page
+    
+    # Ensure the image is in landscape orientation
+    full_image = ensure_landscape(full_image)
+    
+    full_image_path = sheet_output_dir / f"{sheet_name}.png"
+    full_image.save(full_image_path)
+    logger.info(f"🖼️ Saved full image to {full_image_path}")
+    
+    logger.info(f"🔳 Creating tiles for {sheet_name}...")
+    save_tiles_with_metadata(full_image, sheet_output_dir, sheet_name, 
+                            tile_size=tile_size, overlap_ratio=overlap_ratio)
+    
+    # Step 2 & 3: Analyze tiles
+    logger.info(f"📊 Analyzing tiles for {sheet_name}...")
+    analyze_all_tiles(sheet_output_dir, sheet_name)
+    
+    logger.info(f"✅ Successfully processed {pdf_path.name}")
+    return sheet_name, sheet_output_dir
