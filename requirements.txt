@@ -4,5 +4,5 @@ pillow==10.1.0
 numpy==1.26.2
 streamlit==1.31.0
 transformers==4.36.2
-torch==2.1.1
+torch==2.2.0
 
