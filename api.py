@@ -181,7 +181,20 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
     
     logger.info(f"✅ Successfully processed {pdf_path.name}")
     return sheet_name, sheet_output_dir
-
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    try:
+        # Print environment info
+        logger.info(f"Python version: {sys.version}")
+        logger.info(f"Working directory: {os.getcwd()}")
+        logger.info(f"Files in directory: {os.listdir('.')}")
+        logger.info(f"FLASK_APP environment: {os.environ.get('FLASK_APP', 'Not set')}")
+        
+        # Try to start Flask
+        port = int(os.environ.get('PORT', 8080))
+        logger.info(f"Starting Flask on port {port}...")
+        app.run(host='0.0.0.0', port=port, debug=True)
+    except Exception as e:
+        # Log any exception that occurs during startup
+        logger.error(f"FATAL ERROR STARTING FLASK: {str(e)}", exc_info=True)
+        sys.exit(1)
+
