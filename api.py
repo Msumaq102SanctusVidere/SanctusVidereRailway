@@ -15,20 +15,26 @@ if current_dir not in sys.path:
 
 # Import modules
 try:
-    from modules.construction_drawing_analyzer_rev2_wow_rev6 import Config, DrawingManager
-    logger.info("Successfully imported DrawingManager")
+    from modules.construction_drawing_analyzer_rev2_wow_rev6 import ConstructionAnalyzer, Config, DrawingManager
+    logger.info("Successfully imported analyzer modules")
 except ImportError as e:
     logger.error(f"Error importing modules: {e}")
     sys.exit(1)
 
 app = Flask(__name__)
 
-# Create a drawing manager instance
+# Create required directories
+os.makedirs(Config.DRAWINGS_DIR, exist_ok=True)
+os.makedirs(Config.MEMORY_STORE, exist_ok=True)
+
+# Create global instances
 try:
+    analyzer = ConstructionAnalyzer()
     drawing_manager = DrawingManager(Config.DRAWINGS_DIR)
-    logger.info("Successfully created drawing_manager instance")
+    logger.info("Successfully created analyzer and drawing_manager instances")
 except Exception as e:
-    logger.error(f"ERROR INITIALIZING DRAWING MANAGER: {str(e)}", exc_info=True)
+    logger.error(f"ERROR INITIALIZING: {str(e)}", exc_info=True)
+    analyzer = None
     drawing_manager = None
 
 @app.route('/health', methods=['GET'])
@@ -48,4 +54,42 @@ def get_drawings():
         return jsonify({"drawings": available_drawings})
     except Exception as e:
         logger.error(f"Error retrieving drawings: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/analyze', methods=['POST'])
+def analyze_query():
+    """Analyze a query against selected drawings"""
+    try:
+        if analyzer is None:
+            return jsonify({"error": "Analyzer not initialized"}), 500
+            
+        data = request.json
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+            
+        query = data.get('query')
+        selected_drawings = data.get('drawings', [])
+        use_cache = data.get('use_cache', True)
+        
+        if not query:
+            return jsonify({"error": "No query provided"}), 400
+        if not selected_drawings:
+            return jsonify({"error": "No drawings selected"}), 400
+            
+        logger.info(f"Processing query: {query}")
+        logger.info(f"Selected drawings: {selected_drawings}")
+        
+        # Format the query with drawing selection
+        modified_query = f"[DRAWINGS:{','.join(selected_drawings)}] {query}"
+        
+        # Run the analysis
+        response = analyzer.analyze_query(modified_query, use_cache=use_cache)
+        
+        return jsonify({
+            "result": response,
+            "query": query,
+            "drawings": selected_drawings
+        })
+    except Exception as e:
+        logger.error(f"Error analyzing query: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
