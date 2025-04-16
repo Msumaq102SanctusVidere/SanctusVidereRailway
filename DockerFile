@@ -13,8 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements file first (for better caching)
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies including Flask
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir flask
 
 # Copy all application files
 COPY . .
@@ -23,8 +24,8 @@ COPY . .
 RUN mkdir -p /app/tiles_output
 RUN mkdir -p /app/memory_store
 
-# Expose port for Streamlit
-EXPOSE 8501
+# Expose port for the API
+EXPOSE 8080
 
 # Command to run when the container starts
-CMD ["python", "main.py"]
+CMD ["python", "api.py"]
