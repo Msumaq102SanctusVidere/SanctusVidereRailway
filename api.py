@@ -5,6 +5,10 @@ import logging
 import shutil
 from pathlib import Path
 import werkzeug.utils
+from PIL import Image
+
+# IMPORTANT: Fix for decompression bomb warning
+Image.MAX_IMAGE_PIXELS = 200000000
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -32,7 +36,7 @@ app = Flask(__name__)
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 ALLOWED_EXTENSIONS = {'pdf'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max upload
 
 # Create required directories
 os.makedirs(Config.DRAWINGS_DIR, exist_ok=True)
