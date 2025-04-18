@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 class Config:
-    API_KEY = "sk-ant-api03-KeyRemoved"
+    API_KEY = os.environ.get("API_KEY", "sk-ant-api03-KeyRemoved")
     MODEL = "claude-3-7-sonnet-20250219"
     BASE_DIR = Path("/app")
     DRAWINGS_DIR = BASE_DIR / "tiles_output"
