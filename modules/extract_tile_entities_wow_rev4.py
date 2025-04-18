@@ -7,7 +7,7 @@ from anthropic import Anthropic
 import time
 
 # --- Configuration ---
-API_KEY = "sk-ant-api03-KeyRemoved"
+API_KEY = os.environ.get("API_KEY", "sk-ant-api03-KeyRemoved")
 MODEL = "claude-3-7-sonnet-20250219"
 # Will be set via parameters in analyze_all_tiles()
 TILES_DIR = None
