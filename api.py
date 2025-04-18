@@ -142,8 +142,8 @@ def upload_file():
                 process_pdf(file_path)
                 logger.info(f"Successfully processed {filename}")
                 
-                # Update drawing manager to refresh list of available drawings
-                drawing_manager.refresh_drawings()
+                # Removed: drawing_manager.refresh_drawings()
+                # This line was causing the error
                 
                 # Return success with the drawing name
                 sheet_name = Path(file_path).stem.replace(" ", "_").replace("-", "_")
