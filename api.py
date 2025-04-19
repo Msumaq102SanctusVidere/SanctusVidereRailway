@@ -45,6 +45,9 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max upload
 MAX_RETRIES = 5
 MAX_BACKOFF = 120  # Maximum backoff time in seconds
 
+# Configure batch processing settings
+BATCH_SIZE = 3  # Number of drawings to process in one batch
+
 # Create required directories
 os.makedirs(Config.DRAWINGS_DIR, exist_ok=True)
 os.makedirs(Config.MEMORY_STORE, exist_ok=True)
@@ -85,7 +88,7 @@ def get_drawings():
 
 @app.route('/analyze', methods=['POST'])
 def analyze_query():
-    """Analyze a query against selected drawings"""
+    """Analyze a query against selected drawings with batch processing"""
     try:
         if analyzer is None:
             return jsonify({"error": "Analyzer not initialized"}), 500
@@ -106,76 +109,110 @@ def analyze_query():
         logger.info(f"Processing query: {query}")
         logger.info(f"Selected drawings: {selected_drawings}")
         
-        # Format the query with drawing selection
-        modified_query = f"[DRAWINGS:{','.join(selected_drawings)}] {query}"
-        
-        # Run the analysis with retry logic
-        retry_count = 0
-        last_error = None
-        
-        while retry_count < MAX_RETRIES:
-            try:
-                response = analyzer.analyze_query(modified_query, use_cache=use_cache)
-                return jsonify({
-                    "result": response,
-                    "query": query,
-                    "drawings": selected_drawings
-                })
-            except RateLimitError as e:
-                retry_count += 1
-                last_error = e
-                
-                # Exponential backoff with jitter
-                backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
-                logger.warning(f"Rate limit exceeded, attempt {retry_count}/{MAX_RETRIES}. "
-                              f"Backing off for {backoff_time:.1f}s: {str(e)}")
-                
-                if retry_count < MAX_RETRIES:
-                    time.sleep(backoff_time)
-                else:
-                    logger.error(f"Failed to analyze query after {MAX_RETRIES} attempts due to rate limits")
-                    return jsonify({"error": "Rate limit exceeded. Please try again later."}), 429
+        # Process drawings in batches if there are more than BATCH_SIZE
+        if len(selected_drawings) > BATCH_SIZE:
+            logger.info(f"Processing {len(selected_drawings)} drawings in batches of {BATCH_SIZE}")
             
-            except (APIStatusError, APITimeoutError, APIConnectionError) as e:
-                retry_count += 1
-                last_error = e
-                
-                # Exponential backoff with jitter
-                backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
-                logger.warning(f"API error, attempt {retry_count}/{MAX_RETRIES}. "
-                              f"Backing off for {backoff_time:.1f}s: {str(e)}")
-                
-                if retry_count < MAX_RETRIES:
-                    time.sleep(backoff_time)
-                else:
-                    logger.error(f"Failed to analyze query after {MAX_RETRIES} attempts due to API errors")
-                    return jsonify({"error": "API error. Please try again later."}), 503
+            response_parts = []
+            batch_count = 0
+            total_batches = (len(selected_drawings) + BATCH_SIZE - 1) // BATCH_SIZE  # Ceiling division
             
-            except Exception as e:
-                retry_count += 1
-                last_error = e
+            for i in range(0, len(selected_drawings), BATCH_SIZE):
+                batch_count += 1
+                batch = selected_drawings[i:i+BATCH_SIZE]
+                logger.info(f"Processing batch {batch_count}/{total_batches}: {batch}")
                 
-                # Exponential backoff with jitter
-                backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
-                logger.warning(f"General error, attempt {retry_count}/{MAX_RETRIES}. "
-                              f"Backing off for {backoff_time:.1f}s: {str(e)}")
+                # Format the query with drawing selection for this batch
+                batch_query = f"[DRAWINGS:{','.join(batch)}] {query}"
                 
-                if retry_count < MAX_RETRIES:
-                    time.sleep(backoff_time)
-                else:
-                    logger.error(f"Failed to analyze query after {MAX_RETRIES} attempts: {str(e)}")
-                    return jsonify({"error": str(e)}), 500
-        
-        # This should never be reached due to the returns in the loop, but just in case
-        if last_error:
-            logger.error(f"Error analyzing query: {str(last_error)}", exc_info=True)
-            return jsonify({"error": str(last_error)}), 500
-        
-        return jsonify({"error": "Unknown error"}), 500
-        
+                # Process this batch with retry logic
+                batch_response = process_batch_with_retry(batch_query, use_cache)
+                response_parts.append(batch_response)
+            
+            # Combine all batch responses
+            combined_response = "\n\n".join(response_parts)
+            return jsonify({
+                "result": combined_response,
+                "query": query,
+                "drawings": selected_drawings,
+                "processed_in_batches": True,
+                "batch_count": total_batches
+            })
+        else:
+            # Process single batch directly
+            modified_query = f"[DRAWINGS:{','.join(selected_drawings)}] {query}"
+            response = process_batch_with_retry(modified_query, use_cache)
+            
+            return jsonify({
+                "result": response,
+                "query": query,
+                "drawings": selected_drawings,
+                "processed_in_batches": False
+            })
+            
     except Exception as e:
         logger.error(f"Error analyzing query: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+def process_batch_with_retry(query, use_cache):
+    """Process a single batch with retry logic"""
+    retry_count = 0
+    last_error = None
+    
+    while retry_count < MAX_RETRIES:
+        try:
+            return analyzer.analyze_query(query, use_cache=use_cache)
+        
+        except RateLimitError as e:
+            retry_count += 1
+            last_error = e
+            
+            # Exponential backoff with jitter
+            backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
+            logger.warning(f"Rate limit exceeded, attempt {retry_count}/{MAX_RETRIES}. "
+                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
+            
+            if retry_count < MAX_RETRIES:
+                time.sleep(backoff_time)
+            else:
+                logger.error(f"Failed to analyze batch after {MAX_RETRIES} attempts due to rate limits")
+                return "Error: Rate limit exceeded. This batch could not be processed."
+        
+        except (APIStatusError, APITimeoutError, APIConnectionError) as e:
+            retry_count += 1
+            last_error = e
+            
+            # Exponential backoff with jitter
+            backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
+            logger.warning(f"API error, attempt {retry_count}/{MAX_RETRIES}. "
+                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
+            
+            if retry_count < MAX_RETRIES:
+                time.sleep(backoff_time)
+            else:
+                logger.error(f"Failed to analyze batch after {MAX_RETRIES} attempts due to API errors")
+                return "Error: API service unavailable. This batch could not be processed."
+        
+        except Exception as e:
+            retry_count += 1
+            last_error = e
+            
+            # Exponential backoff with jitter
+            backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
+            logger.warning(f"General error, attempt {retry_count}/{MAX_RETRIES}. "
+                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
+            
+            if retry_count < MAX_RETRIES:
+                time.sleep(backoff_time)
+            else:
+                logger.error(f"Failed to analyze batch after {MAX_RETRIES} attempts: {str(e)}")
+                return f"Error: This batch could not be processed due to an error: {str(e)}"
+    
+    # This should never be reached due to the returns in the loop, but just in case
+    if last_error:
+        return f"Error: Batch processing failed: {str(last_error)}"
+    
+    return "Error: Unknown error during batch processing"
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
