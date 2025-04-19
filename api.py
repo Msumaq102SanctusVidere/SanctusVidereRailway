@@ -56,8 +56,8 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max upload
 MAX_RETRIES = 5
 MAX_BACKOFF = 120  # Maximum backoff time in seconds
 
-# Configure batch processing settings
-BATCH_SIZE = 3  # Number of drawings to process in one batch
+# Configure batch processing settings to match GUI script
+BATCH_SIZE = 10  # Number of drawings to process in one batch - matching the GUI script
 
 # Job tracking storage
 jobs = {}
@@ -87,6 +87,46 @@ except Exception as e:
     logger.error(f"ERROR INITIALIZING: {str(e)}", exc_info=True)
     analyzer = None
     drawing_manager = None
+
+# Try to initialize transformer for smart query filtering - matching GUI script
+try:
+    from transformers import pipeline
+    import torch
+    device = 0 if torch.cuda.is_available() else -1  # Use GPU if available
+    intent_classifier = pipeline("text-classification", 
+                              model="distilbert-base-uncased", 
+                              device=device, 
+                              top_k=None)
+    logger.info(f"Loaded DistilBERT for intent filtering on {'GPU' if device == 0 else 'CPU'}")
+except Exception as e:
+    logger.warning(f"Failed to load transformer: {e}. Using basic filtering.")
+    intent_classifier = None
+
+def smart_filter_query(query):
+    """Use DistilBERT to refine vague queries - directly copied from GUI script"""
+    if not intent_classifier:
+        return query
+    
+    intent_map = {
+        "POSITIVE": ["finish", "floor", "ceiling", "wall", "spec", "tile"],
+        "NEUTRAL": ["area", "room", "space", "where"],
+    }
+    
+    try:
+        result = intent_classifier(query)[0]
+        top_label = max(result, key=lambda x: x['score'])['label']
+        query_lower = query.lower()
+        
+        areas = ["lab", "restroom", "office", "lobby", "conference"]
+        area = next((a for a in areas if a in query_lower), "")
+        
+        if top_label in intent_map and area:
+            intent_words = intent_map.get(top_label, [""])
+            return f"{intent_words[0]} for {area} areas"
+        return query
+    except Exception as e:
+        logger.error(f"Transformer error: {e}")
+        return query
 
 def allowed_file(filename):
     """Check if file has an allowed extension"""
@@ -255,6 +295,10 @@ def analyze_query():
         logger.info(f"Starting analysis job for query: {query}")
         logger.info(f"Selected drawings: {selected_drawings}")
         
+        # Apply smart filtering for query refinement - matching GUI script
+        refined_query = smart_filter_query(query)
+        logger.info(f"Refined query: {refined_query}")
+        
         # Verify all selected drawings have the necessary files
         valid_drawings = []
         for drawing in selected_drawings:
@@ -273,12 +317,12 @@ def analyze_query():
             selected_drawings = valid_drawings
         
         # Create a new job
-        job_id = create_job(query, selected_drawings, use_cache)
+        job_id = create_job(refined_query, selected_drawings, use_cache)
         
         # Start the analysis in a background thread
         thread = threading.Thread(
             target=process_analysis_job,
-            args=(job_id, query, selected_drawings, use_cache)
+            args=(job_id, refined_query, selected_drawings, use_cache)
         )
         thread.daemon = True
         thread.start()
@@ -328,7 +372,7 @@ def list_jobs():
     return jsonify({"jobs": job_summaries})
 
 def process_analysis_job(job_id, query, selected_drawings, use_cache):
-    """Process an analysis job with progress tracking"""
+    """Process an analysis job with progress tracking - using the batch approach from GUI script"""
     try:
         update_job_status(
             job_id, 
@@ -360,14 +404,15 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                         progress_message=f"❌ Failed to regenerate analysis files for {drawing}: {str(e)}"
                     )
         
-        # Process drawings in batches if there are more than BATCH_SIZE
-        if len(selected_drawings) > BATCH_SIZE:
+        # The following mimics the batch processing approach from the GUI script
+        if len(selected_drawings) > 3:  # Use batching for multiple drawings - same threshold as GUI
             response_parts = []
-            total_batches = (len(selected_drawings) + BATCH_SIZE - 1) // BATCH_SIZE
+            batch_size = 3  # Process in smaller batches to avoid timeouts, like GUI does
+            total_batches = (len(selected_drawings) + batch_size - 1) // batch_size
             
-            for i in range(0, len(selected_drawings), BATCH_SIZE):
-                batch_number = i // BATCH_SIZE + 1
-                batch = selected_drawings[i:i+BATCH_SIZE]
+            for i in range(0, len(selected_drawings), batch_size):
+                batch_number = i // batch_size + 1
+                batch = selected_drawings[i:i+batch_size]
                 
                 update_job_status(
                     job_id,
@@ -376,7 +421,7 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                     progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Processing batch {batch_number}/{total_batches} - Drawings: {', '.join(batch)}"
                 )
                 
-                # Format the query with drawing selection for this batch
+                # Format the query with drawing selection for this batch - exactly as the GUI does
                 batch_query = f"[DRAWINGS:{','.join(batch)}] {query}"
                 
                 # Process first batch discovery phase
@@ -442,7 +487,7 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                 progress_message=f"{PROCESS_PHASES['SYNTHESIS']}: Synthesizing insights from {len(selected_drawings)} drawings across {total_batches} batches"
             )
             
-            # Combine all batch responses
+            # Combine all batch responses - exactly like GUI does
             combined_response = "\n\n".join(response_parts)
             
             # Complete the job
@@ -500,7 +545,7 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                 progress_message=f"{PROCESS_PHASES['ANALYSIS']}: Analyzing specifications, dimensions, and annotations"
             )
             
-            # Process the query
+            # Process the query - exactly like the GUI does
             modified_query = f"[DRAWINGS:{','.join(selected_drawings)}] {query}"
             response = process_batch_with_retry(job_id, modified_query, use_cache, 1, 1)
             
@@ -544,7 +589,7 @@ def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batch
                     progress_message=f"{PROCESS_PHASES['ANALYSIS']}: Processing batch {batch_number}/{total_batches} - Examining detailed specifications"
                 )
             
-            # Actual analysis call
+            # Actual analysis call - just like in the GUI script
             response = analyzer.analyze_query(query, use_cache=use_cache)
             
             # Success - add correlation message
