@@ -13,6 +13,7 @@ import werkzeug.utils
 from PIL import Image
 from anthropic import RateLimitError, APIStatusError, APITimeoutError, APIConnectionError
 from collections import defaultdict
+import json
 
 # IMPORTANT: Fix for decompression bomb warning
 Image.MAX_IMAGE_PIXELS = 200000000
@@ -38,6 +39,12 @@ except ImportError as e:
     sys.exit(1)
 
 app = Flask(__name__)
+
+# Ensure BASE_DIR is set correctly for containerized environment
+Config.configure(base_dir="/app")
+logger.info(f"Configured base directory: {Config.BASE_DIR}")
+logger.info(f"Drawings directory: {Config.DRAWINGS_DIR}")
+logger.info(f"Memory store directory: {Config.MEMORY_STORE}")
 
 # Configure upload folder
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -84,6 +91,43 @@ except Exception as e:
 def allowed_file(filename):
     """Check if file has an allowed extension"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def verify_drawing_files(drawing_name):
+    """Verify that all necessary files exist for a drawing
+    Returns a dictionary with boolean flags for each file type"""
+    sheet_output_dir = Config.DRAWINGS_DIR / drawing_name
+    
+    # Check for core files first
+    metadata_exists = (sheet_output_dir / f"{drawing_name}_tile_metadata.json").exists()
+    tile_analysis_exists = (sheet_output_dir / f"{drawing_name}_tile_analysis.json").exists()
+    legend_knowledge_exists = (sheet_output_dir / f"{drawing_name}_legend_knowledge.json").exists()
+    drawing_goals_exists = (sheet_output_dir / f"{drawing_name}_drawing_goals.json").exists()
+    
+    # Check for specialized files based on drawing type
+    general_notes_exists = (sheet_output_dir / f"{drawing_name}_general_notes_analysis.json").exists()
+    elevation_exists = (sheet_output_dir / f"{drawing_name}_elevation_analysis.json").exists()
+    detail_exists = (sheet_output_dir / f"{drawing_name}_detail_analysis.json").exists()
+    
+    # Log the results
+    logger.info(f"File verification for {drawing_name}:")
+    logger.info(f"  Metadata exists: {metadata_exists}")
+    logger.info(f"  Tile analysis exists: {tile_analysis_exists}")
+    logger.info(f"  Legend knowledge exists: {legend_knowledge_exists}")
+    logger.info(f"  Drawing goals exists: {drawing_goals_exists}")
+    logger.info(f"  General notes exists: {general_notes_exists}")
+    logger.info(f"  Elevation exists: {elevation_exists}")
+    logger.info(f"  Detail exists: {detail_exists}")
+    
+    return {
+        "metadata": metadata_exists,
+        "tile_analysis": tile_analysis_exists,
+        "legend_knowledge": legend_knowledge_exists,
+        "drawing_goals": drawing_goals_exists,
+        "general_notes": general_notes_exists,
+        "elevation": elevation_exists,
+        "detail": detail_exists,
+        "all_required": metadata_exists and (tile_analysis_exists or elevation_exists or detail_exists or general_notes_exists)
+    }
 
 def create_job(query, drawings, use_cache):
     """Create a new job and return the job ID"""
@@ -171,7 +215,19 @@ def get_drawings():
             return jsonify({"drawings": [], "error": "Drawing manager not initialized"}), 500
             
         available_drawings = drawing_manager.get_available_drawings()
-        return jsonify({"drawings": available_drawings})
+        
+        # Verify the files for each drawing
+        drawing_status = {}
+        for drawing in available_drawings:
+            drawing_status[drawing] = verify_drawing_files(drawing)
+        
+        # Only return drawings that have the required files
+        valid_drawings = [drawing for drawing in available_drawings 
+                         if drawing_status[drawing]["all_required"]]
+        
+        logger.info(f"Retrieved {len(valid_drawings)} valid drawings out of {len(available_drawings)} total")
+        
+        return jsonify({"drawings": valid_drawings})
     except Exception as e:
         logger.error(f"Error retrieving drawings: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -198,6 +254,23 @@ def analyze_query():
             
         logger.info(f"Starting analysis job for query: {query}")
         logger.info(f"Selected drawings: {selected_drawings}")
+        
+        # Verify all selected drawings have the necessary files
+        valid_drawings = []
+        for drawing in selected_drawings:
+            file_status = verify_drawing_files(drawing)
+            if file_status["all_required"]:
+                valid_drawings.append(drawing)
+            else:
+                logger.warning(f"Drawing {drawing} is missing required files and will be skipped")
+        
+        if not valid_drawings:
+            return jsonify({"error": "None of the selected drawings have the required analysis files"}), 400
+            
+        # Update selected drawings to only include valid ones
+        if len(valid_drawings) < len(selected_drawings):
+            logger.warning(f"Only {len(valid_drawings)} out of {len(selected_drawings)} drawings are valid")
+            selected_drawings = valid_drawings
         
         # Create a new job
         job_id = create_job(query, selected_drawings, use_cache)
@@ -264,6 +337,29 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
             progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Exploring construction elements in {len(selected_drawings)} drawing(s)"
         )
         
+        # Verify all drawing files again before processing
+        for drawing in selected_drawings:
+            file_status = verify_drawing_files(drawing)
+            if not file_status["all_required"]:
+                update_job_status(
+                    job_id,
+                    progress_message=f"⚠️ WARNING: Drawing {drawing} is missing required files. Attempting to regenerate..."
+                )
+                
+                # Try to regenerate the missing files
+                sheet_output_dir = Config.DRAWINGS_DIR / drawing
+                try:
+                    analyze_all_tiles(sheet_output_dir, drawing)
+                    update_job_status(
+                        job_id,
+                        progress_message=f"✅ Successfully regenerated analysis files for {drawing}"
+                    )
+                except Exception as e:
+                    update_job_status(
+                        job_id,
+                        progress_message=f"❌ Failed to regenerate analysis files for {drawing}: {str(e)}"
+                    )
+        
         # Process drawings in batches if there are more than BATCH_SIZE
         if len(selected_drawings) > BATCH_SIZE:
             response_parts = []
@@ -289,7 +385,29 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                         job_id,
                         progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Identifying key elements in drawings {', '.join(batch)}"
                     )
-                    time.sleep(1)  # Simulate discovery work
+                    
+                    # Verify legend files specifically for this batch
+                    for drawing in batch:
+                        legend_file = Config.DRAWINGS_DIR / drawing / f"{drawing}_legend_knowledge.json"
+                        if legend_file.exists():
+                            try:
+                                with open(legend_file, 'r') as f:
+                                    legend_data = json.load(f)
+                                    tag_count = len(legend_data.get("specific_tags", {}))
+                                    update_job_status(
+                                        job_id,
+                                        progress_message=f"📊 Found {tag_count} legend tags in {drawing}"
+                                    )
+                            except Exception as e:
+                                update_job_status(
+                                    job_id,
+                                    progress_message=f"⚠️ Error reading legend file for {drawing}: {str(e)}"
+                                )
+                        else:
+                            update_job_status(
+                                job_id,
+                                progress_message=f"⚠️ Legend file not found for {drawing}. Analysis may be limited."
+                            )
                 
                 # Process this batch with exciting progress messages
                 update_job_status(
@@ -345,6 +463,29 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                 completed_batches=0,
                 progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Examining drawings: {', '.join(selected_drawings)}"
             )
+            
+            # Verify legend files for these drawings
+            for drawing in selected_drawings:
+                legend_file = Config.DRAWINGS_DIR / drawing / f"{drawing}_legend_knowledge.json"
+                if legend_file.exists():
+                    try:
+                        with open(legend_file, 'r') as f:
+                            legend_data = json.load(f)
+                            tag_count = len(legend_data.get("specific_tags", {}))
+                            update_job_status(
+                                job_id,
+                                progress_message=f"📊 Found {tag_count} legend tags in {drawing}"
+                            )
+                    except Exception as e:
+                        update_job_status(
+                            job_id,
+                            progress_message=f"⚠️ Error reading legend file for {drawing}: {str(e)}"
+                        )
+                else:
+                    update_job_status(
+                        job_id,
+                        progress_message=f"⚠️ Legend file not found for {drawing}. Analysis may be limited."
+                    )
             
             # Add some exciting discovery messages
             drawing_type = "floor plan" if any("floor" in d.lower() for d in selected_drawings) else "drawing"
@@ -509,15 +650,28 @@ def upload_file():
             
             # Process the PDF
             try:
-                process_pdf(file_path)
+                sheet_name, sheet_output_dir = process_pdf(file_path)
                 logger.info(f"Successfully processed {filename}")
                 
+                # Verify all required files were generated
+                file_status = verify_drawing_files(sheet_name)
+                if file_status["all_required"]:
+                    logger.info(f"All required files were generated for {sheet_name}")
+                else:
+                    logger.warning(f"Not all required files were generated for {sheet_name}. Status: {file_status}")
+                    # Make another attempt to generate the files if needed
+                    if not file_status["tile_analysis"] or not file_status["legend_knowledge"]:
+                        logger.info(f"Making another attempt to analyze tiles for {sheet_name}")
+                        analyze_all_tiles(sheet_output_dir, sheet_name)
+                        file_status = verify_drawing_files(sheet_name)
+                        logger.info(f"After retry, file status: {file_status}")
+                
                 # Return success with the drawing name
-                sheet_name = Path(file_path).stem.replace(" ", "_").replace("-", "_")
                 return jsonify({
                     "success": True,
                     "message": f"Successfully processed {filename}",
-                    "drawing_name": sheet_name
+                    "drawing_name": sheet_name,
+                    "file_status": file_status
                 })
             except Exception as e:
                 logger.error(f"Error processing PDF {filename}: {str(e)}", exc_info=True)
@@ -545,6 +699,10 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
     sheet_name = pdf_path.stem.replace(" ", "_").replace("-", "_")
     sheet_output_dir = Config.DRAWINGS_DIR / sheet_name
     ensure_dir(sheet_output_dir)
+    
+    logger.info(f"Processing PDF: {pdf_path}")
+    logger.info(f"Sheet name: {sheet_name}")
+    logger.info(f"Output directory: {sheet_output_dir}")
     
     # Step 1: Convert PDF to image
     logger.info(f"📄 Converting {pdf_path.name} to image...")
@@ -576,6 +734,24 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
     try:
         save_tiles_with_metadata(full_image, sheet_output_dir, sheet_name, 
                                 tile_size=tile_size, overlap_ratio=overlap_ratio)
+        
+        # Verify that the metadata file was created
+        metadata_file = sheet_output_dir / f"{sheet_name}_tile_metadata.json"
+        if not metadata_file.exists():
+            logger.error(f"Metadata file was not created: {metadata_file}")
+            raise Exception("Tile metadata file was not created")
+        else:
+            # Load and log the metadata to verify it's correct
+            try:
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                    tile_count = len(metadata.get("tiles", []))
+                    logger.info(f"Generated {tile_count} tiles for {sheet_name}")
+                    if tile_count == 0:
+                        raise Exception("No tiles were generated")
+            except Exception as e:
+                logger.error(f"Error reading tile metadata: {str(e)}", exc_info=True)
+                raise Exception(f"Tile metadata error: {str(e)}")
     except Exception as e:
         logger.error(f"Error creating tiles: {str(e)}", exc_info=True)
         raise Exception(f"Tile creation failed: {str(e)}")
@@ -588,7 +764,28 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
     
     while retry_count < MAX_RETRIES:
         try:
+            # Call the analyze_all_tiles function with our sheet output directory
             analyze_all_tiles(sheet_output_dir, sheet_name)
+            
+            # Verify that the legend knowledge file was created
+            legend_file = sheet_output_dir / f"{sheet_name}_legend_knowledge.json"
+            if not legend_file.exists():
+                logger.warning(f"Legend knowledge file was not created: {legend_file}")
+                # If no legend file, check for other analysis files
+                analysis_file = sheet_output_dir / f"{sheet_name}_tile_analysis.json"
+                if not analysis_file.exists():
+                    logger.error(f"Tile analysis file was not created: {analysis_file}")
+                    raise Exception("Analysis files were not created properly")
+            else:
+                # Verify the legend file has content
+                try:
+                    with open(legend_file, 'r') as f:
+                        legend_data = json.load(f)
+                        tag_count = len(legend_data.get("specific_tags", {}))
+                        logger.info(f"Legend knowledge contains {tag_count} specific tags")
+                except Exception as e:
+                    logger.error(f"Error reading legend knowledge: {str(e)}", exc_info=True)
+            
             logger.info(f"✅ Successfully processed {pdf_path.name}")
             return sheet_name, sheet_output_dir
         except RateLimitError as e:
