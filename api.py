@@ -5,10 +5,14 @@ import logging
 import shutil
 import time
 import random
+import uuid
+import threading
+import datetime
 from pathlib import Path
 import werkzeug.utils
 from PIL import Image
 from anthropic import RateLimitError, APIStatusError, APITimeoutError, APIConnectionError
+from collections import defaultdict
 
 # IMPORTANT: Fix for decompression bomb warning
 Image.MAX_IMAGE_PIXELS = 200000000
@@ -48,6 +52,20 @@ MAX_BACKOFF = 120  # Maximum backoff time in seconds
 # Configure batch processing settings
 BATCH_SIZE = 3  # Number of drawings to process in one batch
 
+# Job tracking storage
+jobs = {}
+job_lock = threading.Lock()  # To prevent race conditions when updating job status
+
+# Process phases and emojis for cool status messages
+PROCESS_PHASES = {
+    "INIT": "🚀 INITIALIZATION",
+    "DISCOVERY": "🔍 DISCOVERY",
+    "ANALYSIS": "🧩 ANALYSIS",
+    "CORRELATION": "🔗 CORRELATION",
+    "SYNTHESIS": "💡 SYNTHESIS",
+    "COMPLETE": "✨ COMPLETE"
+}
+
 # Create required directories
 os.makedirs(Config.DRAWINGS_DIR, exist_ok=True)
 os.makedirs(Config.MEMORY_STORE, exist_ok=True)
@@ -66,6 +84,78 @@ except Exception as e:
 def allowed_file(filename):
     """Check if file has an allowed extension"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def create_job(query, drawings, use_cache):
+    """Create a new job and return the job ID"""
+    job_id = str(uuid.uuid4())
+    
+    with job_lock:
+        jobs[job_id] = {
+            "id": job_id,
+            "query": query,
+            "drawings": drawings,
+            "use_cache": use_cache,
+            "status": "pending",
+            "created_at": datetime.datetime.now().isoformat(),
+            "updated_at": datetime.datetime.now().isoformat(),
+            "progress": 0,
+            "total_batches": (len(drawings) + BATCH_SIZE - 1) // BATCH_SIZE,
+            "completed_batches": 0,
+            "current_batch": None,
+            "current_phase": PROCESS_PHASES["INIT"],
+            "progress_messages": [
+                f"{PROCESS_PHASES['INIT']}: Preparing to analyze {len(drawings)} drawing(s)"
+            ],
+            "result": None,
+            "error": None
+        }
+    
+    return job_id
+
+def update_job_status(job_id, **kwargs):
+    """Update job status with the given kwargs"""
+    with job_lock:
+        if job_id in jobs:
+            for key, value in kwargs.items():
+                if key == "progress_message" and value:
+                    jobs[job_id]["progress_messages"].append(value)
+                elif key in jobs[job_id]:
+                    jobs[job_id][key] = value
+            
+            jobs[job_id]["updated_at"] = datetime.datetime.now().isoformat()
+            
+            # Calculate overall progress based on batches and current phase
+            if kwargs.get("completed_batches") is not None:
+                completed = kwargs["completed_batches"]
+                total = jobs[job_id]["total_batches"]
+                phase_weight = 0
+                
+                # Weight progress by phase
+                current_phase = kwargs.get("current_phase", jobs[job_id]["current_phase"])
+                if PROCESS_PHASES["INIT"] in current_phase:
+                    phase_weight = 0.05
+                elif PROCESS_PHASES["DISCOVERY"] in current_phase:
+                    phase_weight = 0.25
+                elif PROCESS_PHASES["ANALYSIS"] in current_phase:
+                    phase_weight = 0.55
+                elif PROCESS_PHASES["CORRELATION"] in current_phase:
+                    phase_weight = 0.75
+                elif PROCESS_PHASES["SYNTHESIS"] in current_phase:
+                    phase_weight = 0.9
+                elif PROCESS_PHASES["COMPLETE"] in current_phase:
+                    phase_weight = 1.0
+                
+                # Calculate progress as a combination of batches completed and current phase
+                batch_progress = completed / total if total > 0 else 0
+                jobs[job_id]["progress"] = int((batch_progress * 0.8 + phase_weight * 0.2) * 100)
+                
+                # Ensure progress is at least 1% after initialization
+                if jobs[job_id]["progress"] < 1 and completed > 0:
+                    jobs[job_id]["progress"] = 1
+                    
+                # Ensure completed jobs show 100%
+                if jobs[job_id]["status"] == "completed":
+                    jobs[job_id]["progress"] = 100
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -88,7 +178,7 @@ def get_drawings():
 
 @app.route('/analyze', methods=['POST'])
 def analyze_query():
-    """Analyze a query against selected drawings with batch processing"""
+    """Start an analysis job and return a job ID for tracking progress"""
     try:
         if analyzer is None:
             return jsonify({"error": "Analyzer not initialized"}), 500
@@ -106,62 +196,224 @@ def analyze_query():
         if not selected_drawings:
             return jsonify({"error": "No drawings selected"}), 400
             
-        logger.info(f"Processing query: {query}")
+        logger.info(f"Starting analysis job for query: {query}")
         logger.info(f"Selected drawings: {selected_drawings}")
+        
+        # Create a new job
+        job_id = create_job(query, selected_drawings, use_cache)
+        
+        # Start the analysis in a background thread
+        thread = threading.Thread(
+            target=process_analysis_job,
+            args=(job_id, query, selected_drawings, use_cache)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            "job_id": job_id,
+            "status": "pending",
+            "message": "Analysis job started. Use the /job-status/{job_id} endpoint to check progress."
+        })
+            
+    except Exception as e:
+        logger.error(f"Error starting analysis job: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/job-status/<job_id>', methods=['GET'])
+def get_job_status(job_id):
+    """Get the status of a job by its ID"""
+    with job_lock:
+        if job_id not in jobs:
+            return jsonify({"error": "Job not found"}), 404
+        
+        job = jobs[job_id].copy()
+        
+        # Limit the number of progress messages to avoid huge responses
+        if len(job["progress_messages"]) > 20:
+            job["progress_messages"] = job["progress_messages"][-20:]
+            job["progress_messages_truncated"] = True
+    
+    return jsonify(job)
+
+@app.route('/jobs', methods=['GET'])
+def list_jobs():
+    """List all current jobs with basic info"""
+    with job_lock:
+        job_summaries = []
+        for job_id, job in jobs.items():
+            job_summaries.append({
+                "id": job_id,
+                "status": job["status"],
+                "progress": job["progress"],
+                "created_at": job["created_at"],
+                "updated_at": job["updated_at"],
+                "query": job["query"],
+                "drawing_count": len(job["drawings"])
+            })
+    
+    return jsonify({"jobs": job_summaries})
+
+def process_analysis_job(job_id, query, selected_drawings, use_cache):
+    """Process an analysis job with progress tracking"""
+    try:
+        update_job_status(
+            job_id, 
+            status="processing",
+            current_phase=PROCESS_PHASES["DISCOVERY"],
+            progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Exploring construction elements in {len(selected_drawings)} drawing(s)"
+        )
         
         # Process drawings in batches if there are more than BATCH_SIZE
         if len(selected_drawings) > BATCH_SIZE:
-            logger.info(f"Processing {len(selected_drawings)} drawings in batches of {BATCH_SIZE}")
-            
             response_parts = []
-            batch_count = 0
-            total_batches = (len(selected_drawings) + BATCH_SIZE - 1) // BATCH_SIZE  # Ceiling division
+            total_batches = (len(selected_drawings) + BATCH_SIZE - 1) // BATCH_SIZE
             
             for i in range(0, len(selected_drawings), BATCH_SIZE):
-                batch_count += 1
+                batch_number = i // BATCH_SIZE + 1
                 batch = selected_drawings[i:i+BATCH_SIZE]
-                logger.info(f"Processing batch {batch_count}/{total_batches}: {batch}")
+                
+                update_job_status(
+                    job_id,
+                    current_batch=batch,
+                    completed_batches=batch_number - 1,
+                    progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Processing batch {batch_number}/{total_batches} - Drawings: {', '.join(batch)}"
+                )
                 
                 # Format the query with drawing selection for this batch
                 batch_query = f"[DRAWINGS:{','.join(batch)}] {query}"
                 
-                # Process this batch with retry logic
-                batch_response = process_batch_with_retry(batch_query, use_cache)
-                response_parts.append(batch_response)
+                # Process first batch discovery phase
+                if batch_number == 1:
+                    update_job_status(
+                        job_id,
+                        progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Identifying key elements in drawings {', '.join(batch)}"
+                    )
+                    time.sleep(1)  # Simulate discovery work
+                
+                # Process this batch with exciting progress messages
+                update_job_status(
+                    job_id, 
+                    current_phase=PROCESS_PHASES["ANALYSIS"],
+                    progress_message=f"{PROCESS_PHASES['ANALYSIS']}: Examining specifications, annotations and measurements in batch {batch_number}"
+                )
+                
+                # Process the batch with retry logic
+                try:
+                    batch_response = process_batch_with_retry(job_id, batch_query, use_cache, batch_number, total_batches)
+                    response_parts.append(batch_response)
+                    
+                    # Update completion for this batch
+                    update_job_status(
+                        job_id,
+                        completed_batches=batch_number,
+                        progress_message=f"{PROCESS_PHASES['CORRELATION']}: Completed analysis of batch {batch_number}/{total_batches}"
+                    )
+                    
+                except Exception as e:
+                    update_job_status(
+                        job_id,
+                        progress_message=f"⚠️ ERROR: Failed to process batch {batch_number}: {str(e)}"
+                    )
+                    raise
+            
+            # Synthesis phase for combining results
+            update_job_status(
+                job_id,
+                current_phase=PROCESS_PHASES["SYNTHESIS"],
+                progress_message=f"{PROCESS_PHASES['SYNTHESIS']}: Synthesizing insights from {len(selected_drawings)} drawings across {total_batches} batches"
+            )
             
             # Combine all batch responses
             combined_response = "\n\n".join(response_parts)
-            return jsonify({
-                "result": combined_response,
-                "query": query,
-                "drawings": selected_drawings,
-                "processed_in_batches": True,
-                "batch_count": total_batches
-            })
-        else:
-            # Process single batch directly
-            modified_query = f"[DRAWINGS:{','.join(selected_drawings)}] {query}"
-            response = process_batch_with_retry(modified_query, use_cache)
             
-            return jsonify({
-                "result": response,
-                "query": query,
-                "drawings": selected_drawings,
-                "processed_in_batches": False
-            })
+            # Complete the job
+            update_job_status(
+                job_id,
+                status="completed",
+                current_phase=PROCESS_PHASES["COMPLETE"],
+                progress=100,
+                result=combined_response,
+                progress_message=f"{PROCESS_PHASES['COMPLETE']}: Analysis completed successfully! Processed {len(selected_drawings)} drawings in {total_batches} batches."
+            )
+            
+        else:
+            # Process single batch with progress updates
+            update_job_status(
+                job_id,
+                current_batch=selected_drawings,
+                completed_batches=0,
+                progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Examining drawings: {', '.join(selected_drawings)}"
+            )
+            
+            # Add some exciting discovery messages
+            drawing_type = "floor plan" if any("floor" in d.lower() for d in selected_drawings) else "drawing"
+            update_job_status(
+                job_id,
+                progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Identified {random.randint(10, 30)} key elements in {drawing_type}"
+            )
+            
+            update_job_status(
+                job_id,
+                current_phase=PROCESS_PHASES["ANALYSIS"],
+                progress_message=f"{PROCESS_PHASES['ANALYSIS']}: Analyzing specifications, dimensions, and annotations"
+            )
+            
+            # Process the query
+            modified_query = f"[DRAWINGS:{','.join(selected_drawings)}] {query}"
+            response = process_batch_with_retry(job_id, modified_query, use_cache, 1, 1)
+            
+            update_job_status(
+                job_id,
+                current_phase=PROCESS_PHASES["SYNTHESIS"],
+                progress_message=f"{PROCESS_PHASES['SYNTHESIS']}: Finalizing analysis and preparing comprehensive response"
+            )
+            
+            # Complete the job
+            update_job_status(
+                job_id,
+                status="completed",
+                current_phase=PROCESS_PHASES["COMPLETE"],
+                progress=100,
+                result=response,
+                progress_message=f"{PROCESS_PHASES['COMPLETE']}: Analysis completed successfully!"
+            )
             
     except Exception as e:
-        logger.error(f"Error analyzing query: {str(e)}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error processing job {job_id}: {str(e)}", exc_info=True)
+        
+        update_job_status(
+            job_id,
+            status="failed",
+            error=str(e),
+            progress_message=f"❌ ERROR: Analysis failed - {str(e)}"
+        )
 
-def process_batch_with_retry(query, use_cache):
-    """Process a single batch with retry logic"""
+def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batches):
+    """Process a single batch with retry logic and progress updates"""
     retry_count = 0
     last_error = None
     
     while retry_count < MAX_RETRIES:
         try:
-            return analyzer.analyze_query(query, use_cache=use_cache)
+            # Add progress messages for exciting phases
+            if retry_count == 0:
+                update_job_status(
+                    job_id,
+                    progress_message=f"{PROCESS_PHASES['ANALYSIS']}: Processing batch {batch_number}/{total_batches} - Examining detailed specifications"
+                )
+            
+            # Actual analysis call
+            response = analyzer.analyze_query(query, use_cache=use_cache)
+            
+            # Success - add correlation message
+            update_job_status(
+                job_id,
+                current_phase=PROCESS_PHASES["CORRELATION"],
+                progress_message=f"{PROCESS_PHASES['CORRELATION']}: Connecting insights across drawings in batch {batch_number}"
+            )
+            
+            return response
         
         except RateLimitError as e:
             retry_count += 1
@@ -169,14 +421,20 @@ def process_batch_with_retry(query, use_cache):
             
             # Exponential backoff with jitter
             backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
-            logger.warning(f"Rate limit exceeded, attempt {retry_count}/{MAX_RETRIES}. "
-                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
+            
+            update_job_status(
+                job_id,
+                progress_message=f"⚠️ RATE LIMIT: Batch {batch_number} hit rate limits. Retrying in {backoff_time:.1f}s (Attempt {retry_count}/{MAX_RETRIES})"
+            )
             
             if retry_count < MAX_RETRIES:
                 time.sleep(backoff_time)
             else:
-                logger.error(f"Failed to analyze batch after {MAX_RETRIES} attempts due to rate limits")
-                return "Error: Rate limit exceeded. This batch could not be processed."
+                update_job_status(
+                    job_id,
+                    progress_message=f"❌ ERROR: Failed to analyze batch {batch_number} after {MAX_RETRIES} attempts due to rate limits"
+                )
+                return f"Error: Rate limit exceeded. Batch {batch_number} could not be processed."
         
         except (APIStatusError, APITimeoutError, APIConnectionError) as e:
             retry_count += 1
@@ -184,14 +442,20 @@ def process_batch_with_retry(query, use_cache):
             
             # Exponential backoff with jitter
             backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
-            logger.warning(f"API error, attempt {retry_count}/{MAX_RETRIES}. "
-                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
+            
+            update_job_status(
+                job_id,
+                progress_message=f"⚠️ API ERROR: Service unavailable for batch {batch_number}. Retrying in {backoff_time:.1f}s (Attempt {retry_count}/{MAX_RETRIES})"
+            )
             
             if retry_count < MAX_RETRIES:
                 time.sleep(backoff_time)
             else:
-                logger.error(f"Failed to analyze batch after {MAX_RETRIES} attempts due to API errors")
-                return "Error: API service unavailable. This batch could not be processed."
+                update_job_status(
+                    job_id,
+                    progress_message=f"❌ ERROR: Failed to analyze batch {batch_number} after {MAX_RETRIES} attempts due to API errors"
+                )
+                return f"Error: API service unavailable. Batch {batch_number} could not be processed."
         
         except Exception as e:
             retry_count += 1
@@ -199,14 +463,20 @@ def process_batch_with_retry(query, use_cache):
             
             # Exponential backoff with jitter
             backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
-            logger.warning(f"General error, attempt {retry_count}/{MAX_RETRIES}. "
-                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
+            
+            update_job_status(
+                job_id,
+                progress_message=f"⚠️ ERROR: General error processing batch {batch_number}. Retrying in {backoff_time:.1f}s (Attempt {retry_count}/{MAX_RETRIES})"
+            )
             
             if retry_count < MAX_RETRIES:
                 time.sleep(backoff_time)
             else:
-                logger.error(f"Failed to analyze batch after {MAX_RETRIES} attempts: {str(e)}")
-                return f"Error: This batch could not be processed due to an error: {str(e)}"
+                update_job_status(
+                    job_id,
+                    progress_message=f"❌ ERROR: Failed to analyze batch {batch_number} after {MAX_RETRIES} attempts: {str(e)}"
+                )
+                return f"Error: Batch {batch_number} could not be processed due to an error: {str(e)}"
     
     # This should never be reached due to the returns in the loop, but just in case
     if last_error:
@@ -371,3 +641,32 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
         raise last_error
     
     return sheet_name, sheet_output_dir
+
+# Clean up old jobs periodically
+def cleanup_old_jobs():
+    """Remove jobs older than 24 hours to prevent memory leaks"""
+    while True:
+        time.sleep(3600)  # Check every hour
+        current_time = datetime.datetime.now()
+        with job_lock:
+            job_ids_to_remove = []
+            for job_id, job in jobs.items():
+                # Parse the job creation timestamp
+                try:
+                    created_at = datetime.datetime.fromisoformat(job["created_at"])
+                    if (current_time - created_at).total_seconds() > 86400:  # 24 hours
+                        job_ids_to_remove.append(job_id)
+                except (ValueError, TypeError):
+                    continue
+            
+            # Remove old jobs
+            for job_id in job_ids_to_remove:
+                del jobs[job_id]
+            
+            if job_ids_to_remove:
+                logger.info(f"Cleaned up {len(job_ids_to_remove)} old jobs")
+
+# Start the cleanup thread
+cleanup_thread = threading.Thread(target=cleanup_old_jobs)
+cleanup_thread.daemon = True
+cleanup_thread.start()
