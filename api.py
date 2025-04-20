@@ -371,6 +371,290 @@ def list_jobs():
     
     return jsonify({"jobs": job_summaries})
 
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """Upload a PDF construction drawing and process it"""
+    try:
+        # Check if the post request has the file part
+        if 'file' not in request.files:
+            return jsonify({"error": "No file part"}), 400
+        
+        file = request.files['file']
+        
+        # If user does not select file, browser also
+        # submit an empty part without filename
+        if file.filename == '':
+            return jsonify({"error": "No selected file"}), 400
+        
+        if file and allowed_file(file.filename):
+            try:
+                # Create a secure version of the filename
+                filename = werkzeug.utils.secure_filename(file.filename)
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                
+                # Save the uploaded file without additional processing
+                file.save(file_path)
+                
+                # Verify file was saved correctly
+                if not os.path.exists(file_path):
+                    return jsonify({"error": "File was not saved properly"}), 500
+                
+                if os.path.getsize(file_path) == 0:
+                    os.remove(file_path)
+                    return jsonify({"error": "Uploaded file is empty"}), 400
+                
+                logger.info(f"File uploaded successfully: {file_path} ({os.path.getsize(file_path)} bytes)")
+                
+                # Process the PDF with improved error handling
+                try:
+                    sheet_name, sheet_output_dir = process_pdf(file_path)
+                    logger.info(f"Successfully processed {filename}")
+                    
+                    # Verify all required files were generated
+                    file_status = verify_drawing_files(sheet_name)
+                    if file_status["all_required"]:
+                        logger.info(f"All required files were generated for {sheet_name}")
+                    else:
+                        logger.warning(f"Not all required files were generated for {sheet_name}. Status: {file_status}")
+                        # Make another attempt to generate the files if needed
+                        if not file_status["tile_analysis"] or not file_status["legend_knowledge"]:
+                            logger.info(f"Making another attempt to analyze tiles for {sheet_name}")
+                            analyze_all_tiles(sheet_output_dir, sheet_name)
+                            file_status = verify_drawing_files(sheet_name)
+                            logger.info(f"After retry, file status: {file_status}")
+                    
+                    # Return success with the drawing name
+                    return jsonify({
+                        "success": True,
+                        "message": f"Successfully processed {filename}",
+                        "drawing_name": sheet_name,
+                        "file_status": file_status
+                    })
+                    
+                except Exception as e:
+                    logger.error(f"Error processing PDF {filename}: {str(e)}", exc_info=True)
+                    return jsonify({
+                        "success": False,
+                        "error": f"Error processing PDF: {str(e)}"
+                    }), 500
+                
+            except IOError as e:
+                logger.error(f"I/O error handling file upload: {str(e)}", exc_info=True)
+                return jsonify({"error": f"File I/O error: {str(e)}"}), 500
+                
+            except Exception as e:
+                logger.error(f"Unexpected error during file upload: {str(e)}", exc_info=True)
+                return jsonify({"error": f"Unexpected error during file upload: {str(e)}"}), 500
+                
+            finally:
+                # Clean up the uploaded file if it exists
+                if 'file_path' in locals() and os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        logger.info(f"Cleaned up temporary file: {file_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up file {file_path}: {str(e)}")
+                    
+        return jsonify({"error": "File type not allowed"}), 400
+    except Exception as e:
+        logger.error(f"Upload error: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
+    """Process a PDF through the complete workflow:
+       1. Generate tiles
+       2. Extract information
+       3. Analyze the tiles"""
+    
+    pdf_path = Path(pdf_path)
+    sheet_name = pdf_path.stem.replace(" ", "_").replace("-", "_")
+    sheet_output_dir = Config.DRAWINGS_DIR / sheet_name
+    ensure_dir(sheet_output_dir)
+    
+    logger.info(f"Processing PDF: {pdf_path}")
+    logger.info(f"Sheet name: {sheet_name}")
+    logger.info(f"Output directory: {sheet_output_dir}")
+    
+    # Step 1: Convert PDF to image with improved error handling
+    logger.info(f"📄 Converting {pdf_path.name} to image...")
+    try:
+        # Check file size before processing to avoid processing corrupt files
+        file_size = os.path.getsize(pdf_path)
+        logger.info(f"PDF file size: {file_size} bytes")
+        
+        if file_size == 0:
+            raise Exception("PDF file is empty")
+            
+        # Use a higher timeout for larger files
+        timeout = max(120, int(file_size / 1024 / 1024 * 10))  # 10 seconds per MB, minimum 120 seconds
+        
+        # Convert the PDF with options to handle potential encryption
+        images = convert_from_path(
+            pdf_path=str(pdf_path), 
+            dpi=dpi,
+            thread_count=2,  # Use multiple threads for faster conversion
+            timeout=timeout,
+            use_pdftocairo=True  # Try using pdftocairo backend first
+        )
+        
+        if not images or len(images) == 0:
+            raise Exception("PDF conversion produced no images")
+            
+        full_image = images[0]  # Only first page
+        
+    except Exception as e:
+        logger.error(f"Error converting PDF to image: {str(e)}", exc_info=True)
+        
+        # Try alternative PDF conversion method if first method fails
+        try:
+            logger.info("Attempting alternative PDF conversion method...")
+            images = convert_from_path(
+                pdf_path=str(pdf_path), 
+                dpi=dpi,
+                use_pdftocairo=False,  # Fall back to poppler
+                thread_count=1,  # Single thread for stability
+                grayscale=False,
+                transparent=False,
+                first_page=1,
+                last_page=1
+            )
+            
+            if not images or len(images) == 0:
+                raise Exception("Alternative PDF conversion produced no images")
+                
+            full_image = images[0]
+            logger.info("Alternative PDF conversion method succeeded")
+            
+        except Exception as alt_e:
+            logger.error(f"Alternative PDF conversion also failed: {str(alt_e)}", exc_info=True)
+            raise Exception(f"PDF conversion failed after multiple attempts: {str(e)}. Alternative method error: {str(alt_e)}")
+    
+    # Ensure the image is in landscape orientation
+    try:
+        full_image = ensure_landscape(full_image)
+    except Exception as e:
+        logger.error(f"Error ensuring landscape orientation: {str(e)}", exc_info=True)
+        raise Exception(f"Image orientation adjustment failed: {str(e)}")
+    
+    # Save the full image
+    try:
+        full_image_path = sheet_output_dir / f"{sheet_name}.png"
+        full_image.save(full_image_path)
+        logger.info(f"🖼️ Saved full image to {full_image_path}")
+    except Exception as e:
+        logger.error(f"Error saving full image: {str(e)}", exc_info=True)
+        raise Exception(f"Image saving failed: {str(e)}")
+    
+    # Step 2: Create tiles
+    logger.info(f"🔳 Creating tiles for {sheet_name}...")
+    try:
+        save_tiles_with_metadata(full_image, sheet_output_dir, sheet_name, 
+                                tile_size=tile_size, overlap_ratio=overlap_ratio)
+        
+        # Verify that the metadata file was created
+        metadata_file = sheet_output_dir / f"{sheet_name}_tile_metadata.json"
+        if not metadata_file.exists():
+            logger.error(f"Metadata file was not created: {metadata_file}")
+            raise Exception("Tile metadata file was not created")
+        else:
+            # Load and log the metadata to verify it's correct
+            try:
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                    tile_count = len(metadata.get("tiles", []))
+                    logger.info(f"Generated {tile_count} tiles for {sheet_name}")
+                    if tile_count == 0:
+                        raise Exception("No tiles were generated")
+            except Exception as e:
+                logger.error(f"Error reading tile metadata: {str(e)}", exc_info=True)
+                raise Exception(f"Tile metadata error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error creating tiles: {str(e)}", exc_info=True)
+        raise Exception(f"Tile creation failed: {str(e)}")
+    
+    # Step 3: Analyze tiles with retry logic
+    logger.info(f"📊 Analyzing tiles for {sheet_name}...")
+    
+    retry_count = 0
+    last_error = None
+    
+    while retry_count < MAX_RETRIES:
+        try:
+            # Call the analyze_all_tiles function with our sheet output directory
+            analyze_all_tiles(sheet_output_dir, sheet_name)
+            
+            # Verify that the legend knowledge file was created
+            legend_file = sheet_output_dir / f"{sheet_name}_legend_knowledge.json"
+            if not legend_file.exists():
+                logger.warning(f"Legend knowledge file was not created: {legend_file}")
+                # If no legend file, check for other analysis files
+                analysis_file = sheet_output_dir / f"{sheet_name}_tile_analysis.json"
+                if not analysis_file.exists():
+                    logger.error(f"Tile analysis file was not created: {analysis_file}")
+                    raise Exception("Analysis files were not created properly")
+            else:
+                # Verify the legend file has content
+                try:
+                    with open(legend_file, 'r') as f:
+                        legend_data = json.load(f)
+                        tag_count = len(legend_data.get("specific_tags", {}))
+                        logger.info(f"Legend knowledge contains {tag_count} specific tags")
+                except Exception as e:
+                    logger.error(f"Error reading legend knowledge: {str(e)}", exc_info=True)
+            
+            logger.info(f"✅ Successfully processed {pdf_path.name}")
+            return sheet_name, sheet_output_dir
+        except RateLimitError as e:
+            retry_count += 1
+            last_error = e
+            
+            # Exponential backoff with jitter
+            backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
+            logger.warning(f"Rate limit exceeded during tile analysis, attempt {retry_count}/{MAX_RETRIES}. "
+                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
+            
+            if retry_count < MAX_RETRIES:
+                time.sleep(backoff_time)
+            else:
+                logger.error(f"Failed to analyze tiles after {MAX_RETRIES} attempts due to rate limits")
+                raise Exception(f"Tile analysis failed due to API rate limits. Please try again later.")
+        
+        except (APIStatusError, APITimeoutError, APIConnectionError) as e:
+            retry_count += 1
+            last_error = e
+            
+            # Exponential backoff with jitter
+            backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
+            logger.warning(f"API error during tile analysis, attempt {retry_count}/{MAX_RETRIES}. "
+                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
+            
+            if retry_count < MAX_RETRIES:
+                time.sleep(backoff_time)
+            else:
+                logger.error(f"Failed to analyze tiles after {MAX_RETRIES} attempts due to API errors")
+                raise Exception(f"Tile analysis failed due to API errors. Please try again later.")
+        
+        except Exception as e:
+            retry_count += 1
+            last_error = e
+            
+            # Exponential backoff with jitter
+            backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
+            logger.warning(f"Error during tile analysis, attempt {retry_count}/{MAX_RETRIES}. "
+                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
+            
+            if retry_count < MAX_RETRIES:
+                time.sleep(backoff_time)
+            else:
+                logger.error(f"Failed to analyze tiles after {MAX_RETRIES} attempts: {str(e)}")
+                raise Exception(f"Tile analysis failed: {str(e)}")
+    
+    # This should never be reached due to the raise in the loop, but just in case
+    if last_error:
+        raise last_error
+    
+    return sheet_name, sheet_output_dir
+
 def process_analysis_job(job_id, query, selected_drawings, use_cache):
     """Process an analysis job with progress tracking - using the batch approach from GUI script"""
     try:
@@ -670,220 +954,6 @@ def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batch
     
     return "Error: Unknown error during batch processing"
 
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    """Upload a PDF construction drawing and process it"""
-    try:
-        # Check if the post request has the file part
-        if 'file' not in request.files:
-            return jsonify({"error": "No file part"}), 400
-        
-        file = request.files['file']
-        
-        # If user does not select file, browser also
-        # submit an empty part without filename
-        if file.filename == '':
-            return jsonify({"error": "No selected file"}), 400
-        
-        if file and allowed_file(file.filename):
-            filename = werkzeug.utils.secure_filename(file.filename)
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            
-            # Save the uploaded file
-            file.save(file_path)
-            logger.info(f"File uploaded: {file_path}")
-            
-            # Process the PDF
-            try:
-                sheet_name, sheet_output_dir = process_pdf(file_path)
-                logger.info(f"Successfully processed {filename}")
-                
-                # Verify all required files were generated
-                file_status = verify_drawing_files(sheet_name)
-                if file_status["all_required"]:
-                    logger.info(f"All required files were generated for {sheet_name}")
-                else:
-                    logger.warning(f"Not all required files were generated for {sheet_name}. Status: {file_status}")
-                    # Make another attempt to generate the files if needed
-                    if not file_status["tile_analysis"] or not file_status["legend_knowledge"]:
-                        logger.info(f"Making another attempt to analyze tiles for {sheet_name}")
-                        analyze_all_tiles(sheet_output_dir, sheet_name)
-                        file_status = verify_drawing_files(sheet_name)
-                        logger.info(f"After retry, file status: {file_status}")
-                
-                # Return success with the drawing name
-                return jsonify({
-                    "success": True,
-                    "message": f"Successfully processed {filename}",
-                    "drawing_name": sheet_name,
-                    "file_status": file_status
-                })
-            except Exception as e:
-                logger.error(f"Error processing PDF {filename}: {str(e)}", exc_info=True)
-                return jsonify({
-                    "success": False,
-                    "error": f"Error processing PDF: {str(e)}"
-                }), 500
-            finally:
-                # Clean up the uploaded file
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    
-        return jsonify({"error": "File type not allowed"}), 400
-    except Exception as e:
-        logger.error(f"Upload error: {str(e)}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
-    """Process a PDF through the complete workflow:
-       1. Generate tiles
-       2. Extract information
-       3. Analyze the tiles"""
-    
-    pdf_path = Path(pdf_path)
-    sheet_name = pdf_path.stem.replace(" ", "_").replace("-", "_")
-    sheet_output_dir = Config.DRAWINGS_DIR / sheet_name
-    ensure_dir(sheet_output_dir)
-    
-    logger.info(f"Processing PDF: {pdf_path}")
-    logger.info(f"Sheet name: {sheet_name}")
-    logger.info(f"Output directory: {sheet_output_dir}")
-    
-    # Step 1: Convert PDF to image
-    logger.info(f"📄 Converting {pdf_path.name} to image...")
-    try:
-        images = convert_from_path(str(pdf_path), dpi=dpi)
-        full_image = images[0]  # Only first page
-    except Exception as e:
-        logger.error(f"Error converting PDF to image: {str(e)}", exc_info=True)
-        raise Exception(f"PDF conversion failed: {str(e)}")
-    
-    # Ensure the image is in landscape orientation
-    try:
-        full_image = ensure_landscape(full_image)
-    except Exception as e:
-        logger.error(f"Error ensuring landscape orientation: {str(e)}", exc_info=True)
-        raise Exception(f"Image orientation adjustment failed: {str(e)}")
-    
-    # Save the full image
-    try:
-        full_image_path = sheet_output_dir / f"{sheet_name}.png"
-        full_image.save(full_image_path)
-        logger.info(f"🖼️ Saved full image to {full_image_path}")
-    except Exception as e:
-        logger.error(f"Error saving full image: {str(e)}", exc_info=True)
-        raise Exception(f"Image saving failed: {str(e)}")
-    
-    # Step 2: Create tiles
-    logger.info(f"🔳 Creating tiles for {sheet_name}...")
-    try:
-        save_tiles_with_metadata(full_image, sheet_output_dir, sheet_name, 
-                                tile_size=tile_size, overlap_ratio=overlap_ratio)
-        
-        # Verify that the metadata file was created
-        metadata_file = sheet_output_dir / f"{sheet_name}_tile_metadata.json"
-        if not metadata_file.exists():
-            logger.error(f"Metadata file was not created: {metadata_file}")
-            raise Exception("Tile metadata file was not created")
-        else:
-            # Load and log the metadata to verify it's correct
-            try:
-                with open(metadata_file, 'r') as f:
-                    metadata = json.load(f)
-                    tile_count = len(metadata.get("tiles", []))
-                    logger.info(f"Generated {tile_count} tiles for {sheet_name}")
-                    if tile_count == 0:
-                        raise Exception("No tiles were generated")
-            except Exception as e:
-                logger.error(f"Error reading tile metadata: {str(e)}", exc_info=True)
-                raise Exception(f"Tile metadata error: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error creating tiles: {str(e)}", exc_info=True)
-        raise Exception(f"Tile creation failed: {str(e)}")
-    
-    # Step 3: Analyze tiles with retry logic
-    logger.info(f"📊 Analyzing tiles for {sheet_name}...")
-    
-    retry_count = 0
-    last_error = None
-    
-    while retry_count < MAX_RETRIES:
-        try:
-            # Call the analyze_all_tiles function with our sheet output directory
-            analyze_all_tiles(sheet_output_dir, sheet_name)
-            
-            # Verify that the legend knowledge file was created
-            legend_file = sheet_output_dir / f"{sheet_name}_legend_knowledge.json"
-            if not legend_file.exists():
-                logger.warning(f"Legend knowledge file was not created: {legend_file}")
-                # If no legend file, check for other analysis files
-                analysis_file = sheet_output_dir / f"{sheet_name}_tile_analysis.json"
-                if not analysis_file.exists():
-                    logger.error(f"Tile analysis file was not created: {analysis_file}")
-                    raise Exception("Analysis files were not created properly")
-            else:
-                # Verify the legend file has content
-                try:
-                    with open(legend_file, 'r') as f:
-                        legend_data = json.load(f)
-                        tag_count = len(legend_data.get("specific_tags", {}))
-                        logger.info(f"Legend knowledge contains {tag_count} specific tags")
-                except Exception as e:
-                    logger.error(f"Error reading legend knowledge: {str(e)}", exc_info=True)
-            
-            logger.info(f"✅ Successfully processed {pdf_path.name}")
-            return sheet_name, sheet_output_dir
-        except RateLimitError as e:
-            retry_count += 1
-            last_error = e
-            
-            # Exponential backoff with jitter
-            backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
-            logger.warning(f"Rate limit exceeded during tile analysis, attempt {retry_count}/{MAX_RETRIES}. "
-                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
-            
-            if retry_count < MAX_RETRIES:
-                time.sleep(backoff_time)
-            else:
-                logger.error(f"Failed to analyze tiles after {MAX_RETRIES} attempts due to rate limits")
-                raise Exception(f"Tile analysis failed due to API rate limits. Please try again later.")
-        
-        except (APIStatusError, APITimeoutError, APIConnectionError) as e:
-            retry_count += 1
-            last_error = e
-            
-            # Exponential backoff with jitter
-            backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
-            logger.warning(f"API error during tile analysis, attempt {retry_count}/{MAX_RETRIES}. "
-                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
-            
-            if retry_count < MAX_RETRIES:
-                time.sleep(backoff_time)
-            else:
-                logger.error(f"Failed to analyze tiles after {MAX_RETRIES} attempts due to API errors")
-                raise Exception(f"Tile analysis failed due to API errors. Please try again later.")
-        
-        except Exception as e:
-            retry_count += 1
-            last_error = e
-            
-            # Exponential backoff with jitter
-            backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
-            logger.warning(f"Error during tile analysis, attempt {retry_count}/{MAX_RETRIES}. "
-                          f"Backing off for {backoff_time:.1f}s: {str(e)}")
-            
-            if retry_count < MAX_RETRIES:
-                time.sleep(backoff_time)
-            else:
-                logger.error(f"Failed to analyze tiles after {MAX_RETRIES} attempts: {str(e)}")
-                raise Exception(f"Tile analysis failed: {str(e)}")
-    
-    # This should never be reached due to the raise in the loop, but just in case
-    if last_error:
-        raise last_error
-    
-    return sheet_name, sheet_output_dir
-
 # Clean up old jobs periodically
 def cleanup_old_jobs():
     """Remove jobs older than 24 hours to prevent memory leaks"""
@@ -912,3 +982,9 @@ def cleanup_old_jobs():
 cleanup_thread = threading.Thread(target=cleanup_old_jobs)
 cleanup_thread.daemon = True
 cleanup_thread.start()
+
+# Set Flask to run in production mode
+if __name__ == "__main__":
+    # Use production WSGI server in production
+    logger.info("Starting API server in production mode")
+    app.run(host="0.0.0.0", port=5000, threaded=True)
