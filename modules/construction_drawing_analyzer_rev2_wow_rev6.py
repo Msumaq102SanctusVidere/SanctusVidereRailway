@@ -20,7 +20,7 @@ class Config:
     MODEL = "claude-3-7-sonnet-20250219"
     BASE_DIR = Path("/app")
     DRAWINGS_DIR = BASE_DIR / "tiles_output"
-    MEMORY_STORE = BASE_DIR / "memory_store"
+    MEMORY_STORE = BASE_DIR / "tiles_output" / "memory_store"  # Changed to store inside tiles_output
     QUERY_INDEX = MEMORY_STORE / "query_index.json"
     MAX_TOKENS = 4096
     SIMILARITY_THRESHOLD = 0.8
@@ -31,7 +31,7 @@ class Config:
         if base_dir:
             cls.BASE_DIR = Path(base_dir)
             cls.DRAWINGS_DIR = cls.BASE_DIR / "tiles_output"
-            cls.MEMORY_STORE = cls.BASE_DIR / "memory_store"
+            cls.MEMORY_STORE = cls.BASE_DIR / "tiles_output" / "memory_store"  # Updated here too
             cls.QUERY_INDEX = cls.MEMORY_STORE / "query_index.json"
         
         # Ensure directories exist
@@ -763,7 +763,7 @@ class ConstructionAnalyzer:
                         """
                         try:
                             fallback_response = client.messages.create(
-                                model=Config.MODEL,
+                                model=Config.MEMORY_STORE,
                                 max_tokens=2048,
                                 temperature=0,
                                 system="Extract relevant information only.",
