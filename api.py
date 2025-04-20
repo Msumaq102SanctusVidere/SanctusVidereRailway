@@ -40,13 +40,26 @@ except ImportError as e:
     sys.exit(1)
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+
+# Configure CORS to allow requests from any origin
+# This is the simplest 80/20 solution for allowing cross-origin requests
+CORS(app, resources={r"/*": {"origins": "*"}})
+logger.info("CORS configured to allow requests from any origin")
 
 # Ensure BASE_DIR is set correctly for containerized environment
-Config.configure(base_dir="/app")
-logger.info(f"Configured base directory: {Config.BASE_DIR}")
-logger.info(f"Drawings directory: {Config.DRAWINGS_DIR}")
-logger.info(f"Memory store directory: {Config.MEMORY_STORE}")
+try:
+    # Use environment variable if available, otherwise use default path
+    base_dir = os.environ.get('BASE_DIR', '/app')
+    Config.configure(base_dir=base_dir)
+    logger.info(f"Configured base directory: {Config.BASE_DIR}")
+    logger.info(f"Drawings directory: {Config.DRAWINGS_DIR}")
+    logger.info(f"Memory store directory: {Config.MEMORY_STORE}")
+except Exception as e:
+    logger.error(f"Error configuring base directory: {e}")
+    # Try a fallback configuration
+    fallback_dir = os.path.dirname(os.path.abspath(__file__))
+    Config.configure(base_dir=fallback_dir)
+    logger.info(f"Using fallback base directory: {fallback_dir}")
 
 # Configure upload folder
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -75,10 +88,15 @@ PROCESS_PHASES = {
     "COMPLETE": "✨ COMPLETE"
 }
 
-# Create required directories
-os.makedirs(Config.DRAWINGS_DIR, exist_ok=True)
-os.makedirs(Config.MEMORY_STORE, exist_ok=True)
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Create required directories with better error handling
+try:
+    os.makedirs(Config.DRAWINGS_DIR, exist_ok=True)
+    os.makedirs(Config.MEMORY_STORE, exist_ok=True)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    logger.info("Successfully created required directories")
+except Exception as e:
+    logger.error(f"Error creating directories: {e}")
+    # Continue running as we might be using existing directories
 
 # Create global instances
 try:
@@ -988,8 +1006,19 @@ cleanup_thread = threading.Thread(target=cleanup_old_jobs)
 cleanup_thread.daemon = True
 cleanup_thread.start()
 
-# Set Flask to run in production mode
+# Set Flask to run in production mode with better error handling
 if __name__ == "__main__":
-    # Use production WSGI server in production
-    logger.info("Starting API server in production mode")
-    app.run(host="0.0.0.0", port=5000, threaded=True)
+    # Get port from environment variable with fallback to 5000
+    port = int(os.environ.get('PORT', 5000))
+    host = os.environ.get('HOST', '0.0.0.0')
+    
+    logger.info(f"Starting API server on {host}:{port}")
+    try:
+        # Use production server if available
+        from waitress import serve
+        logger.info("Using Waitress production server")
+        serve(app, host=host, port=port, threads=8)
+    except ImportError:
+        # Fall back to Flask's development server
+        logger.info("Waitress not available, using Flask development server")
+        app.run(host=host, port=port, threaded=True)
