@@ -30,5 +30,8 @@ COPY . .
 # Expose port for the API
 EXPOSE 8080
 
+# Copy api.py to ensure it’s available after the volume mount
+COPY api.py /app/api.py
+
 # Command to run when the container starts
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "api:app"]
