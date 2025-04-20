@@ -34,23 +34,83 @@ try:
     from modules.extract_tile_entities_wow_rev4 import analyze_all_tiles
     from pdf2image import convert_from_path
     logger.info("Successfully imported analyzer modules")
+    MODULES_IMPORTED = True
 except ImportError as e:
     logger.error(f"Error importing modules: {e}")
-    sys.exit(1)
+    MODULES_IMPORTED = False
 
 app = Flask(__name__)
 
-# Ensure BASE_DIR is set correctly for containerized environment
-Config.configure(base_dir="/app")
-logger.info(f"Configured base directory: {Config.BASE_DIR}")
-logger.info(f"Drawings directory: {Config.DRAWINGS_DIR}")
-logger.info(f"Memory store directory: {Config.MEMORY_STORE}")
+# Configure routes before initialization to ensure they're registered regardless of module errors
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Simple health check endpoint"""
+    logger.info("Health check endpoint called")
+    return jsonify({"status": "healthy"})
 
-# Configure upload folder
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
-ALLOWED_EXTENSIONS = {'pdf'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max upload
+# List registered routes for debugging
+@app.before_first_request
+def log_routes():
+    logger.info("Registered routes:")
+    for rule in app.url_map.iter_rules():
+        logger.info(f"  {rule.endpoint}: {rule}")
+
+# Class to mock analyzer when real analyzer fails to initialize
+class MockAnalyzer:
+    def __init__(self):
+        self.initialized = False
+        logger.warning("Using MockAnalyzer - limited functionality available")
+    
+    def analyze_query(self, query, use_cache=True):
+        logger.warning(f"MockAnalyzer received query: {query}, but cannot process it")
+        return "The analyzer component failed to initialize properly. Please check server logs."
+
+# Configure application after importing modules
+if MODULES_IMPORTED:
+    # Ensure BASE_DIR is set correctly for containerized environment
+    Config.configure(base_dir="/app")
+    logger.info(f"Configured base directory: {Config.BASE_DIR}")
+    logger.info(f"Drawings directory: {Config.DRAWINGS_DIR}")
+    logger.info(f"Memory store directory: {Config.MEMORY_STORE}")
+
+    # Configure upload folder
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+    ALLOWED_EXTENSIONS = {'pdf'}
+    app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max upload
+
+    # Create required directories
+    os.makedirs(Config.DRAWINGS_DIR, exist_ok=True)
+    os.makedirs(Config.MEMORY_STORE, exist_ok=True)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+    # Create global instances
+    try:
+        logger.info("Attempting to initialize ConstructionAnalyzer...")
+        analyzer = ConstructionAnalyzer()
+        drawing_manager = DrawingManager(Config.DRAWINGS_DIR)
+        logger.info("Successfully created analyzer and drawing_manager instances")
+    except Exception as e:
+        logger.error(f"ERROR INITIALIZING ANALYZER: {str(e)}", exc_info=True)
+        analyzer = MockAnalyzer()
+        try:
+            drawing_manager = DrawingManager(Config.DRAWINGS_DIR)
+            logger.info("Drawing manager initialized successfully despite analyzer failure")
+        except Exception as dm_e:
+            logger.error(f"Drawing manager also failed to initialize: {str(dm_e)}")
+            drawing_manager = None
+else:
+    # Create minimal configuration for basic functionality
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+    ALLOWED_EXTENSIONS = {'pdf'}
+    app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max upload
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    
+    # Create mock objects
+    analyzer = MockAnalyzer()
+    drawing_manager = None
+    Config = None
 
 # Configure retry settings
 MAX_RETRIES = 5
@@ -73,31 +133,18 @@ PROCESS_PHASES = {
     "COMPLETE": "✨ COMPLETE"
 }
 
-# Create required directories
-os.makedirs(Config.DRAWINGS_DIR, exist_ok=True)
-os.makedirs(Config.MEMORY_STORE, exist_ok=True)
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# Create global instances
-try:
-    analyzer = ConstructionAnalyzer()
-    drawing_manager = DrawingManager(Config.DRAWINGS_DIR)
-    logger.info("Successfully created analyzer and drawing_manager instances")
-except Exception as e:
-    logger.error(f"ERROR INITIALIZING: {str(e)}", exc_info=True)
-    analyzer = None
-    drawing_manager = None
-
 # Try to initialize transformer for smart query filtering - matching GUI script
+intent_classifier = None
 try:
-    from transformers import pipeline
-    import torch
-    device = 0 if torch.cuda.is_available() else -1  # Use GPU if available
-    intent_classifier = pipeline("text-classification", 
-                              model="distilbert-base-uncased", 
-                              device=device, 
-                              top_k=None)
-    logger.info(f"Loaded DistilBERT for intent filtering on {'GPU' if device == 0 else 'CPU'}")
+    if MODULES_IMPORTED:
+        from transformers import pipeline
+        import torch
+        device = 0 if torch.cuda.is_available() else -1  # Use GPU if available
+        intent_classifier = pipeline("text-classification", 
+                                model="distilbert-base-uncased", 
+                                device=device, 
+                                top_k=None)
+        logger.info(f"Loaded DistilBERT for intent filtering on {'GPU' if device == 0 else 'CPU'}")
 except Exception as e:
     logger.warning(f"Failed to load transformer: {e}. Using basic filtering.")
     intent_classifier = None
@@ -135,6 +182,10 @@ def allowed_file(filename):
 def verify_drawing_files(drawing_name):
     """Verify that all necessary files exist for a drawing
     Returns a dictionary with boolean flags for each file type"""
+    if not MODULES_IMPORTED or Config is None:
+        logger.error("Cannot verify drawing files: Config not initialized")
+        return {"all_required": False, "error": "Configuration not available"}
+        
     sheet_output_dir = Config.DRAWINGS_DIR / drawing_name
     
     # Check for core files first
@@ -241,12 +292,6 @@ def update_job_status(job_id, **kwargs):
                 if jobs[job_id]["status"] == "completed":
                     jobs[job_id]["progress"] = 100
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Simple health check endpoint"""
-    logger.info("Health check endpoint called")
-    return jsonify({"status": "healthy"})
-
 @app.route('/drawings', methods=['GET'])
 def get_drawings():
     """Get list of available drawings"""
@@ -276,13 +321,35 @@ def get_drawings():
 def analyze_query():
     """Start an analysis job and return a job ID for tracking progress"""
     try:
+        # Log details about the request
+        logger.info(f"Analyze endpoint called with Content-Type: {request.headers.get('Content-Type')}")
+        logger.info(f"Request data: {request.data[:1000] if request.data else 'None'}")
+        
+        # Handle case where analyzer is not initialized
         if analyzer is None:
+            logger.error("Analyze endpoint called but analyzer is None")
             return jsonify({"error": "Analyzer not initialized"}), 500
             
-        data = request.json
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
+        # Check if analyzer is a mock
+        if isinstance(analyzer, MockAnalyzer):
+            logger.warning("Analyze endpoint called with MockAnalyzer")
+            return jsonify({
+                "error": "Analyzer initialization failed. Limited functionality available.",
+                "job_id": str(uuid.uuid4()),
+                "status": "failed"
+            }), 500
             
+        # Parse request data
+        try:
+            data = request.json
+            if not data:
+                logger.error("No JSON data provided in request")
+                return jsonify({"error": "No data provided"}), 400
+        except Exception as parse_error:
+            logger.error(f"Error parsing JSON data: {str(parse_error)}")
+            return jsonify({"error": f"Invalid JSON data: {str(parse_error)}"}), 400
+            
+        # Extract and validate required fields
         query = data.get('query')
         selected_drawings = data.get('drawings', [])
         use_cache = data.get('use_cache', True)
@@ -303,7 +370,7 @@ def analyze_query():
         valid_drawings = []
         for drawing in selected_drawings:
             file_status = verify_drawing_files(drawing)
-            if file_status["all_required"]:
+            if file_status.get("all_required", False):
                 valid_drawings.append(drawing)
             else:
                 logger.warning(f"Drawing {drawing} is missing required files and will be skipped")
@@ -335,7 +402,11 @@ def analyze_query():
             
     except Exception as e:
         logger.error(f"Error starting analysis job: {str(e)}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e),
+            "job_id": str(uuid.uuid4()),
+            "status": "failed"
+        }), 500
 
 @app.route('/job-status/<job_id>', methods=['GET'])
 def get_job_status(job_id):
@@ -412,12 +483,13 @@ def upload_file():
                     
                     # Verify all required files were generated
                     file_status = verify_drawing_files(sheet_name)
-                    if file_status["all_required"]:
+                    if file_status.get("all_required", False):
                         logger.info(f"All required files were generated for {sheet_name}")
                     else:
                         logger.warning(f"Not all required files were generated for {sheet_name}. Status: {file_status}")
                         # Make another attempt to generate the files if needed
-                        if not file_status["tile_analysis"] or not file_status["legend_knowledge"]:
+                        if (not file_status.get("tile_analysis", False) or 
+                            not file_status.get("legend_knowledge", False)):
                             logger.info(f"Making another attempt to analyze tiles for {sheet_name}")
                             analyze_all_tiles(sheet_output_dir, sheet_name)
                             file_status = verify_drawing_files(sheet_name)
@@ -465,6 +537,9 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
        1. Generate tiles
        2. Extract information
        3. Analyze the tiles"""
+    
+    if not MODULES_IMPORTED:
+        raise Exception("Required modules are not imported")
     
     pdf_path = Path(pdf_path)
     sheet_name = pdf_path.stem.replace(" ", "_").replace("-", "_")
@@ -668,7 +743,7 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
         # Verify all drawing files again before processing
         for drawing in selected_drawings:
             file_status = verify_drawing_files(drawing)
-            if not file_status["all_required"]:
+            if not file_status.get("all_required", False):
                 update_job_status(
                     job_id,
                     progress_message=f"⚠️ WARNING: Drawing {drawing} is missing required files. Attempting to regenerate..."
@@ -873,6 +948,10 @@ def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batch
                     progress_message=f"{PROCESS_PHASES['ANALYSIS']}: Processing batch {batch_number}/{total_batches} - Examining detailed specifications"
                 )
             
+            # Check if analyzer is available
+            if analyzer is None or isinstance(analyzer, MockAnalyzer):
+                raise Exception("Analyzer not properly initialized")
+            
             # Actual analysis call - just like in the GUI script
             response = analyzer.analyze_query(query, use_cache=use_cache)
             
@@ -983,8 +1062,25 @@ cleanup_thread = threading.Thread(target=cleanup_old_jobs)
 cleanup_thread.daemon = True
 cleanup_thread.start()
 
+# Debug route to check routes and module status
+@app.route('/debug', methods=['GET'])
+def debug_status():
+    """Debug endpoint to check routes and module status"""
+    status = {
+        "modules_imported": MODULES_IMPORTED,
+        "analyzer_type": type(analyzer).__name__,
+        "drawing_manager_available": drawing_manager is not None,
+        "routes": [str(rule) for rule in app.url_map.iter_rules()],
+        "config_available": Config is not None
+    }
+    return jsonify(status)
+
 # Set Flask to run in production mode
 if __name__ == "__main__":
+    # Log all registered routes at startup
+    for rule in app.url_map.iter_rules():
+        logger.info(f"Registered route: {rule}")
+        
     # Use production WSGI server in production
     logger.info("Starting API server in production mode")
     app.run(host="0.0.0.0", port=5000, threaded=True)
