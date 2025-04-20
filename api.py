@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import os
 import sys
 import logging
@@ -39,6 +40,7 @@ except ImportError as e:
     sys.exit(1)
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 # Ensure BASE_DIR is set correctly for containerized environment
 Config.configure(base_dir="/app")
@@ -276,6 +278,9 @@ def get_drawings():
 def analyze_query():
     """Start an analysis job and return a job ID for tracking progress"""
     try:
+        logger.info("Analyze endpoint called")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        
         if analyzer is None:
             return jsonify({"error": "Analyzer not initialized"}), 500
             
