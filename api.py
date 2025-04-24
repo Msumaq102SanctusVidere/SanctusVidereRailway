@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
 import os
 import sys
@@ -19,8 +19,14 @@ import json
 # IMPORTANT: Fix for decompression bomb warning
 Image.MAX_IMAGE_PIXELS = 200000000
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Set up logging with more detail for SSL issues
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # Ensure logs go to stdout for Railway
+    ]
+)
 logger = logging.getLogger(__name__)
 
 # Add the current directory to Python path to find the modules
@@ -42,13 +48,11 @@ except ImportError as e:
 app = Flask(__name__)
 
 # Configure CORS to allow requests from any origin
-# This is the simplest 80/20 solution for allowing cross-origin requests
 CORS(app, resources={r"/*": {"origins": "*"}})
 logger.info("CORS configured to allow requests from any origin")
 
 # Ensure BASE_DIR is set correctly for containerized environment
 try:
-    # Use environment variable if available, otherwise use default path
     base_dir = os.environ.get('BASE_DIR', '/app')
     Config.configure(base_dir=base_dir)
     logger.info(f"Configured base directory: {Config.BASE_DIR}")
@@ -56,7 +60,6 @@ try:
     logger.info(f"Memory store directory: {Config.MEMORY_STORE}")
 except Exception as e:
     logger.error(f"Error configuring base directory: {e}")
-    # Try a fallback configuration
     fallback_dir = os.path.dirname(os.path.abspath(__file__))
     Config.configure(base_dir=fallback_dir)
     logger.info(f"Using fallback base directory: {fallback_dir}")
@@ -96,7 +99,6 @@ try:
     logger.info("Successfully created required directories")
 except Exception as e:
     logger.error(f"Error creating directories: {e}")
-    # Continue running as we might be using existing directories
 
 # Create global instances
 try:
@@ -153,22 +155,17 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def verify_drawing_files(drawing_name):
-    """Verify that all necessary files exist for a drawing
-    Returns a dictionary with boolean flags for each file type"""
+    """Verify that all necessary files exist for a drawing"""
     sheet_output_dir = Config.DRAWINGS_DIR / drawing_name
     
-    # Check for core files first
     metadata_exists = (sheet_output_dir / f"{drawing_name}_tile_metadata.json").exists()
     tile_analysis_exists = (sheet_output_dir / f"{drawing_name}_tile_analysis.json").exists()
     legend_knowledge_exists = (sheet_output_dir / f"{drawing_name}_legend_knowledge.json").exists()
     drawing_goals_exists = (sheet_output_dir / f"{drawing_name}_drawing_goals.json").exists()
-    
-    # Check for specialized files based on drawing type
     general_notes_exists = (sheet_output_dir / f"{drawing_name}_general_notes_analysis.json").exists()
     elevation_exists = (sheet_output_dir / f"{drawing_name}_elevation_analysis.json").exists()
     detail_exists = (sheet_output_dir / f"{drawing_name}_detail_analysis.json").exists()
     
-    # Log the results
     logger.info(f"File verification for {drawing_name}:")
     logger.info(f"  Metadata exists: {metadata_exists}")
     logger.info(f"  Tile analysis exists: {tile_analysis_exists}")
@@ -228,13 +225,11 @@ def update_job_status(job_id, **kwargs):
             
             jobs[job_id]["updated_at"] = datetime.datetime.now().isoformat()
             
-            # Calculate overall progress based on batches and current phase
             if kwargs.get("completed_batches") is not None:
                 completed = kwargs["completed_batches"]
                 total = jobs[job_id]["total_batches"]
                 phase_weight = 0
                 
-                # Weight progress by phase
                 current_phase = kwargs.get("current_phase", jobs[job_id]["current_phase"])
                 if PROCESS_PHASES["INIT"] in current_phase:
                     phase_weight = 0.05
@@ -249,15 +244,11 @@ def update_job_status(job_id, **kwargs):
                 elif PROCESS_PHASES["COMPLETE"] in current_phase:
                     phase_weight = 1.0
                 
-                # Calculate progress as a combination of batches completed and current phase
                 batch_progress = completed / total if total > 0 else 0
                 jobs[job_id]["progress"] = int((batch_progress * 0.8 + phase_weight * 0.2) * 100)
                 
-                # Ensure progress is at least 1% after initialization
                 if jobs[job_id]["progress"] < 1 and completed > 0:
                     jobs[job_id]["progress"] = 1
-                    
-                # Ensure completed jobs show 100%
                 if jobs[job_id]["status"] == "completed":
                     jobs[job_id]["progress"] = 100
 
@@ -265,7 +256,7 @@ def update_job_status(job_id, **kwargs):
 def health_check():
     """Simple health check endpoint"""
     logger.info("Health check endpoint called")
-    return jsonify({"status": "healthy"})
+    return jsonify({"status": "healthy"}), 200
 
 @app.route('/drawings', methods=['GET'])
 def get_drawings():
@@ -276,12 +267,10 @@ def get_drawings():
             
         available_drawings = drawing_manager.get_available_drawings()
         
-        # Verify the files for each drawing
         drawing_status = {}
         for drawing in available_drawings:
             drawing_status[drawing] = verify_drawing_files(drawing)
         
-        # Only return drawings that have the required files
         valid_drawings = [drawing for drawing in available_drawings 
                          if drawing_status[drawing]["all_required"]]
         
@@ -318,11 +307,9 @@ def analyze_query():
         logger.info(f"Starting analysis job for query: {query}")
         logger.info(f"Selected drawings: {selected_drawings}")
         
-        # Apply smart filtering for query refinement - matching GUI script
         refined_query = smart_filter_query(query)
         logger.info(f"Refined query: {refined_query}")
         
-        # Verify all selected drawings have the necessary files
         valid_drawings = []
         for drawing in selected_drawings:
             file_status = verify_drawing_files(drawing)
@@ -334,15 +321,12 @@ def analyze_query():
         if not valid_drawings:
             return jsonify({"error": "None of the selected drawings have the required analysis files"}), 400
             
-        # Update selected drawings to only include valid ones
         if len(valid_drawings) < len(selected_drawings):
             logger.warning(f"Only {len(valid_drawings)} out of {len(selected_drawings)} drawings are valid")
             selected_drawings = valid_drawings
         
-        # Create a new job
         job_id = create_job(refined_query, selected_drawings, use_cache)
         
-        # Start the analysis in a background thread
         thread = threading.Thread(
             target=process_analysis_job,
             args=(job_id, refined_query, selected_drawings, use_cache)
@@ -369,7 +353,6 @@ def get_job_status(job_id):
         
         job = jobs[job_id].copy()
         
-        # Limit the number of progress messages to avoid huge responses
         if len(job["progress_messages"]) > 20:
             job["progress_messages"] = job["progress_messages"][-20:]
             job["progress_messages_truncated"] = True
@@ -398,27 +381,21 @@ def list_jobs():
 def upload_file():
     """Upload a PDF construction drawing and process it"""
     try:
-        # Check if the post request has the file part
         if 'file' not in request.files:
             return jsonify({"error": "No file part"}), 400
         
         file = request.files['file']
         
-        # If user does not select file, browser also
-        # submit an empty part without filename
         if file.filename == '':
             return jsonify({"error": "No selected file"}), 400
         
         if file and allowed_file(file.filename):
             try:
-                # Create a secure version of the filename
                 filename = werkzeug.utils.secure_filename(file.filename)
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 
-                # Save the uploaded file without additional processing
                 file.save(file_path)
                 
-                # Verify file was saved correctly
                 if not os.path.exists(file_path):
                     return jsonify({"error": "File was not saved properly"}), 500
                 
@@ -428,25 +405,21 @@ def upload_file():
                 
                 logger.info(f"File uploaded successfully: {file_path} ({os.path.getsize(file_path)} bytes)")
                 
-                # Process the PDF with improved error handling
                 try:
                     sheet_name, sheet_output_dir = process_pdf(file_path)
                     logger.info(f"Successfully processed {filename}")
                     
-                    # Verify all required files were generated
                     file_status = verify_drawing_files(sheet_name)
                     if file_status["all_required"]:
                         logger.info(f"All required files were generated for {sheet_name}")
                     else:
                         logger.warning(f"Not all required files were generated for {sheet_name}. Status: {file_status}")
-                        # Make another attempt to generate the files if needed
                         if not file_status["tile_analysis"] or not file_status["legend_knowledge"]:
                             logger.info(f"Making another attempt to analyze tiles for {sheet_name}")
                             analyze_all_tiles(sheet_output_dir, sheet_name)
                             file_status = verify_drawing_files(sheet_name)
                             logger.info(f"After retry, file status: {file_status}")
                     
-                    # Return success with the drawing name
                     return jsonify({
                         "success": True,
                         "message": f"Successfully processed {filename}",
@@ -470,7 +443,6 @@ def upload_file():
                 return jsonify({"error": f"Unexpected error during file upload: {str(e)}"}), 500
                 
             finally:
-                # Clean up the uploaded file if it exists
                 if 'file_path' in locals() and os.path.exists(file_path):
                     try:
                         os.remove(file_path)
@@ -484,11 +456,7 @@ def upload_file():
         return jsonify({"error": str(e)}), 500
 
 def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
-    """Process a PDF through the complete workflow:
-       1. Generate tiles
-       2. Extract information
-       3. Analyze the tiles"""
-    
+    """Process a PDF through the complete workflow"""
     pdf_path = Path(pdf_path)
     sheet_name = pdf_path.stem.replace(" ", "_").replace("-", "_")
     sheet_output_dir = Config.DRAWINGS_DIR / sheet_name
@@ -498,44 +466,38 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
     logger.info(f"Sheet name: {sheet_name}")
     logger.info(f"Output directory: {sheet_output_dir}")
     
-    # Step 1: Convert PDF to image with improved error handling
     logger.info(f"📄 Converting {pdf_path.name} to image...")
     try:
-        # Check file size before processing to avoid processing corrupt files
         file_size = os.path.getsize(pdf_path)
         logger.info(f"PDF file size: {file_size} bytes")
         
         if file_size == 0:
             raise Exception("PDF file is empty")
             
-        # Use a higher timeout for larger files
-        timeout = max(120, int(file_size / 1024 / 1024 * 10))  # 10 seconds per MB, minimum 120 seconds
+        timeout = max(120, int(file_size / 1024 / 1024 * 10))
         
-        # Convert the PDF with options to handle potential encryption
         images = convert_from_path(
             pdf_path=str(pdf_path), 
             dpi=dpi,
-            thread_count=2,  # Use multiple threads for faster conversion
+            thread_count=2,
             timeout=timeout,
-            use_pdftocairo=True  # Try using pdftocairo backend first
+            use_pdftocairo=True
         )
         
         if not images or len(images) == 0:
             raise Exception("PDF conversion produced no images")
             
-        full_image = images[0]  # Only first page
+        full_image = images[0]
         
     except Exception as e:
         logger.error(f"Error converting PDF to image: {str(e)}", exc_info=True)
-        
-        # Try alternative PDF conversion method if first method fails
         try:
             logger.info("Attempting alternative PDF conversion method...")
             images = convert_from_path(
                 pdf_path=str(pdf_path), 
                 dpi=dpi,
-                use_pdftocairo=False,  # Fall back to poppler
-                thread_count=1,  # Single thread for stability
+                use_pdftocairo=False,
+                thread_count=1,
                 grayscale=False,
                 transparent=False,
                 first_page=1,
@@ -552,14 +514,12 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
             logger.error(f"Alternative PDF conversion also failed: {str(alt_e)}", exc_info=True)
             raise Exception(f"PDF conversion failed after multiple attempts: {str(e)}. Alternative method error: {str(alt_e)}")
     
-    # Ensure the image is in landscape orientation
     try:
         full_image = ensure_landscape(full_image)
     except Exception as e:
         logger.error(f"Error ensuring landscape orientation: {str(e)}", exc_info=True)
         raise Exception(f"Image orientation adjustment failed: {str(e)}")
     
-    # Save the full image
     try:
         full_image_path = sheet_output_dir / f"{sheet_name}.png"
         full_image.save(full_image_path)
@@ -568,19 +528,16 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
         logger.error(f"Error saving full image: {str(e)}", exc_info=True)
         raise Exception(f"Image saving failed: {str(e)}")
     
-    # Step 2: Create tiles
     logger.info(f"🔳 Creating tiles for {sheet_name}...")
     try:
         save_tiles_with_metadata(full_image, sheet_output_dir, sheet_name, 
                                 tile_size=tile_size, overlap_ratio=overlap_ratio)
         
-        # Verify that the metadata file was created
         metadata_file = sheet_output_dir / f"{sheet_name}_tile_metadata.json"
         if not metadata_file.exists():
             logger.error(f"Metadata file was not created: {metadata_file}")
             raise Exception("Tile metadata file was not created")
         else:
-            # Load and log the metadata to verify it's correct
             try:
                 with open(metadata_file, 'r') as f:
                     metadata = json.load(f)
@@ -595,7 +552,6 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
         logger.error(f"Error creating tiles: {str(e)}", exc_info=True)
         raise Exception(f"Tile creation failed: {str(e)}")
     
-    # Step 3: Analyze tiles with retry logic
     logger.info(f"📊 Analyzing tiles for {sheet_name}...")
     
     retry_count = 0
@@ -603,20 +559,16 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
     
     while retry_count < MAX_RETRIES:
         try:
-            # Call the analyze_all_tiles function with our sheet output directory
             analyze_all_tiles(sheet_output_dir, sheet_name)
             
-            # Verify that the legend knowledge file was created
             legend_file = sheet_output_dir / f"{sheet_name}_legend_knowledge.json"
             if not legend_file.exists():
                 logger.warning(f"Legend knowledge file was not created: {legend_file}")
-                # If no legend file, check for other analysis files
                 analysis_file = sheet_output_dir / f"{sheet_name}_tile_analysis.json"
                 if not analysis_file.exists():
                     logger.error(f"Tile analysis file was not created: {analysis_file}")
                     raise Exception("Analysis files were not created properly")
             else:
-                # Verify the legend file has content
                 try:
                     with open(legend_file, 'r') as f:
                         legend_data = json.load(f)
@@ -631,7 +583,6 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
             retry_count += 1
             last_error = e
             
-            # Exponential backoff with jitter
             backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
             logger.warning(f"Rate limit exceeded during tile analysis, attempt {retry_count}/{MAX_RETRIES}. "
                           f"Backing off for {backoff_time:.1f}s: {str(e)}")
@@ -646,7 +597,6 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
             retry_count += 1
             last_error = e
             
-            # Exponential backoff with jitter
             backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
             logger.warning(f"API error during tile analysis, attempt {retry_count}/{MAX_RETRIES}. "
                           f"Backing off for {backoff_time:.1f}s: {str(e)}")
@@ -661,7 +611,6 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
             retry_count += 1
             last_error = e
             
-            # Exponential backoff with jitter
             backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
             logger.warning(f"Error during tile analysis, attempt {retry_count}/{MAX_RETRIES}. "
                           f"Backing off for {backoff_time:.1f}s: {str(e)}")
@@ -672,14 +621,13 @@ def process_pdf(pdf_path, dpi=300, tile_size=2048, overlap_ratio=0.35):
                 logger.error(f"Failed to analyze tiles after {MAX_RETRIES} attempts: {str(e)}")
                 raise Exception(f"Tile analysis failed: {str(e)}")
     
-    # This should never be reached due to the raise in the loop, but just in case
     if last_error:
         raise last_error
     
     return sheet_name, sheet_output_dir
 
 def process_analysis_job(job_id, query, selected_drawings, use_cache):
-    """Process an analysis job with progress tracking - using the batch approach from GUI script"""
+    """Process an analysis job with progress tracking"""
     try:
         update_job_status(
             job_id, 
@@ -688,7 +636,6 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
             progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Exploring construction elements in {len(selected_drawings)} drawing(s)"
         )
         
-        # Verify all drawing files again before processing
         for drawing in selected_drawings:
             file_status = verify_drawing_files(drawing)
             if not file_status["all_required"]:
@@ -697,7 +644,6 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                     progress_message=f"⚠️ WARNING: Drawing {drawing} is missing required files. Attempting to regenerate..."
                 )
                 
-                # Try to regenerate the missing files
                 sheet_output_dir = Config.DRAWINGS_DIR / drawing
                 try:
                     analyze_all_tiles(sheet_output_dir, drawing)
@@ -711,10 +657,9 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                         progress_message=f"❌ Failed to regenerate analysis files for {drawing}: {str(e)}"
                     )
         
-        # The following mimics the batch processing approach from the GUI script
-        if len(selected_drawings) > 3:  # Use batching for multiple drawings - same threshold as GUI
+        if len(selected_drawings) > 3:
             response_parts = []
-            batch_size = 3  # Process in smaller batches to avoid timeouts, like GUI does
+            batch_size = 3
             total_batches = (len(selected_drawings) + batch_size - 1) // batch_size
             
             for i in range(0, len(selected_drawings), batch_size):
@@ -728,17 +673,14 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                     progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Processing batch {batch_number}/{total_batches} - Drawings: {', '.join(batch)}"
                 )
                 
-                # Format the query with drawing selection for this batch - exactly as the GUI does
                 batch_query = f"[DRAWINGS:{','.join(batch)}] {query}"
                 
-                # Process first batch discovery phase
                 if batch_number == 1:
                     update_job_status(
                         job_id,
                         progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Identifying key elements in drawings {', '.join(batch)}"
                     )
                     
-                    # Verify legend files specifically for this batch
                     for drawing in batch:
                         legend_file = Config.DRAWINGS_DIR / drawing / f"{drawing}_legend_knowledge.json"
                         if legend_file.exists():
@@ -761,19 +703,16 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                                 progress_message=f"⚠️ Legend file not found for {drawing}. Analysis may be limited."
                             )
                 
-                # Process this batch with exciting progress messages
                 update_job_status(
                     job_id, 
                     current_phase=PROCESS_PHASES["ANALYSIS"],
                     progress_message=f"{PROCESS_PHASES['ANALYSIS']}: Examining specifications, annotations and measurements in batch {batch_number}"
                 )
                 
-                # Process the batch with retry logic
                 try:
                     batch_response = process_batch_with_retry(job_id, batch_query, use_cache, batch_number, total_batches)
                     response_parts.append(batch_response)
                     
-                    # Update completion for this batch
                     update_job_status(
                         job_id,
                         completed_batches=batch_number,
@@ -787,17 +726,14 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                     )
                     raise
             
-            # Synthesis phase for combining results
             update_job_status(
                 job_id,
                 current_phase=PROCESS_PHASES["SYNTHESIS"],
                 progress_message=f"{PROCESS_PHASES['SYNTHESIS']}: Synthesizing insights from {len(selected_drawings)} drawings across {total_batches} batches"
             )
             
-            # Combine all batch responses - exactly like GUI does
             combined_response = "\n\n".join(response_parts)
             
-            # Complete the job
             update_job_status(
                 job_id,
                 status="completed",
@@ -808,7 +744,6 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
             )
             
         else:
-            # Process single batch with progress updates
             update_job_status(
                 job_id,
                 current_batch=selected_drawings,
@@ -816,7 +751,6 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                 progress_message=f"{PROCESS_PHASES['DISCOVERY']}: Examining drawings: {', '.join(selected_drawings)}"
             )
             
-            # Verify legend files for these drawings
             for drawing in selected_drawings:
                 legend_file = Config.DRAWINGS_DIR / drawing / f"{drawing}_legend_knowledge.json"
                 if legend_file.exists():
@@ -839,7 +773,6 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                         progress_message=f"⚠️ Legend file not found for {drawing}. Analysis may be limited."
                     )
             
-            # Add some exciting discovery messages
             drawing_type = "floor plan" if any("floor" in d.lower() for d in selected_drawings) else "drawing"
             update_job_status(
                 job_id,
@@ -852,7 +785,6 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                 progress_message=f"{PROCESS_PHASES['ANALYSIS']}: Analyzing specifications, dimensions, and annotations"
             )
             
-            # Process the query - exactly like the GUI does
             modified_query = f"[DRAWINGS:{','.join(selected_drawings)}] {query}"
             response = process_batch_with_retry(job_id, modified_query, use_cache, 1, 1)
             
@@ -862,7 +794,6 @@ def process_analysis_job(job_id, query, selected_drawings, use_cache):
                 progress_message=f"{PROCESS_PHASES['SYNTHESIS']}: Finalizing analysis and preparing comprehensive response"
             )
             
-            # Complete the job
             update_job_status(
                 job_id,
                 status="completed",
@@ -889,17 +820,14 @@ def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batch
     
     while retry_count < MAX_RETRIES:
         try:
-            # Add progress messages for exciting phases
             if retry_count == 0:
                 update_job_status(
                     job_id,
                     progress_message=f"{PROCESS_PHASES['ANALYSIS']}: Processing batch {batch_number}/{total_batches} - Examining detailed specifications"
                 )
             
-            # Actual analysis call - just like in the GUI script
             response = analyzer.analyze_query(query, use_cache=use_cache)
             
-            # Success - add correlation message
             update_job_status(
                 job_id,
                 current_phase=PROCESS_PHASES["CORRELATION"],
@@ -912,7 +840,6 @@ def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batch
             retry_count += 1
             last_error = e
             
-            # Exponential backoff with jitter
             backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
             
             update_job_status(
@@ -933,7 +860,6 @@ def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batch
             retry_count += 1
             last_error = e
             
-            # Exponential backoff with jitter
             backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
             
             update_job_status(
@@ -954,7 +880,6 @@ def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batch
             retry_count += 1
             last_error = e
             
-            # Exponential backoff with jitter
             backoff_time = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
             
             update_job_status(
@@ -971,54 +896,53 @@ def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batch
                 )
                 return f"Error: Batch {batch_number} could not be processed due to an error: {str(e)}"
     
-    # This should never be reached due to the returns in the loop, but just in case
     if last_error:
         return f"Error: Batch processing failed: {str(last_error)}"
     
     return "Error: Unknown error during batch processing"
 
-# Clean up old jobs periodically
 def cleanup_old_jobs():
     """Remove jobs older than 24 hours to prevent memory leaks"""
     while True:
-        time.sleep(3600)  # Check every hour
+        time.sleep(3600)
         current_time = datetime.datetime.now()
         with job_lock:
             job_ids_to_remove = []
             for job_id, job in jobs.items():
-                # Parse the job creation timestamp
                 try:
                     created_at = datetime.datetime.fromisoformat(job["created_at"])
-                    if (current_time - created_at).total_seconds() > 86400:  # 24 hours
+                    if (current_time - created_at).total_seconds() > 86400:
                         job_ids_to_remove.append(job_id)
                 except (ValueError, TypeError):
                     continue
             
-            # Remove old jobs
             for job_id in job_ids_to_remove:
                 del jobs[job_id]
             
             if job_ids_to_remove:
                 logger.info(f"Cleaned up {len(job_ids_to_remove)} old jobs")
 
-# Start the cleanup thread
 cleanup_thread = threading.Thread(target=cleanup_old_jobs)
 cleanup_thread.daemon = True
 cleanup_thread.start()
 
-# Set Flask to run in production mode with better error handling
 if __name__ == "__main__":
-    # Get port from environment variable with fallback to 5000
     port = int(os.environ.get('PORT', 5000))
     host = os.environ.get('HOST', '0.0.0.0')
     
     logger.info(f"Starting API server on {host}:{port}")
     try:
-        # Use production server if available
         from waitress import serve
         logger.info("Using Waitress production server")
-        serve(app, host=host, port=port, threads=8)
+        serve(
+            app,
+            host=host,
+            port=port,
+            threads=8,
+            connection_limit=100,  # Increase connection limit
+            backlog=2048,         # Increase backlog for better handling
+            channel_timeout=120   # Increase timeout for slow connections
+        )
     except ImportError:
-        # Fall back to Flask's development server
         logger.info("Waitress not available, using Flask development server")
         app.run(host=host, port=port, threaded=True)
