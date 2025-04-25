@@ -1,4 +1,4 @@
-# --- Filename: ui/app.py (Frontend Streamlit UI - Revised with Delete Functionality) ---
+# --- Filename: ui/app.py (Frontend Streamlit UI - Fixed Select All Rerun Issue) ---
 
 import streamlit as st
 import time
@@ -181,8 +181,6 @@ def main():
             if not st.session_state.available_drawings:
                 st.info("No drawings processed yet. Upload a PDF via the sidebar.")
             else:
-                # Track selections locally within this run
-                current_selection = []
                 # Disable list interactions if confirmation is active
                 disable_list = bool(st.session_state.drawing_to_delete)
 
@@ -191,21 +189,27 @@ def main():
 
                 # --- Select All Checkbox ---
                 select_all_key = "select_all_drawings"
-                # Handle "Select All" logic carefully with session state persistence
                 if disable_list:
-                     st.checkbox("Select All Drawings", key=select_all_key, disabled=True)
+                     st.checkbox("Select All Drawings", key=select_all_key, disabled=True, value=False) # Ensure value is set when disabled
                 else:
-                    # Check if all are currently selected
-                    all_selected = set(st.session_state.selected_drawings) == set(st.session_state.available_drawings)
-                    select_all = st.checkbox("Select All Drawings", value=all_selected, key=select_all_key)
+                    # Check if all available drawings are currently selected
+                    all_selected = False # Default
+                    if st.session_state.available_drawings: # Avoid error if list is empty
+                         all_selected = set(st.session_state.selected_drawings) == set(st.session_state.available_drawings)
 
-                    # If "Select All" state changes, update the session state selection
-                    if select_all and not all_selected:
-                        st.session_state.selected_drawings = list(st.session_state.available_drawings)
-                        st.rerun() # Rerun needed to reflect changes in individual checkboxes
-                    elif not select_all and all_selected and st.session_state.available_drawings:
-                         st.session_state.selected_drawings = []
-                         st.rerun() # Rerun needed
+                    select_all_clicked = st.checkbox("Select All Drawings", value=all_selected, key=select_all_key)
+
+                    # Check if the state *changed* due to the click
+                    if select_all_clicked != all_selected:
+                        if select_all_clicked: # Became True (Select All)
+                            logger.debug("Select All checked - selecting all drawings.")
+                            st.session_state.selected_drawings = list(st.session_state.available_drawings)
+                        else: # Became False (Deselect All)
+                            logger.debug("Select All unchecked - deselecting all drawings.")
+                            st.session_state.selected_drawings = []
+                        # --- REMOVED st.rerun() here ---
+                        # Let Streamlit handle the rerun naturally from the widget interaction
+
 
                 st.divider()
 
@@ -225,11 +229,13 @@ def main():
                         if not disable_list and new_state != is_selected:
                             if new_state: # Checked
                                 if drawing_name not in st.session_state.selected_drawings:
+                                    logger.debug(f"Checkbox checked for {drawing_name}, adding to selection.")
                                     st.session_state.selected_drawings.append(drawing_name)
                             else: # Unchecked
                                 if drawing_name in st.session_state.selected_drawings:
+                                    logger.debug(f"Checkbox unchecked for {drawing_name}, removing from selection.")
                                     st.session_state.selected_drawings.remove(drawing_name)
-                            st.rerun() # Rerun immediately to reflect selection count change
+                            st.rerun() # Rerun immediately to reflect selection count change & Select All state
 
                     with list_col2:
                          # Delete button - sets state to trigger confirmation
@@ -305,7 +311,8 @@ def main():
                      st.rerun() # Rerun to display error in results area
 
         # --- Display Analysis Results ---
-        if not st.session_state.get('analysis_running') and st.session_state.get('analysis_result') and not disable_analysis:
+        # Use 'get' with default False for analysis_running to avoid error if key missing
+        if not st.session_state.get('analysis_running', False) and st.session_state.get('analysis_result') and not disable_analysis:
              st.subheader("Analysis Results")
              with st.container(border=True):
                 results_pane(st.session_state.analysis_result)
@@ -344,5 +351,5 @@ if __name__ == "__main__":
         main()
     except Exception as e:
          logger.critical(f"A critical error occurred in the main UI thread: {e}", exc_info=True)
-         # Avoid showing raw exception in UI if possible, rely on logging
+         # Show the generic error in the UI
          st.error(f"A critical application error occurred. Please check the logs or contact support.")
