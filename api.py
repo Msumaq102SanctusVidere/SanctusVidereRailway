@@ -1,11 +1,11 @@
-# --- Filename: api.py (Backend Flask Application - Revised with mkdir fix) ---
+# --- Filename: api.py (Backend Flask Application - Revised with Delete Endpoint) ---
 
 from flask import Flask, request, jsonify # Removed redirect as it wasn't used
 from flask_cors import CORS
 import os
 import sys
 import logging
-import shutil
+import shutil # <-- Import shutil for directory deletion
 import time
 import random
 import uuid
@@ -18,6 +18,7 @@ from anthropic import RateLimitError, APIStatusError, APITimeoutError, APIConnec
 # from collections import defaultdict # Not explicitly used, can be removed if sure
 import json
 import gc # Import garbage collector
+from urllib.parse import unquote # <-- Import unquote for URL decoding
 
 # IMPORTANT: Fix for decompression bomb warning
 # Consider making this configurable via environment variable
@@ -76,8 +77,9 @@ try:
     # Define paths based on Config
     UPLOAD_FOLDER = os.path.join(Config.BASE_DIR, 'uploads')
     TEMP_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, 'temp_uploads')
-    DRAWINGS_OUTPUT_DIR = Config.DRAWINGS_DIR # Where processed drawings are stored
-    MEMORY_STORE_DIR = Config.MEMORY_STORE
+    # --- Ensure DRAWINGS_OUTPUT_DIR is stored as a resolved Path object for security checks ---
+    DRAWINGS_OUTPUT_DIR = Path(Config.DRAWINGS_DIR).resolve()
+    MEMORY_STORE_DIR = Path(Config.MEMORY_STORE).resolve()
     logger.info(f"Uploads directory: {UPLOAD_FOLDER}")
     logger.info(f"Temporary uploads directory: {TEMP_UPLOAD_FOLDER}")
     logger.info(f"Processed drawings directory: {DRAWINGS_OUTPUT_DIR}")
@@ -85,17 +87,17 @@ try:
 except Exception as e:
     logger.error(f"CRITICAL: Error configuring base directory/paths: {e}", exc_info=True)
     # Handle fallback or exit if configuration is critical
-    fallback_dir = os.path.dirname(os.path.abspath(__file__))
-    Config.configure(base_dir=fallback_dir) # Minimal fallback
-    UPLOAD_FOLDER = os.path.join(fallback_dir, 'uploads')
-    TEMP_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, 'temp_uploads')
-    DRAWINGS_OUTPUT_DIR = os.path.join(fallback_dir, 'processed_drawings') # Example fallback
-    MEMORY_STORE_DIR = os.path.join(fallback_dir, 'memory_store')
+    fallback_dir = Path(os.path.dirname(os.path.abspath(__file__))).resolve()
+    Config.configure(base_dir=str(fallback_dir)) # Minimal fallback
+    UPLOAD_FOLDER = fallback_dir / 'uploads'
+    TEMP_UPLOAD_FOLDER = UPLOAD_FOLDER / 'temp_uploads'
+    DRAWINGS_OUTPUT_DIR = fallback_dir / 'processed_drawings' # Example fallback
+    MEMORY_STORE_DIR = fallback_dir / 'memory_store'
     logger.warning(f"Using fallback directories based on: {fallback_dir}")
 
 # Flask App Config
 ALLOWED_EXTENSIONS = {'pdf'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER # Keep for reference if needed elsewhere
+app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER) # Keep for reference if needed elsewhere
 app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_UPLOAD_MB', 100)) * 1024 * 1024
 logger.info(f"Max upload size: {app.config['MAX_CONTENT_LENGTH'] / 1024 / 1024} MB")
 
@@ -129,10 +131,9 @@ PROCESS_PHASES = {
 
 # Create required directories at startup
 try:
-    # Ensure DRAWINGS_OUTPUT_DIR is a Path object before creating
-    if DRAWINGS_OUTPUT_DIR: os.makedirs(Path(DRAWINGS_OUTPUT_DIR), exist_ok=True)
-    if MEMORY_STORE_DIR: os.makedirs(Path(MEMORY_STORE_DIR), exist_ok=True)
-    if UPLOAD_FOLDER: os.makedirs(Path(UPLOAD_FOLDER), exist_ok=True)
+    if DRAWINGS_OUTPUT_DIR: os.makedirs(DRAWINGS_OUTPUT_DIR, exist_ok=True)
+    if MEMORY_STORE_DIR: os.makedirs(MEMORY_STORE_DIR, exist_ok=True)
+    if UPLOAD_FOLDER: os.makedirs(Path(UPLOAD_FOLDER), exist_ok=True) # Ensure Path object usage
     if TEMP_UPLOAD_FOLDER: os.makedirs(Path(TEMP_UPLOAD_FOLDER), exist_ok=True)
     logger.info(f"Ensured directories exist: Processed drawings, Memory store, Uploads, Temp Uploads")
 except Exception as e:
@@ -141,7 +142,8 @@ except Exception as e:
 # Create global instances (handle potential errors)
 try:
     analyzer = ConstructionAnalyzer() if 'ConstructionAnalyzer' in locals() else None
-    drawing_manager = DrawingManager(str(DRAWINGS_OUTPUT_DIR)) if 'DrawingManager' in locals() and DRAWINGS_OUTPUT_DIR else None # Pass string path if needed by manager
+    # Pass the DRAWINGS_OUTPUT_DIR Path object to the manager
+    drawing_manager = DrawingManager(DRAWINGS_OUTPUT_DIR) if 'DrawingManager' in locals() and DRAWINGS_OUTPUT_DIR else None
     if analyzer and drawing_manager:
         logger.info("Successfully created analyzer and drawing_manager instances.")
     else:
@@ -181,7 +183,8 @@ def verify_drawing_files(drawing_name):
         logger.warning("Drawing manager not initialized, cannot verify files.")
         return {"all_required": False, "error": "Drawing manager not ready"}
 
-    sheet_output_dir = Path(drawing_manager.drawings_dir) / drawing_name # Use manager's dir
+    # Ensure DRAWINGS_OUTPUT_DIR is a Path object before constructing sub-path
+    sheet_output_dir = Path(drawing_manager.drawings_dir) / drawing_name
     if not sheet_output_dir.is_dir(): # Check if it's actually a directory
          logger.warning(f"Verification failed: Output directory not found for {drawing_name} at {sheet_output_dir}")
          return {"all_required": False, "error": "Drawing directory not found"}
@@ -285,19 +288,16 @@ def process_pdf_job(temp_file_path, job_id, original_filename,
     safe_original_filename = werkzeug.utils.secure_filename(original_filename)
     # Ensure sheet_name is valid for directory/file naming
     sheet_name = Path(safe_original_filename).stem.replace(" ", "_").replace("-", "_").replace(".", "_") # Replace dots too
-    # Ensure DRAWINGS_OUTPUT_DIR is a Path object
-    sheet_output_dir = Path(DRAWINGS_OUTPUT_DIR) / sheet_name # Final destination
+    # Use DRAWINGS_OUTPUT_DIR directly as it's already a Path object
+    sheet_output_dir = DRAWINGS_OUTPUT_DIR / sheet_name # Final destination
 
     start_time = time.time()
     logger.info(f"[Job {job_id}] Starting processing for: {original_filename} (Sheet Name: {sheet_name})")
     update_job_status(job_id, status="processing", progress=1, current_phase=PROCESS_PHASES["INIT"], progress_message="🚀 Starting PDF processing")
 
     try:
-        # --- FIX IS HERE: Ensure directory using Path object ---
-        # Assuming ensure_dir (from tile_generator_wow) expects or handles Path object
-        # OLD: ensure_dir(str(sheet_output_dir))
+        # Ensure directory using Path object - ensure_dir needs to accept Path
         ensure_dir(sheet_output_dir)
-        # --- END FIX ---
         logger.info(f"[Job {job_id}] Output directory ensured: {sheet_output_dir}")
 
 
@@ -339,7 +339,6 @@ def process_pdf_job(temp_file_path, job_id, original_filename,
                  logger.info(f"[Job {job_id}] Alternative PDF conversion successful in {conversion_time:.2f}s.")
             except Exception as alt_e:
                  logger.error(f"[Job {job_id}] Alternative PDF conversion failed: {str(alt_e)}", exc_info=True)
-                 # If conversion fails entirely, update job and exit thread
                  raise Exception(f"PDF conversion failed completely. Error: {str(alt_e)}")
 
         # --- 2. Image Orientation & Saving ---
@@ -360,7 +359,7 @@ def process_pdf_job(temp_file_path, job_id, original_filename,
         try:
             tile_start_time = time.time()
             # Check if save_tiles_with_metadata needs string or Path for output dir
-            save_tiles_with_metadata(full_image, str(sheet_output_dir), sheet_name,
+            save_tiles_with_metadata(full_image, sheet_output_dir, sheet_name, # Pass Path object
                                     tile_size=tile_size, overlap_ratio=overlap_ratio)
             tile_time = time.time() - tile_start_time
             metadata_file = sheet_output_dir / f"{sheet_name}_tile_metadata.json"
@@ -394,8 +393,8 @@ def process_pdf_job(temp_file_path, job_id, original_filename,
             progress_percent = 40 + int((retry_count / MAX_RETRIES) * 55)
             try:
                 update_job_status(job_id, progress=progress_percent, progress_message=f"🧠 Analyzing tiles (Attempt {retry_count+1}/{MAX_RETRIES})...")
-                # Pass string path if required by analyze_all_tiles
-                analyze_all_tiles(str(sheet_output_dir), sheet_name)
+                # Pass Path object to analyze_all_tiles if it accepts it, else str()
+                analyze_all_tiles(sheet_output_dir, sheet_name)
 
                 legend_file = sheet_output_dir / f"{sheet_name}_legend_knowledge.json"
                 analysis_file = sheet_output_dir / f"{sheet_name}_tile_analysis.json"
@@ -492,6 +491,55 @@ def get_drawings():
         logger.error(f"Error retrieving drawings: {str(e)}", exc_info=True)
         return jsonify({"error": f"Error retrieving drawings: {str(e)}"}), 500
 
+# --- NEW DELETE ENDPOINT ---
+@app.route('/delete_drawing/<path:drawing_name>', methods=['DELETE'])
+def delete_drawing_route(drawing_name):
+    """Deletes a drawing directory and its contents."""
+    if drawing_manager is None or not DRAWINGS_OUTPUT_DIR:
+        logger.error(f"Delete request failed: Drawing manager or DRAWINGS_OUTPUT_DIR not initialized.")
+        return jsonify({"success": False, "error": "Drawing manager not initialized"}), 500
+
+    try:
+        # Decode the name received from the URL
+        decoded_drawing_name = unquote(drawing_name)
+        logger.info(f"Received request to delete drawing: {decoded_drawing_name}")
+
+        # --- Security Check ---
+        # Construct the target directory path
+        target_dir = (DRAWINGS_OUTPUT_DIR / decoded_drawing_name).resolve()
+
+        # Verify that the target path is strictly within the allowed DRAWINGS_OUTPUT_DIR
+        if not target_dir.is_relative_to(DRAWINGS_OUTPUT_DIR.resolve()):
+             logger.error(f"SECURITY ALERT: Attempted deletion outside designated directory. Target: {target_dir}, Base: {DRAWINGS_OUTPUT_DIR.resolve()}")
+             return jsonify({"success": False, "error": "Invalid drawing path (outside allowed directory)"}), 400
+        # --- End Security Check ---
+
+        if not target_dir.exists():
+            logger.warning(f"Delete request: Directory not found for '{decoded_drawing_name}' at {target_dir}")
+            return jsonify({"success": False, "error": "Drawing not found"}), 404
+
+        if not target_dir.is_dir():
+            logger.error(f"Delete request: Target path exists but is not a directory: {target_dir}")
+            return jsonify({"success": False, "error": "Target is not a directory"}), 400 # Or 500?
+
+        logger.info(f"Attempting to delete directory recursively: {target_dir}")
+        shutil.rmtree(target_dir)
+        logger.info(f"Successfully deleted directory: {target_dir}")
+
+        # Optionally: Update any in-memory list or cache if drawing_manager holds one
+        # drawing_manager.refresh_list() # Example
+
+        return jsonify({"success": True, "message": f"Drawing '{decoded_drawing_name}' deleted successfully."}), 200
+
+    except OSError as os_err: # Catch specific OS errors like permission denied
+        logger.error(f"OS error deleting directory {target_dir} for drawing '{decoded_drawing_name}': {os_err}", exc_info=True)
+        return jsonify({"success": False, "error": f"Server error during deletion (OS Error): {os_err.strerror}"}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error deleting directory {target_dir} for drawing '{decoded_drawing_name}': {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Unexpected server error during deletion: {str(e)}"}), 500
+# --- END NEW DELETE ENDPOINT ---
+
+
 @app.route('/analyze', methods=['POST'])
 def analyze_query():
     if analyzer is None:
@@ -510,10 +558,14 @@ def analyze_query():
     logger.info(f"Received analysis request for query: '{query[:50]}...' on drawings: {selected_drawings}")
 
     if intent_classifier:
-        refined_query = smart_filter_query(query)
+        # Assuming smart_filter_query is defined elsewhere or integrated
+        # refined_query = smart_filter_query(query)
+        refined_query = query # Placeholder if not defined
         if refined_query != query:
              logger.info(f"Refined query: {refined_query}")
              query = refined_query
+        else:
+             logger.info("Skipping query refinement (transformer not loaded or no change).")
     else:
          logger.info("Skipping query refinement (transformer not loaded).")
 
@@ -540,7 +592,8 @@ def get_job_status_route(job_id):
     with job_lock:
         if job_id not in jobs:
             return jsonify({"error": "Job not found"}), 404
-        job = jobs[job_id].copy()
+        # Return a deep copy to prevent modification issues if the job is still running
+        job = json.loads(json.dumps(jobs[job_id])) # Simple deep copy via JSON
 
         MAX_MESSAGES_RETURNED = 20
         if "progress_messages" in job and isinstance(job["progress_messages"], list) and len(job["progress_messages"]) > MAX_MESSAGES_RETURNED:
@@ -552,8 +605,10 @@ def get_job_status_route(job_id):
 def list_jobs_route():
     job_summaries = []
     with job_lock:
+        # Create a copy of values to avoid holding lock while processing
         current_jobs = list(jobs.values())
 
+    # Sort outside the lock
     for job in sorted(current_jobs, key=lambda x: x.get('created_at', ''), reverse=True):
         try:
             summary = {k: v for k, v in job.items() if k not in ['progress_messages', 'result']} # Exclude large fields
@@ -581,17 +636,20 @@ def upload_file_async():
         original_filename = werkzeug.utils.secure_filename(file.filename)
         temp_file_path = None
         try:
-            os.makedirs(TEMP_UPLOAD_FOLDER, exist_ok=True)
+            # Ensure TEMP_UPLOAD_FOLDER is a Path object
+            temp_upload_dir_path = Path(TEMP_UPLOAD_FOLDER)
+            os.makedirs(temp_upload_dir_path, exist_ok=True)
+
             temp_filename = str(uuid.uuid4()) + "_" + original_filename
-            temp_file_path = os.path.join(TEMP_UPLOAD_FOLDER, temp_filename)
+            temp_file_path = temp_upload_dir_path / temp_filename # Use Path object for join
 
             logger.info(f"Attempting to save uploaded file '{original_filename}' to temp path: {temp_file_path}")
-            file.save(temp_file_path)
+            file.save(str(temp_file_path)) # file.save expects string path
             logger.info(f"File temporarily saved to: {temp_file_path}")
 
-            if not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+            if not temp_file_path.exists() or temp_file_path.stat().st_size == 0:
                 logger.error(f"File not saved correctly or empty: {temp_file_path}")
-                if os.path.exists(temp_file_path): os.remove(temp_file_path)
+                if temp_file_path.exists(): temp_file_path.unlink()
                 return jsonify({"error": "Uploaded file is empty or save failed"}), 400
 
             job_id = str(uuid.uuid4())
@@ -606,7 +664,7 @@ def upload_file_async():
                 }
 
             thread = threading.Thread(
-                target=process_pdf_job, args=(temp_file_path, job_id, original_filename), name=f"UploadJob-{job_id[:8]}"
+                target=process_pdf_job, args=(str(temp_file_path), job_id, original_filename), name=f"UploadJob-{job_id[:8]}"
             )
             thread.daemon = True
             thread.start()
@@ -619,8 +677,9 @@ def upload_file_async():
 
         except Exception as e:
             logger.error(f"Error during upload setup for {original_filename}: {str(e)}", exc_info=True)
-            if temp_file_path and os.path.exists(temp_file_path):
-                 try: os.remove(temp_file_path)
+            # Ensure temp_file_path is checked and is Path obj before unlink
+            if temp_file_path and isinstance(temp_file_path, Path) and temp_file_path.exists():
+                 try: temp_file_path.unlink()
                  except Exception as clean_e: logger.warning(f"Failed cleanup on error: {clean_e}")
             return jsonify({"error": f"Server error during upload initiation: {str(e)}"}), 500
     else:
@@ -636,7 +695,8 @@ def process_analysis_job(job_id):
           if job_id not in jobs:
                logger.error(f"[Job {job_id}] Analysis job not found!")
                return
-          job = jobs[job_id].copy()
+          # Use deep copy to avoid race conditions if job dict is modified while processing
+          job = json.loads(json.dumps(jobs[job_id]))
 
      query = job.get("query")
      selected_drawings = job.get("drawings", [])
@@ -648,7 +708,6 @@ def process_analysis_job(job_id):
      try:
          # --- Batch Processing Logic ---
          if len(selected_drawings) > ANALYSIS_BATCH_SIZE:
-             # ... (batching logic - seems okay, ensure process_batch_with_retry is robust) ...
              logger.info(f"[Job {job_id}] Processing analysis in batches of {ANALYSIS_BATCH_SIZE}.")
              response_parts = []
              total_batches = (len(selected_drawings) + ANALYSIS_BATCH_SIZE - 1) // ANALYSIS_BATCH_SIZE
@@ -679,7 +738,6 @@ def process_analysis_job(job_id):
 
          else:
              # --- Single Batch Processing ---
-             # ... (single batch logic - seems okay) ...
              logger.info(f"[Job {job_id}] Processing analysis as single batch: {selected_drawings}")
              update_job_status(job_id, current_batch=selected_drawings, completed_batches=0, total_batches=1,
                                current_phase=PROCESS_PHASES["ANALYSIS"], progress=20, progress_message=f"{PROCESS_PHASES['ANALYSIS']}: Processing {len(selected_drawings)} drawings...")
@@ -714,12 +772,13 @@ def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batch
             update_job_status(job_id, progress=attempt_progress, progress_message=f"🧠 Analyzing Batch {batch_number} (Attempt {retry_count+1})...")
             response = analyzer.analyze_query(query, use_cache=use_cache)
             logger.info(f"[Job {job_id}] Batch {batch_number} analysis (Attempt {retry_count+1}) successful.")
-            update_job_status(job_id, progress=progress_base + int(80 / total_batches),
+            # Make sure progress update happens after successful attempt
+            final_batch_progress = progress_base + int(80 / total_batches) # Calculate final progress for this batch
+            update_job_status(job_id, progress=final_batch_progress,
                                progress_message=f"✔️ Completed Batch {batch_number} analysis.")
             return response
 
         except (RateLimitError, APIStatusError, APITimeoutError, APIConnectionError) as api_err:
-            # ... (error handling and backoff logic - seems okay) ...
              retry_count += 1
              last_error = api_err
              backoff = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
@@ -731,7 +790,6 @@ def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batch
 
 
         except Exception as e:
-            # ... (error handling and backoff logic - seems okay) ...
             retry_count += 1
             last_error = e
             backoff = min(MAX_BACKOFF, (2 ** retry_count) * (0.8 + 0.4 * random.random()))
@@ -757,32 +815,41 @@ def cleanup_old_jobs():
             logger.debug(f"Running job cleanup. Cutoff time: {cutoff_time.isoformat()}")
 
             with job_lock:
+                # Create a list of IDs to avoid modifying dict while iterating
                 all_job_ids = list(jobs.keys())
                 for job_id in all_job_ids:
                     job = jobs.get(job_id)
                     if not job: continue
                     try:
+                        # Prioritize updated_at, fall back to created_at
                         ts_str = job.get("updated_at", job.get("created_at"))
                         if not ts_str: continue
-                        job_ts = datetime.datetime.fromisoformat(ts_str.replace('Z','+00:00')) # Handle Z suffix
-                        if job_ts.tzinfo is None: job_ts = job_ts.replace(tzinfo=datetime.timezone.utc) # Add tz if missing
+                        # Parse ISO format string potentially ending with Z
+                        job_ts = datetime.datetime.fromisoformat(ts_str.replace('Z','+00:00'))
+                        # Ensure timezone-aware comparison
+                        if job_ts.tzinfo is None: job_ts = job_ts.replace(tzinfo=datetime.timezone.utc)
                         if job_ts < cutoff_time:
                             job_ids_to_remove.append(job_id)
+                    except ValueError: # Handle invalid timestamp format
+                        logger.warning(f"Error parsing timestamp for job {job_id}: Invalid format '{ts_str}'. Skipping cleanup check for this job.")
                     except Exception as e:
-                        logger.warning(f"Error parsing/comparing timestamp for job {job_id}: {e}. Timestamp: '{ts_str}'")
+                        logger.warning(f"Error comparing timestamp for job {job_id}: {e}. Timestamp: '{ts_str}'. Skipping cleanup check.")
                         continue
 
+                # Remove jobs outside the iteration loop
                 for job_id in job_ids_to_remove:
-                    del jobs[job_id]
+                    if job_id in jobs:
+                        del jobs[job_id]
 
             if job_ids_to_remove:
-                logger.info(f"Cleaned up {len(job_ids_to_remove)} old jobs: {job_ids_to_remove}")
+                logger.info(f"Cleaned up {len(job_ids_to_remove)} old jobs (older than {JOB_RETENTION_HOURS} hours).")
             else:
                  logger.debug("Job cleanup ran, no old jobs found.")
 
         except Exception as e:
              logger.error(f"Error in cleanup_old_jobs thread: {e}", exc_info=True)
-             time.sleep(CLEANUP_INTERVAL_SECONDS / 2)
+             # Avoid busy-waiting on error; sleep a bit before retrying
+             time.sleep(CLEANUP_INTERVAL_SECONDS / 4)
 
 
 cleanup_thread = threading.Thread(target=cleanup_old_jobs, name="JobCleanupThread")
