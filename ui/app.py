@@ -5,19 +5,15 @@ import time
 import logging
 import sys
 import os
-import requests
 import json
 from pathlib import Path
 
 # --- Path Setup ---
 try:
-    # Add the current directory and parent directory to Python path
+    # Add the current directory to Python path
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(current_dir)
     if current_dir not in sys.path:
         sys.path.append(current_dir)
-    if parent_dir not in sys.path:
-        sys.path.append(parent_dir)
         
     # Set up logging
     logging.basicConfig(
@@ -31,25 +27,29 @@ except ImportError as e:
     print(f"Error setting up paths: {e}")
     sys.exit(1)
 
-# --- Import UI Components ---
+# --- Import API Client and UI Components ---
 try:
-    from components.api_client import (
-        check_backend_health,
+    # Import api_client.py from ui folder (root level)
+    from api_client import (
+        health_check as check_backend_health,
         get_drawings,
         delete_drawing,
-        upload_file,
-        analyze_drawings,
+        upload_drawing,
+        start_analysis as analyze_drawings,
         get_job_status
     )
-    from components.ui_components import (
-        render_drawing_tiles,
-        render_job_progress,
-        render_file_uploader,
-        render_analysis_results
-    )
-    logger.info("Successfully imported UI components")
+    
+    # Import components from components folder
+    from components.control_row import control_row
+    from components.drawing_list import drawing_list
+    from components.progress_bar import progress_indicator
+    from components.query_box import query_box
+    from components.results_pane import results_pane
+    from components.upload_drawing import upload_drawing_component
+    
+    logger.info("Successfully imported UI components and API client")
 except ImportError as e:
-    logger.error(f"Failed to import UI components: {e}")
+    logger.error(f"Failed to import UI components or API client: {e}")
     st.error(f"Failed to load UI components: {e}")
     sys.exit(1)
 except Exception as e:
@@ -122,51 +122,11 @@ def main():
 
     # --- Sidebar for Upload ---
     with st.sidebar:
-        st.header("Upload Drawing")
-        
-        # Only show uploader if backend is healthy
-        if st.session_state.backend_healthy:
-            render_file_uploader()
-            
-            # Show upload progress if there's an active upload job
-            if st.session_state.upload_job_id:
-                try:
-                    job_status = get_job_status(st.session_state.upload_job_id)
-                    if job_status:
-                        status = job_status.get("status", "unknown")
-                        progress = job_status.get("progress", 0)
-                        
-                        if status == "completed":
-                            st.success("Upload complete!")
-                            refresh_drawings()
-                            st.session_state.upload_job_id = None
-                            
-                        elif status == "failed":
-                            error_msg = job_status.get("error", "Unknown error")
-                            st.error(f"Upload failed: {error_msg}")
-                            st.session_state.upload_job_id = None
-                            
-                        elif status in ["queued", "processing"]:
-                            st.progress(progress / 100.0, text=f"Processing: {progress}%")
-                            st.caption(job_status.get("current_phase", "Processing..."))
-                            
-                            # Auto-refresh on a timer
-                            time.sleep(2)
-                            st.rerun()
-                except Exception as e:
-                    logger.error(f"Error checking upload job status: {e}", exc_info=True)
-        else:
-            st.warning("⚠️ Backend service unavailable. Upload disabled.")
-                
-        # Add some useful information
-        with st.expander("About"):
-            st.write("""
-            **Sanctus Videre** helps you analyze construction drawings.
-            
-            1. Upload PDF drawings
-            2. Select drawings to analyze
-            3. Ask questions about the selected drawings
-            """)
+        upload_success = upload_drawing_component()
+        if upload_success:
+            # Refresh drawings if upload was successful
+            refresh_drawings()
+            st.rerun()
 
     # --- Main Layout (Two Columns) ---
     col1, col2 = st.columns([1, 2])
@@ -216,7 +176,7 @@ def main():
                         st.rerun()
 
             with cancel_col:
-                 if st.button("Cancel", key="cancel_delete_button", use_container_width=True):
+                if st.button("Cancel", key="cancel_delete_button", use_container_width=True):
                     logger.info(f"Deletion cancelled for: {st.session_state.drawing_to_delete}")
                     st.session_state.drawing_to_delete = None # Clear pending delete state
                     st.rerun()
@@ -230,17 +190,13 @@ def main():
                 st.info("No drawings available. Upload a drawing to get started.")
             else:
                 # Refresh button
-                refresh_col, select_all_col = st.columns([3, 1])
-                with refresh_col:
-                    if st.button("🔄 Refresh", use_container_width=True):
-                        with st.spinner("Refreshing drawings..."):
-                            refresh_drawings()
-                            
-                # Drawing selection
-                selected_drawing_names = render_drawing_tiles(
-                    st.session_state.drawings,
-                    st.session_state.selected_drawings
-                )
+                if st.button("🔄 Refresh", key="refresh_drawings", use_container_width=True):
+                    with st.spinner("Refreshing drawings..."):
+                        refresh_drawings()
+                        st.rerun()
+                
+                # Use the drawing_list component
+                selected_drawing_names = drawing_list(st.session_state.drawings)
                 
                 # Update selection in session state
                 if selected_drawing_names is not None:
@@ -259,113 +215,67 @@ def main():
     # --- Right Column: Query, Controls, Progress, Results ---
     try:
         with col2:
-            st.subheader("Drawing Analysis")
+            # Use the query_box component
+            query = query_box(disabled=not st.session_state.backend_healthy)
+            st.session_state.query = query
             
-            # Query input and analysis controls
-            if st.session_state.backend_healthy:
-                query = st.text_area("Enter your question about the selected drawings:", 
-                                    value=st.session_state.query, 
-                                    height=100,
-                                    max_chars=1000,
-                                    placeholder="Example: What are the wall types in this drawing?")
-                
-                # Store query in session state
-                if query != st.session_state.query:
-                    st.session_state.query = query
-                
-                # Analysis controls
-                analyze_col, clear_col = st.columns([3, 1])
-                with analyze_col:
-                    analyze_disabled = not (st.session_state.selected_drawings and st.session_state.query.strip())
-                    analysis_tooltip = "Select drawings and enter a question" if analyze_disabled else "Analyze selected drawings"
-                    
-                    if st.button("🔍 Analyze Selected Drawings", 
-                                disabled=analyze_disabled,
-                                help=analysis_tooltip,
-                                use_container_width=True):
-                        
-                        if not st.session_state.selected_drawings:
-                            st.warning("Please select at least one drawing to analyze.")
-                        elif not st.session_state.query.strip():
-                            st.warning("Please enter a question to analyze.")
-                        else:
-                            with st.spinner("Starting analysis..."):
-                                try:
-                                    # Call the API to start analysis
-                                    response = analyze_drawings(
-                                        st.session_state.query,
-                                        st.session_state.selected_drawings,
-                                        use_cache=True
-                                    )
-                                    
-                                    if response and "job_id" in response:
-                                        st.session_state.current_job_id = response["job_id"]
-                                        st.session_state.job_status = None
-                                        st.session_state.analysis_results = None
-                                        logger.info(f"Started analysis job: {st.session_state.current_job_id}")
-                                        st.rerun()
-                                    else:
-                                        st.error(f"Failed to start analysis: {response}")
-                                        logger.error(f"Failed to start analysis: {response}")
-                                except Exception as e:
-                                    st.error(f"Error starting analysis: {e}")
-                                    logger.error(f"Error starting analysis: {e}", exc_info=True)
-                
-                with clear_col:
-                    if st.button("🗑️ Clear", use_container_width=True):
-                        st.session_state.query = ""
-                        st.session_state.current_job_id = None
-                        st.session_state.job_status = None
-                        st.session_state.analysis_results = None
-                        st.rerun()
-            else:
-                st.warning("⚠️ Cannot analyze drawings. Backend is unavailable.")
+            # Use the control_row component
+            disabled = not (st.session_state.backend_healthy and 
+                          st.session_state.selected_drawings and 
+                          st.session_state.query.strip())
+            force_new, analyze_clicked, stop_clicked = control_row(disabled=disabled)
             
-            # Display job progress or results
-            if st.session_state.current_job_id:
-                try:
-                    # Get the current job status
-                    job_status = get_job_status(st.session_state.current_job_id)
-                    st.session_state.job_status = job_status
-                    
-                    if job_status:
-                        status = job_status.get("status", "unknown")
+            # Handle analyze button click
+            if analyze_clicked and st.session_state.selected_drawings and st.session_state.query.strip():
+                with st.spinner("Starting analysis..."):
+                    try:
+                        response = analyze_drawings(
+                            st.session_state.query,
+                            st.session_state.selected_drawings,
+                            use_cache=not force_new
+                        )
                         
-                        if status == "completed":
-                            # Show the results
-                            result = job_status.get("result", {})
-                            st.session_state.analysis_results = result
-                            
-                            # Render the analysis results
-                            render_analysis_results(
-                                result,
-                                st.session_state.query,
-                                st.session_state.selected_drawings
-                            )
-                            
-                        elif status == "failed":
-                            error_msg = job_status.get("error", "Unknown error")
-                            st.error(f"Analysis failed: {error_msg}")
-                            
-                        elif status in ["queued", "processing"]:
-                            # Show progress indicator
-                            render_job_progress(job_status)
-                            
-                            # Auto-refresh on a timer
-                            time.sleep(2)
+                        if response and "job_id" in response:
+                            st.session_state.current_job_id = response["job_id"]
+                            st.session_state.job_status = None
+                            st.session_state.analysis_results = None
+                            logger.info(f"Started analysis job: {st.session_state.current_job_id}")
                             st.rerun()
-                            
-                except Exception as e:
-                    st.error(f"Error checking job status: {e}")
-                    logger.error(f"Error checking job status: {e}", exc_info=True)
+                        else:
+                            st.error(f"Failed to start analysis: {response}")
+                            logger.error(f"Failed to start analysis: {response}")
+                    except Exception as e:
+                        st.error(f"Error starting analysis: {e}")
+                        logger.error(f"Error starting analysis: {e}", exc_info=True)
+            
+            # Handle stop button click
+            if stop_clicked and st.session_state.current_job_id:
+                st.session_state.current_job_id = None
+                st.success("Analysis stopped.")
+                st.rerun()
+            
+            # Display job progress or results using progress_indicator
+            if st.session_state.current_job_id:
+                result = progress_indicator(st.session_state.current_job_id)
+                
+                if result and result.get("status") == "completed":
+                    st.session_state.analysis_results = result.get("result", {})
+                    st.session_state.current_job_id = None
+                    st.success("Analysis completed successfully!")
+                elif result and result.get("status") == "failed":
+                    error_msg = result.get("error", "Unknown error")
+                    st.error(f"Analysis failed: {error_msg}")
+                    st.session_state.current_job_id = None
             
             # Show stored results if available
-            elif st.session_state.analysis_results:
-                render_analysis_results(
-                    st.session_state.analysis_results,
-                    st.session_state.query,
-                    st.session_state.selected_drawings
-                )
+            if st.session_state.analysis_results:
+                results_text = json.dumps(st.session_state.analysis_results, indent=2)
+                results_pane(results_text)
+                
+                # Clear results button
+                if st.button("Clear Results", key="clear_results"):
+                    st.session_state.analysis_results = None
+                    st.rerun()
     except Exception as e:
         st.error(f"An error occurred in the UI: {e}")
         logger.error(f"Unhandled UI exception: {e}", exc_info=True)
