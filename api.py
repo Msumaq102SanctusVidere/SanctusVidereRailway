@@ -268,24 +268,24 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
         try: # Main conversion
             file_size = os.path.getsize(temp_file_path); logger.info(f"[Job {job_id}] PDF file size: {file_size / 1024 / 1024:.2f} MB")
             if file_size == 0: raise Exception("PDF file is empty")
-            logger.info(f"[Job {job_id}] Using DPI: {dpi}"); poppler_path = os.environ.get('POPPLER_PATH')
+            logger.info(f"[Job {job_id}] Using DPI: {dpi}")
             conversion_start_time = time.time()
-            images = convert_from_path(str(temp_file_path), dpi=dpi, fmt='png', thread_count=int(os.environ.get('PDF2IMAGE_THREADS', 2)), timeout=max(300, int(file_size / 1024 / 1024 * 15)), use_pdftocairo=True, poppler_path=poppler_path)
+            images = convert_from_path(str(temp_file_path), dpi=dpi)
             conversion_time = time.time() - conversion_start_time
-            if not images: raise Exception("PDF conversion (pdftocairo) produced no images")
-            full_image = images[0]; logger.info(f"[Job {job_id}] PDF conversion (pdftocairo) successful in {conversion_time:.2f}s.")
+            if not images: raise Exception("PDF conversion produced no images")
+            full_image = images[0]; logger.info(f"[Job {job_id}] PDF conversion successful in {conversion_time:.2f}s.")
         except Exception as e: # Alternative conversion
-            logger.error(f"[Job {job_id}] Error converting PDF (pdftocairo): {str(e)}", exc_info=False)
-            update_job_status(job_id, progress_message=f"⚠️ PDF conversion error (pdftocairo): {str(e)}. Trying legacy...")
+            logger.error(f"[Job {job_id}] Error converting PDF: {str(e)}", exc_info=False)
+            update_job_status(job_id, progress_message=f"⚠️ PDF conversion error: {str(e)}. Trying alternative method...")
             try:
-                 conversion_start_time = time.time()
-                 images = convert_from_path(str(temp_file_path), dpi=dpi, fmt='png', thread_count=1, use_pdftocairo=False, poppler_path=poppler_path)
-                 conversion_time = time.time() - conversion_start_time
-                 if not images: raise Exception("Alternative PDF conversion produced no images")
-                 full_image = images[0]; logger.info(f"[Job {job_id}] Alternative PDF conversion successful in {conversion_time:.2f}s.")
+                conversion_start_time = time.time()
+                images = convert_from_path(str(temp_file_path), dpi=dpi, thread_count=1)
+                conversion_time = time.time() - conversion_start_time
+                if not images: raise Exception("Alternative PDF conversion produced no images")
+                full_image = images[0]; logger.info(f"[Job {job_id}] Alternative PDF conversion successful in {conversion_time:.2f}s.")
             except Exception as alt_e:
-                 logger.error(f"[Job {job_id}] Alternative PDF conversion also failed: {str(alt_e)}", exc_info=True)
-                 raise Exception(f"PDF conversion failed completely. Last error: {str(alt_e)}")
+                logger.error(f"[Job {job_id}] Alternative PDF conversion also failed: {str(alt_e)}", exc_info=True)
+                raise Exception(f"PDF conversion failed completely. Last error: {str(alt_e)}")
         update_job_status(job_id, progress=15, progress_message="📐 Adjusting image orientation & saving...")
         if not ensure_landscape: raise ImportError("ensure_landscape function not available due to import error.")
         try: # Orientation
@@ -364,7 +364,6 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
         if os.path.exists(temp_file_path):
              try: os.remove(temp_file_path); logger.info(f"[Job {job_id}] Cleaned up temporary upload file.")
              except Exception as clean_e: logger.warning(f"[Job {job_id}] Failed to clean up temp file: {clean_e}")
-
 # --- Flask Routes ---
 @app.route('/health', methods=['GET'])
 def health_check():
