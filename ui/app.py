@@ -1,4 +1,4 @@
-# --- Filename: ui/app.py (Frontend Streamlit UI - Further Robustness Fixes) ---
+# --- Filename: ui/app.py (Frontend Streamlit UI - Graceful 404 Delete Handling) ---
 
 import streamlit as st
 import time
@@ -194,33 +194,61 @@ def main():
                         logger.info(f"Attempting to delete drawing: {target_drawing}")
                         response = delete_drawing(target_drawing) # Call API
 
-                        # Check response carefully
-                        if isinstance(response, dict) and response.get("success"):
+                        # --- REVISED ERROR HANDLING FOR 404 ---
+                        is_successful_delete = False
+                        is_already_gone = False # Flag for 404 errors
+                        error_message = "Unknown error during deletion." # Default error
+
+                        if isinstance(response, dict):
+                            if response.get("success"):
+                                is_successful_delete = True
+                            else:
+                                error_message = response.get("error", error_message)
+                                # Check if the specific error indicates "Not Found" (404)
+                                # Check for both text and potential status code if included
+                                if "not found" in str(error_message).lower() or "404" in str(error_message):
+                                    is_already_gone = True
+                                    logger.warning(f"Deletion attempt for '{target_drawing}' returned 'Not Found (404)'. Treating as already removed.")
+                                else:
+                                    # Log other backend errors
+                                    logger.error(f"API error deleting {target_drawing}: {error_message} | Response: {response}")
+                        else:
+                            error_message = "Invalid response from server."
+                            logger.error(f"Invalid response type deleting {target_drawing}: {type(response)} | Response: {response}")
+
+
+                        if is_successful_delete:
                             st.success(f"Drawing `{target_drawing}` deleted successfully.")
                             logger.info(f"Successfully deleted drawing: {target_drawing}")
-                            # Remove from selection list if present
+                        elif is_already_gone:
+                            # If it's already gone, show info message instead of success/error
+                            st.info(f"Drawing `{target_drawing}` was already removed or could not be found.")
+                        else:
+                            # Show the specific error from the backend if it wasn't success or 404
+                            st.error(f"Failed to delete drawing `{target_drawing}`: {error_message}")
+
+                        # If the delete was successful OR it was already gone (404), refresh the UI state
+                        if is_successful_delete or is_already_gone:
+                             # Ensure selected_drawings is a list before trying to remove
                             if isinstance(st.session_state.selected_drawings, list) and target_drawing in st.session_state.selected_drawings:
                                 st.session_state.selected_drawings.remove(target_drawing)
 
                             # Clear the pending delete state FIRST
                             st.session_state.drawing_to_delete = None
-                            # Refresh the list from backend
+                            # Refresh the list from backend (this should now exclude the deleted/non-existent item)
                             refresh_drawings()
                             # Rerun to reflect changes
                             st.rerun()
-                        else:
-                            error_msg = response.get("error", "Unknown error during deletion.") if isinstance(response, dict) else "Invalid response from server."
-                            st.error(f"Failed to delete drawing `{target_drawing}`: {error_msg}")
-                            logger.error(f"API error deleting {target_drawing}: {error_msg} | Response: {response}")
-                            # Keep drawing_to_delete state so user can cancel or retry? Or clear? Clear seems safer.
-                            # st.session_state.drawing_to_delete = None
-                            # st.rerun()
+                        # Else (if it was a real error other than 404), do nothing more here, error is already shown. User needs to press Cancel.
+
                     except Exception as e:
+                        # Handle exceptions during the API call itself
                         st.error(f"Error during deletion call for `{st.session_state.drawing_to_delete}`: {e}")
                         logger.error(f"Exception during delete_drawing API call: {e}", exc_info=True)
-                        # Clear pending delete on exception
+                        # Clear pending delete on exception and rerun
                         st.session_state.drawing_to_delete = None
                         st.rerun()
+                # --- END REVISED ERROR HANDLING ---
 
             with cancel_col:
                  if st.button("Cancel", key="cancel_delete_button", use_container_width=True):
@@ -261,10 +289,10 @@ def main():
                 # Determine the desired state based on current selection
                 all_selected_calculated = False
                 if available_drawings_list: # Avoid division by zero or errors if list is empty
+                    # Ensure both are sets for comparison
                     all_selected_calculated = set(selected_drawings_list) == set(available_drawings_list)
 
                 # Use a separate state variable to track the checkbox widget's value to detect changes
-                # This avoids infinite loops if not done carefully
                 current_widget_state = st.session_state.get('select_all_checkbox_state', all_selected_calculated)
 
                 new_widget_state = st.checkbox(
@@ -272,12 +300,9 @@ def main():
                     value=all_selected_calculated, # The visual state depends on calculation
                     key=select_all_key,
                     disabled=disable_list,
-                    # Use on_change callback for cleaner state management
-                    # on_change=handle_select_all_change # Define this function if preferred
                 )
 
                 # Logic to handle the change after the widget interaction
-                # Check if the *visual state* changed compared to *calculated state* (means user clicked it)
                 if not disable_list and new_widget_state != all_selected_calculated:
                     if new_widget_state: # User clicked to select all
                          logger.debug("Select All checkbox clicked - selecting all.")
@@ -287,7 +312,7 @@ def main():
                          st.session_state.selected_drawings = []
                     # Update the tracking state AFTER processing the change
                     st.session_state.select_all_checkbox_state = new_widget_state
-                    st.rerun() # Rerun is needed to update individual checkboxes visually
+                    st.rerun()
 
 
                 st.divider()
@@ -298,69 +323,62 @@ def main():
                 except TypeError:
                     logger.error(f"Could not sort available_drawings_list: {available_drawings_list}. Displaying unsorted.")
                     st.warning("Could not sort drawing names.")
-                    sorted_drawings = available_drawings_list # Display unsorted if sort fails
+                    sorted_drawings = available_drawings_list
 
                 for drawing_name in sorted_drawings:
-                    # Basic check if drawing_name is string-like, skip if not
                     if not isinstance(drawing_name, str):
                          logger.warning(f"Skipping non-string item in drawing list: {drawing_name}")
                          continue
 
-                    list_col1, list_col2 = st.columns([0.9, 0.1]) # Name | Delete Button
+                    list_col1, list_col2 = st.columns([0.9, 0.1])
                     with list_col1:
-                        is_selected = drawing_name in selected_drawings_list # Check against the safe list
+                        is_selected = drawing_name in selected_drawings_list
                         new_state = st.checkbox(
                             drawing_name,
                             value=is_selected,
-                            key=f"select_{drawing_name}", # Ensure keys are unique
+                            key=f"select_{drawing_name}",
                             disabled=disable_list
                         )
-                        # Update selection list based ONLY on individual checkbox interaction
                         if not disable_list and new_state != is_selected:
-                            if new_state: # Checked
+                            if new_state:
                                 if drawing_name not in selected_drawings_list:
                                     logger.debug(f"Checkbox checked for {drawing_name}, adding to selection.")
-                                    # Modify the list directly (Streamlit manages state)
                                     st.session_state.selected_drawings.append(drawing_name)
-                            else: # Unchecked
+                            else:
                                 if drawing_name in selected_drawings_list:
                                     logger.debug(f"Checkbox unchecked for {drawing_name}, removing from selection.")
                                     st.session_state.selected_drawings.remove(drawing_name)
                             # Update the select all tracking state as well
                             st.session_state.select_all_checkbox_state = (set(st.session_state.selected_drawings) == set(available_drawings_list)) if available_drawings_list else False
-                            st.rerun() # Rerun needed to update counts and potentially Select All checkbox
+                            st.rerun()
 
                     with list_col2:
-                         # Delete button
                          if st.button("🗑️", key=f"delete_{drawing_name}", help=f"Delete {drawing_name}", disabled=disable_list):
                              st.session_state.drawing_to_delete = drawing_name
                              logger.debug(f"Delete button clicked for {drawing_name}, setting state.")
-                             st.rerun() # Rerun to show confirmation dialog
+                             st.rerun()
 
                 # Display selection count
                 st.caption(f"{len(st.session_state.get('selected_drawings', []))} selected.")
 
 
     # --- Right Column: Query, Controls, Progress, Results ---
-    # Wrap this section in a try-except as well, in case of component errors
     try:
         with col2:
-            # Disable analysis if deletion confirmation is active
             disable_analysis = bool(st.session_state.drawing_to_delete)
 
             st.subheader("Analyze Selected Drawings")
 
             with st.container(border=True):
-                 query = query_box(disabled=disable_analysis) # Pass disabled state
+                 query = query_box(disabled=disable_analysis)
                  st.divider()
-                 force_new, analyze_clicked, stop_clicked = control_row(disabled=disable_analysis) # Pass disabled state
+                 force_new, analyze_clicked, stop_clicked = control_row(disabled=disable_analysis)
 
 
             # --- Handle Analysis Request ---
             if analyze_clicked and not disable_analysis:
-                # Use .get for safety
                 selected_list = st.session_state.get('selected_drawings', [])
-                if not isinstance(selected_list, list): # Double check type
+                if not isinstance(selected_list, list):
                     selected_list = []
 
                 if not selected_list:
@@ -368,7 +386,6 @@ def main():
                 elif not query:
                     st.warning("❓ Please enter a query or question above.")
                 else:
-                    # Reset analysis state before starting
                     st.session_state.analysis_result = None
                     st.session_state.analysis_running = False
                     st.session_state.analysis_job_id = None
@@ -382,7 +399,7 @@ def main():
                             st.session_state.analysis_job_id = job_id
                             st.session_state.analysis_running = True
                             logger.info(f"Analysis job started: {job_id}")
-                            st.rerun() # Rerun to show progress indicator
+                            st.rerun()
                         else:
                             error_msg = resp.get('error', 'Unknown API error') if isinstance(resp, dict) else "Invalid response from start_analysis"
                             st.error(f"Failed to start analysis: {error_msg}")
@@ -393,30 +410,28 @@ def main():
             # --- Display Analysis Progress ---
             st.divider()
             analysis_job_id = st.session_state.get('analysis_job_id')
-            # Add check for disable_analysis here too
             if st.session_state.get('analysis_running') and analysis_job_id and not disable_analysis:
                 st.subheader("Analysis Progress")
-                final_job_status = progress_indicator(analysis_job_id) # Assume this component handles its own errors
+                final_job_status = progress_indicator(analysis_job_id)
 
-                if final_job_status: # If progress_indicator returns a final status
-                    st.session_state.analysis_running = False # Stop polling
+                if final_job_status:
+                    st.session_state.analysis_running = False
                     job_status = final_job_status.get("status")
                     if job_status == "completed":
                          st.session_state.analysis_result = final_job_status.get("result", "Analysis complete, but no result returned.")
                          logger.info(f"Analysis job {analysis_job_id} completed.")
-                         st.rerun() # Rerun to display results immediately
-                    else: # Job failed or polling failed
+                         st.rerun()
+                    else:
                          error_msg = final_job_status.get("error", "Analysis failed with unknown error.")
                          logger.error(f"Analysis job {analysis_job_id} failed or polling error: {error_msg}")
                          st.session_state.analysis_result = f"Error during analysis: {error_msg}"
-                         st.rerun() # Rerun to display error in results area
+                         st.rerun()
 
             # --- Display Analysis Results ---
-            # Use .get with defaults for safety
             if not st.session_state.get('analysis_running', False) and st.session_state.get('analysis_result') and not disable_analysis:
                  st.subheader("Analysis Results")
                  with st.container(border=True):
-                    results_pane(st.session_state.analysis_result) # Assume this handles display
+                    results_pane(st.session_state.analysis_result)
 
 
             # Handle the Stop button
@@ -425,11 +440,10 @@ def main():
                 if st.session_state.get('analysis_running') and job_id_to_stop:
                     st.warning(f"Stopping analysis job {job_id_to_stop}… (Backend functionality pending)")
                     logger.warning(f"Stop requested for job {job_id_to_stop} - functionality pending.")
-                    # TODO: Implement stop job functionality in backend and api_client
-                    st.session_state.analysis_running = False # Temporarily set to false
+                    st.session_state.analysis_running = False
                     st.session_state.analysis_job_id = None
                     st.session_state.analysis_result = "Analysis stopped by user (Stop functionality pending backend)."
-                    time.sleep(1) # Give user feedback time
+                    time.sleep(1)
                     st.rerun()
                 else:
                      st.info("No analysis job is currently running.")
@@ -442,12 +456,8 @@ def main():
 # --- Run the App ---
 if __name__ == "__main__":
     try:
-        # Ensure state is initialized before main runs fully
         initialize_session_state()
         main()
     except Exception as e:
-         # This is the final catch-all. Log the detailed error.
          logger.critical(f"A critical error occurred in the main UI thread: {e}", exc_info=True)
-         # Display the generic error message in the UI.
-         # Avoid showing the raw exception 'e' directly to the user for security/friendliness.
          st.error(f"A critical application error occurred. Please check the logs or contact support.")
