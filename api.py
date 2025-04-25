@@ -315,13 +315,11 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
                 logger.info(f"[Job {job_id}] Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
                 update_job_status(job_id, progress_message=f"🔄 Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
                 
-                # Call the analysis function
+                # Call the analysis function with the correct parameters
+                # FIXED: Changed to match parameters in extract_tile_entities_wow_rev4.py
                 analyze_all_tiles(
-                    sheet_name=sheet_name,
-                    output_dir=sheet_output_dir,
-                    analyzer=analyzer,
-                    logger=logger,
-                    job_id=job_id
+                    sheet_folder=sheet_output_dir,
+                    sheet_name=sheet_name
                 )
                 
                 # If we reach here, analysis was successful
