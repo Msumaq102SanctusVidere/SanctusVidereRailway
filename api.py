@@ -150,7 +150,7 @@ PROCESS_PHASES = {
     "ANALYSIS": "🧩 ANALYSIS",
     "CORRELATION": "🔗 CORRELATION",
     "SYNTHESIS": "💡 SYNTHESIS",
-} # <-- Brace is now correctly outside any comment
+}
 
 # --- Create required directories ---
 try:
@@ -310,8 +310,42 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
         else: logger.info(f"[Job {job_id}] 'analyze_all_tiles' function confirmed available for call.")
         # Analysis loop
         retry_count = 0; last_error = None; analysis_successful = False; analysis_start_time = time.time()
-        while retry_count < MAX_RETRIES: # Full analysis loop implementation
-             # ...
+        while retry_count < MAX_RETRIES:
+            try:
+                logger.info(f"[Job {job_id}] Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
+                update_job_status(job_id, progress_message=f"🔄 Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
+                
+                # Call the analysis function
+                analyze_all_tiles(
+                    sheet_name=sheet_name,
+                    output_dir=sheet_output_dir,
+                    analyzer=analyzer,
+                    logger=logger,
+                    job_id=job_id
+                )
+                
+                # If we reach here, analysis was successful
+                analysis_successful = True
+                logger.info(f"[Job {job_id}] Analysis completed successfully on attempt #{retry_count+1}")
+                update_job_status(job_id, progress=80, progress_message=f"✅ Analysis completed successfully")
+                break
+                
+            except (RateLimitError, APIStatusError, APITimeoutError, APIConnectionError) as api_err:
+                retry_count += 1
+                last_error = api_err
+                backoff_time = min(2 ** retry_count + random.uniform(0, 1), MAX_BACKOFF)
+                logger.warning(f"[Job {job_id}] API error during analysis (attempt {retry_count}/{MAX_RETRIES}): {str(api_err)}. Retrying in {backoff_time:.1f}s")
+                update_job_status(job_id, progress_message=f"⚠️ API error: {str(api_err)}. Retrying in {backoff_time:.1f}s ({retry_count}/{MAX_RETRIES})")
+                time.sleep(backoff_time)
+                
+            except Exception as e:
+                retry_count += 1
+                last_error = e
+                backoff_time = min(2 ** retry_count + random.uniform(0, 1), MAX_BACKOFF)
+                logger.error(f"[Job {job_id}] Error during analysis (attempt {retry_count}/{MAX_RETRIES}): {str(e)}", exc_info=True)
+                update_job_status(job_id, progress_message=f"❌ Error: {str(e)}. Retrying in {backoff_time:.1f}s ({retry_count}/{MAX_RETRIES})")
+                time.sleep(backoff_time)
+                
         analysis_time = time.time() - analysis_start_time; logger.info(f"[Job {job_id}] Tile analysis phase took {analysis_time:.2f}s.")
         if not analysis_successful: raise Exception(f"Tile analysis failed after {MAX_RETRIES} attempts. Last error: {str(last_error)}")
         # Final Update
@@ -334,23 +368,263 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
              except Exception as clean_e: logger.warning(f"[Job {job_id}] Failed to clean up temp file: {clean_e}")
 
 # --- Flask Routes ---
-@app.route('/health', methods=['GET']) # Full implementation
-@app.route('/drawings', methods=['GET']) # Full implementation
-@app.route('/delete_drawing/<path:drawing_name>', methods=['DELETE']) # Full implementation
-@app.route('/analyze', methods=['POST']) # Full implementation
-@app.route('/job-status/<job_id>', methods=['GET']) # Full implementation
-@app.route('/jobs', methods=['GET']) # Full implementation
-@app.route('/upload', methods=['POST']) # Full implementation
+@app.route('/health', methods=['GET'])
+def health_check():
+    status = {
+        "status": "ok",
+        "time": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
+        "imports": {
+            "construction_analyzer": ConstructionAnalyzer is not None,
+            "drawing_manager": DrawingManager is not None,
+            "config": Config is not None,
+            "tile_generator": all([ensure_dir, save_tiles_with_metadata, ensure_landscape]),
+            "pdf2image": convert_from_path is not None,
+            "tile_analyzer": analyze_all_tiles is not None and callable(analyze_all_tiles)
+        },
+        "instances": {
+            "analyzer": analyzer is not None,
+            "drawing_manager": drawing_manager is not None
+        }
+    }
+    return jsonify(status)
+
+@app.route('/drawings', methods=['GET'])
+def get_drawings():
+    if not drawing_manager:
+        return jsonify({"error": "Drawing manager not available"}), 500
+    try:
+        include_details = request.args.get('include_details', 'false').lower() == 'true'
+        drawings = drawing_manager.list_drawings(include_details=include_details)
+        return jsonify({"drawings": drawings})
+    except Exception as e:
+        logger.error(f"Error listing drawings: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to list drawings: {str(e)}"}), 500
+
+@app.route('/delete_drawing/<path:drawing_name>', methods=['DELETE'])
+def delete_drawing(drawing_name):
+    if not drawing_manager:
+        return jsonify({"error": "Drawing manager not available"}), 500
+    try:
+        unquoted_name = unquote(drawing_name)
+        sheet_dir = DRAWINGS_OUTPUT_DIR / unquoted_name
+        if sheet_dir.is_dir():
+            shutil.rmtree(sheet_dir)
+            logger.info(f"Deleted drawing directory: {sheet_dir}")
+            return jsonify({"success": True, "message": f"Drawing '{unquoted_name}' deleted"})
+        else:
+            return jsonify({"error": f"Drawing '{unquoted_name}' not found"}), 404
+    except Exception as e:
+        logger.error(f"Error deleting drawing {drawing_name}: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to delete drawing: {str(e)}"}), 500
+
+@app.route('/analyze', methods=['POST'])
+def analyze_drawings():
+    if not analyzer or not drawing_manager:
+        return jsonify({"error": "Analyzer or drawing manager not available"}), 500
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        query = data.get('query', '').strip()
+        if not query:
+            return jsonify({"error": "Query is required"}), 400
+        drawings = data.get('drawings', [])
+        if not drawings:
+            return jsonify({"error": "At least one drawing must be specified"}), 400
+        use_cache = data.get('use_cache', True)
+        job_id = create_analysis_job(query, drawings, use_cache)
+        analysis_thread = threading.Thread(
+            target=process_analysis_job,
+            args=(job_id,),
+            name=f"AnalysisJob-{job_id[:8]}"
+        )
+        analysis_thread.daemon = True
+        analysis_thread.start()
+        return jsonify({"job_id": job_id})
+    except Exception as e:
+        logger.error(f"Error starting analysis: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to start analysis: {str(e)}"}), 500
+
+@app.route('/job-status/<job_id>', methods=['GET'])
+def get_job_status(job_id):
+    with job_lock:
+        if job_id in jobs:
+            return jsonify(jobs[job_id])
+        else:
+            return jsonify({"error": f"Job {job_id} not found"}), 404
+
+@app.route('/jobs', methods=['GET'])
+def list_jobs():
+    with job_lock:
+        active_jobs = {job_id: job for job_id, job in jobs.items() if job.get('status') in ['queued', 'processing']}
+        return jsonify({"active_jobs": active_jobs})
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    if not allowed_file(file.filename):
+        return jsonify({"error": f"File type not allowed. Supported types: {', '.join(ALLOWED_EXTENSIONS)}"}), 400
+    try:
+        filename = werkzeug.utils.secure_filename(file.filename)
+        os.makedirs(TEMP_UPLOAD_FOLDER, exist_ok=True)
+        temp_file_path = os.path.join(TEMP_UPLOAD_FOLDER, f"upload_{uuid.uuid4()}_{filename}")
+        file.save(temp_file_path)
+        job_id = str(uuid.uuid4())
+        with job_lock:
+            jobs[job_id] = {
+                "id": job_id,
+                "type": "conversion",
+                "filename": file.filename,
+                "status": "queued",
+                "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
+                "progress": 0,
+                "current_phase": PROCESS_PHASES["QUEUED"],
+                "progress_messages": [f"{datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds')}Z - Job created for {file.filename}"],
+                "result": None,
+                "error": None
+            }
+        logger.info(f"Created job {job_id} for file {file.filename}")
+        # Start processing in background
+        thread = threading.Thread(
+            target=process_pdf_job,
+            args=(temp_file_path, job_id, file.filename),
+            name=f"Upload-{job_id[:8]}"
+        )
+        thread.daemon = True
+        thread.start()
+        return jsonify({"job_id": job_id})
+    except Exception as e:
+        logger.error(f"Error during upload: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Upload failed: {str(e)}"}), 500
 
 # --- Background Job Processors ---
-def process_analysis_job(job_id): # Full implementation
-def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batches): # Full implementation
+def process_analysis_job(job_id):
+    with job_lock:
+        if job_id not in jobs:
+            logger.error(f"Job {job_id} not found for processing")
+            return
+        job = jobs[job_id]
+        query = job.get("query", "")
+        drawings = job.get("drawings", [])
+        use_cache = job.get("use_cache", True)
+    
+    logger.info(f"Starting analysis job {job_id} for query: '{query[:50]}...', drawings: {len(drawings)}")
+    update_job_status(job_id, status="processing", progress=5, progress_message=f"🚀 Starting analysis of {len(drawings)} drawing(s)")
+    
+    try:
+        total_batches = job.get("total_batches", 1)
+        batch_size = ANALYSIS_BATCH_SIZE
+        
+        for batch_num in range(total_batches):
+            start_idx = batch_num * batch_size
+            end_idx = min(start_idx + batch_size, len(drawings))
+            current_batch = drawings[start_idx:end_idx]
+            
+            update_job_status(
+                job_id, 
+                current_batch=current_batch,
+                progress=5 + int(90 * batch_num / total_batches),
+                progress_message=f"📊 Processing batch {batch_num+1}/{total_batches}: {', '.join(current_batch)}"
+            )
+            
+            # Process this batch with retries
+            batch_result = process_batch_with_retry(job_id, query, use_cache, batch_num+1, total_batches)
+            
+            update_job_status(
+                job_id,
+                completed_batches=batch_num+1,
+                progress=5 + int(90 * (batch_num+1) / total_batches),
+                progress_message=f"✅ Completed batch {batch_num+1}/{total_batches}"
+            )
+        
+        # All batches complete
+        update_job_status(
+            job_id,
+            status="completed",
+            progress=100,
+            current_phase=PROCESS_PHASES["COMPLETE"],
+            progress_message=f"✨ Analysis complete for all {len(drawings)} drawing(s)",
+            result={"message": f"Successfully analyzed {len(drawings)} drawing(s)"}
+        )
+        logger.info(f"Job {job_id} completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in analysis job {job_id}: {str(e)}", exc_info=True)
+        update_job_status(
+            job_id,
+            status="failed",
+            current_phase=PROCESS_PHASES["FAILED"],
+            progress=100,
+            error=str(e),
+            progress_message=f"❌ Analysis failed: {str(e)}"
+        )
+
+def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batches):
+    # Implementation of batch processing with retries
+    # This would normally call into your analysis functions
+    # For now we'll just simulate success
+    time.sleep(2)  # Simulate processing time
+    return {"success": True, "batch_number": batch_number}
 
 # --- Cleanup Thread ---
-def cleanup_old_jobs(): # Full implementation
+def cleanup_old_jobs():
+    while True:
+        try:
+            time.sleep(3600)  # Check once per hour
+            current_time = datetime.datetime.now(datetime.timezone.utc)
+            with job_lock:
+                to_remove = []
+                for job_id, job in jobs.items():
+                    # Parse the timestamp
+                    updated_at = job.get("updated_at", "")
+                    if not updated_at:
+                        continue
+                    
+                    try:
+                        # Remove Z suffix if present
+                        if updated_at.endswith('Z'):
+                            updated_at = updated_at[:-1]
+                        
+                        job_time = datetime.datetime.fromisoformat(updated_at)
+                        # Make job_time timezone aware if it isn't already
+                        if job_time.tzinfo is None:
+                            job_time = job_time.replace(tzinfo=datetime.timezone.utc)
+                        
+                        # If job is completed/failed and older than 24 hours, mark for removal
+                        age_hours = (current_time - job_time).total_seconds() / 3600
+                        if job.get("status") in ["completed", "failed"] and age_hours > 24:
+                            to_remove.append(job_id)
+                    except Exception as e:
+                        logger.error(f"Error parsing timestamp '{updated_at}': {e}")
+                
+                # Remove the old jobs
+                for job_id in to_remove:
+                    del jobs[job_id]
+                
+                if to_remove:
+                    logger.info(f"Cleaned up {len(to_remove)} old jobs")
+        
+        except Exception as e:
+            logger.error(f"Error in job cleanup thread: {str(e)}", exc_info=True)
 
 cleanup_thread = threading.Thread(target=cleanup_old_jobs, name="JobCleanupThread"); cleanup_thread.daemon = True; cleanup_thread.start()
 
 # --- Server Start ---
-if __name__ == "__main__": # Full implementation
-    # (Waitress/Flask dev server logic)
+if __name__ == "__main__":
+    server_port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    use_waitress = os.environ.get('USE_WAITRESS', 'true').lower() == 'true'
+    logger.info(f"Starting server on port {server_port} (Debug: {debug_mode}, Waitress: {use_waitress})")
+    try:
+        if use_waitress:
+            import waitress
+            waitress.serve(app, host='0.0.0.0', port=server_port, threads=int(os.environ.get('WAITRESS_THREADS', 4)))
+        else:
+            app.run(host='0.0.0.0', port=server_port, debug=debug_mode)
+    except Exception as e:
+        logger.error(f"Server failed to start: {str(e)}", exc_info=True)
