@@ -1,0 +1,17 @@
+# .streamlit/config.toml
+
+[theme]
+primaryColor="#00ffcc" # Your existing accent color - a vibrant cyan/teal
+backgroundColor="#0a0f18" # A very dark navy/near-black background
+secondaryBackgroundColor="#1e293b" # Slightly lighter dark blue for sidebars, cards etc (slate-800)
+textColor="#cbd5e1" # Light gray/off-white text (slate-300)
+font="sans serif" # Use the default modern sans-serif font of the browser/OS. Clean and widely compatible.
+                  # Alternatives: "Inter", "Lato", "Roboto" (if available on Railway base image or installed)
+
+[server]
+# Allow file uploads up to your backend limit (100MB)
+maxUploadSize = 100
+
+[client]
+# Hide the "Fork on GitHub" ribbon if desired
+showSidebarNavigation = false
