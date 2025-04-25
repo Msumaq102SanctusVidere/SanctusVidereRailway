@@ -1,9 +1,12 @@
+# --- Filename: ui/api_client.py (Revised with Delete Function) ---
+
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) # Disables warnings for verify=False
 
 import requests
 import logging # Import the logging library
 import os # Import os for file path operations and env vars
+from urllib.parse import quote #<-- Import quote for URL encoding
 
 # --- Add Logging Setup ---
 # Configure logging to show messages from this client
@@ -15,14 +18,12 @@ logger = logging.getLogger(__name__) # Create a logger instance for this module
 # --- End Logging Setup ---
 
 # --- Load API_BASE_URL Safely ---
-# It's better to load environment variables here or ensure they are loaded where needed.
 # Make sure the BACKEND_API_URL environment variable is set in your Railway UI service.
 API_BASE_URL = os.environ.get("BACKEND_API_URL")
 if not API_BASE_URL:
     logger.error("CRITICAL: BACKEND_API_URL environment variable is not set!")
     # You might want to raise an error or set a default for local testing,
     # but in production, it should be set.
-    # For now, we'll let it proceed, but requests will fail if it's None.
 # --- End API_BASE_URL Loading ---
 
 
@@ -73,69 +74,47 @@ def upload_drawing(file_path):
         # Check if file exists before opening
         if not os.path.exists(file_path):
              logger.error(f"File not found at path: {file_path}")
-             # Return a dictionary structure similar to successful/failed uploads
              return {"success": False, "error": f"Client-side error: File not found at {file_path}"}
         if os.path.getsize(file_path) == 0:
             logger.error(f"File is empty: {file_path}")
             return {"success": False, "error": f"Client-side error: File is empty {file_path}"}
 
-        # Use context manager for file opening
         with open(file_path, "rb") as f:
-            # Pass filename and content type for better backend handling (esp. werkzeug)
             files = {"file": (os.path.basename(file_path), f, 'application/pdf')}
-
-            # --- Make the request with a timeout ---
-            # A long timeout is needed because backend processing can take time
-            # 300 seconds = 5 minutes. Adjust if needed.
             logger.info(f"POSTing file to {api_url}...")
             resp = requests.post(api_url, files=files, verify=False, timeout=300)
             logger.info(f"Received response from {api_url}")
 
-        # --- DEBUGGING: Log status and raw response text ---
         logger.info(f"Upload Response Status Code: {resp.status_code}")
         response_text = resp.text
-        # Log only the beginning of the response to avoid flooding logs if it's large HTML
         logger.info(f"Upload Response Text (first 500 chars): {response_text[:500]}")
-        # --- END DEBUGGING ---
 
-        # Check status code *before* trying to parse JSON
-        # Use raise_for_status() which handles 4xx/5xx errors
         resp.raise_for_status()
-
-        # If status code was OK (2xx), *now* try to parse JSON
-        # This is the line that originally caused the error if response wasn't JSON
         json_response = resp.json()
         logger.info("Successfully parsed JSON response.")
         return json_response
 
-    # --- Specific Error Handling ---
     except requests.exceptions.HTTPError as http_err:
-        # Handle HTTP errors (4xx, 5xx) after logging the response text
         logger.error(f"HTTP error occurred: {http_err} - Status Code: {resp.status_code}")
-        logger.error(f"Response Body: {response_text}") # Log the full text on error
+        logger.error(f"Response Body: {response_text}")
         return {"success": False, "error": f"Server returned error: {resp.status_code}", "details": response_text}
     except requests.exceptions.Timeout:
         logger.error(f"Request timed out uploading {file_path} to {api_url}")
         return {"success": False, "error": "Request timed out"}
     except requests.exceptions.ConnectionError as conn_err:
-        # Errors connecting to the server (DNS issues, refused connection etc.)
         logger.error(f"Connection error uploading {file_path} to {api_url}: {conn_err}", exc_info=True)
         return {"success": False, "error": f"Connection error: {str(conn_err)}"}
     except requests.exceptions.JSONDecodeError as json_err:
-        # This happens if raise_for_status didn't catch an error, but the body isn't JSON
         logger.error(f"Failed to decode JSON response even after status {resp.status_code}: {json_err}")
-        logger.error(f"Response text that failed decoding: {response_text}") # Log the problematic text
+        logger.error(f"Response text that failed decoding: {response_text}")
         return {"success": False, "error": "Received non-JSON response from server", "details": response_text}
     except requests.exceptions.RequestException as req_err:
-        # Catch other requests-related errors
         logger.error(f"Request failed during upload: {req_err}", exc_info=True)
         return {"success": False, "error": f"Network or request error: {str(req_err)}"}
     except FileNotFoundError:
-        # This is redundant due to the os.path.exists check, but good practice
         logger.error(f"File not found error for {file_path}")
         return {"success": False, "error": f"Client-side error: File not found at {file_path}"}
     except Exception as e:
-        # Catch any other unexpected errors (like file reading issues, permissions)
         logger.error(f"Unexpected error in upload_drawing for {file_path}: {e}", exc_info=True)
         return {"success": False, "error": f"Client-side error during upload: {str(e)}"}
 
@@ -151,7 +130,6 @@ def start_analysis(query, drawings, use_cache=True):
         "use_cache": use_cache
     }
     try:
-        # Analysis can also take time, add a timeout
         resp = requests.post(url, json=payload, verify=False, timeout=300)
         resp.raise_for_status()
         return resp.json()
@@ -177,3 +155,69 @@ def get_job_status(job_id):
     except Exception as e:
         logger.error(f"Unexpected error getting job status: {e}")
         return {"error": f"Unexpected error: {str(e)}", "status": "error"}
+
+# --- NEW FUNCTION ---
+def delete_drawing(drawing_name):
+    """Request deletion of a specific drawing file from the backend."""
+    if not API_BASE_URL:
+        logger.error("Cannot delete drawing: BACKEND_API_URL not configured.")
+        return {"success": False, "error": "Backend URL not configured"}
+
+    # URL-encode the drawing name to handle spaces, slashes, etc., safely in the URL path
+    encoded_drawing_name = quote(drawing_name)
+    url = f"{API_BASE_URL}/delete_drawing/{encoded_drawing_name}"
+    logger.info(f"Requesting deletion of drawing '{drawing_name}' via DELETE to: {url}")
+
+    try:
+        # Use requests.delete method
+        resp = requests.delete(url, verify=False, timeout=60) # Add a reasonable timeout
+        response_text = resp.text # Get text before potential raise_for_status
+
+        logger.info(f"Delete Response Status Code: {resp.status_code}")
+        logger.info(f"Delete Response Text (first 500 chars): {response_text[:500]}")
+
+        # Check for HTTP errors (4xx, 5xx)
+        resp.raise_for_status()
+
+        # Attempt to parse JSON response, assuming backend sends success/error info
+        try:
+            json_response = resp.json()
+            logger.info("Successfully parsed delete response JSON.")
+             # Assume response contains 'success' field based on the UI logic
+            if not json_response.get("success", False):
+                 logger.warning(f"Deletion request for '{drawing_name}' returned success=false or missing: {json_response}")
+            return json_response
+        except requests.exceptions.JSONDecodeError:
+             # If the response was successful (2xx) but not JSON, maybe it's just a 204 No Content
+             if 200 <= resp.status_code < 300:
+                  logger.warning(f"Deletion request for '{drawing_name}' succeeded (status {resp.status_code}) but returned non-JSON content. Assuming success.")
+                  return {"success": True} # Assume success on 2xx non-JSON
+             else:
+                 # This case should technically be caught by raise_for_status, but for safety:
+                 logger.error(f"Deletion request for '{drawing_name}' failed with status {resp.status_code} and non-JSON response: {response_text}")
+                 return {"success": False, "error": f"Server returned status {resp.status_code}", "details": response_text}
+
+    # --- Specific Error Handling ---
+    except requests.exceptions.HTTPError as http_err:
+        logger.error(f"HTTP error during delete for '{drawing_name}': {http_err} - Status Code: {resp.status_code}")
+        logger.error(f"Response Body: {response_text}")
+        # Try to parse error details from response if possible
+        try:
+            error_details = resp.json()
+        except requests.exceptions.JSONDecodeError:
+            error_details = response_text
+        return {"success": False, "error": f"Server returned error: {resp.status_code}", "details": error_details}
+    except requests.exceptions.Timeout:
+        logger.error(f"Request timed out deleting '{drawing_name}' from {url}")
+        return {"success": False, "error": "Request timed out"}
+    except requests.exceptions.ConnectionError as conn_err:
+        logger.error(f"Connection error deleting '{drawing_name}' from {url}: {conn_err}", exc_info=True)
+        return {"success": False, "error": f"Connection error: {str(conn_err)}"}
+    except requests.exceptions.RequestException as req_err:
+        logger.error(f"Request failed during delete for '{drawing_name}': {req_err}", exc_info=True)
+        return {"success": False, "error": f"Network or request error: {str(req_err)}"}
+    except Exception as e:
+        # Catch any other unexpected errors
+        logger.error(f"Unexpected error in delete_drawing for '{drawing_name}': {e}", exc_info=True)
+        return {"success": False, "error": f"Client-side error during delete request: {str(e)}"}
+# --- END NEW FUNCTION ---
