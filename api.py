@@ -565,73 +565,124 @@ def create_analysis_job(query, drawings, use_cache):
         logger.error(f"Error creating analysis job: {e}", exc_info=True)
         raise
 
-# --- PDF Processing (Now runs in background) ---
+# --- PDF Processing (Updated to use original filename) ---
 def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_size=2048, overlap_ratio=0.35):
-    # (Full implementation)
+    """Process a PDF file, using the original filename rather than temporary names"""
     global analyze_all_tiles, convert_from_path, ensure_landscape, save_tiles_with_metadata, ensure_dir
-    pdf_path_obj = Path(temp_file_path); safe_original_filename = werkzeug.utils.secure_filename(original_filename)
+    
+    # Create a clean drawing name from the original filename (without using a temporary name)
+    safe_original_filename = werkzeug.utils.secure_filename(original_filename)
     sheet_name = Path(safe_original_filename).stem.replace(" ", "_").replace("-", "_").replace(".", "_")
-    sheet_output_dir = DRAWINGS_OUTPUT_DIR / sheet_name; start_time = time.time()
+    sheet_output_dir = DRAWINGS_OUTPUT_DIR / sheet_name
+    
+    start_time = time.time()
     logger.info(f"[Job {job_id}] Starting processing for: {original_filename} (Sheet Name: {sheet_name})")
     update_job_status(job_id, status="processing", progress=1, current_phase=PROCESS_PHASES["INIT"], progress_message="🚀 Starting PDF processing")
+    
     try:
+        # Create output directory
         if not ensure_dir: raise ImportError("ensure_dir function not available due to import error.")
-        ensure_dir(sheet_output_dir); logger.info(f"[Job {job_id}] Output directory ensured: {sheet_output_dir}")
+        ensure_dir(sheet_output_dir)
+        logger.info(f"[Job {job_id}] Output directory ensured: {sheet_output_dir}")
+        
+        # Convert PDF to image
         update_job_status(job_id, current_phase=PROCESS_PHASES["CONVERTING"], progress=5, progress_message=f"📄 Converting {original_filename} to image...")
         full_image = None
         if not convert_from_path: raise ImportError("convert_from_path function not available due to import error.")
+        
         try: # Main conversion
-            file_size = os.path.getsize(temp_file_path); logger.info(f"[Job {job_id}] PDF file size: {file_size / 1024 / 1024:.2f} MB")
+            file_size = os.path.getsize(temp_file_path)
+            logger.info(f"[Job {job_id}] PDF file size: {file_size / 1024 / 1024:.2f} MB")
             if file_size == 0: raise Exception("PDF file is empty")
             logger.info(f"[Job {job_id}] Using DPI: {dpi}")
+            
             conversion_start_time = time.time()
             images = convert_from_path(str(temp_file_path), dpi=dpi)
             conversion_time = time.time() - conversion_start_time
+            
             if not images: raise Exception("PDF conversion produced no images")
-            full_image = images[0]; logger.info(f"[Job {job_id}] PDF conversion successful in {conversion_time:.2f}s.")
+            full_image = images[0]
+            logger.info(f"[Job {job_id}] PDF conversion successful in {conversion_time:.2f}s.")
+        
         except Exception as e: # Alternative conversion
             logger.error(f"[Job {job_id}] Error converting PDF: {str(e)}", exc_info=False)
             update_job_status(job_id, progress_message=f"⚠️ PDF conversion error: {str(e)}. Trying alternative method...")
+            
             try:
                 conversion_start_time = time.time()
                 images = convert_from_path(str(temp_file_path), dpi=dpi, thread_count=1)
                 conversion_time = time.time() - conversion_start_time
+                
                 if not images: raise Exception("Alternative PDF conversion produced no images")
-                full_image = images[0]; logger.info(f"[Job {job_id}] Alternative PDF conversion successful in {conversion_time:.2f}s.")
+                full_image = images[0]
+                logger.info(f"[Job {job_id}] Alternative PDF conversion successful in {conversion_time:.2f}s.")
+            
             except Exception as alt_e:
                 logger.error(f"[Job {job_id}] Alternative PDF conversion also failed: {str(alt_e)}", exc_info=True)
                 raise Exception(f"PDF conversion failed completely. Last error: {str(alt_e)}")
+        
+        # Save oriented image
         update_job_status(job_id, progress=15, progress_message="📐 Adjusting image orientation & saving...")
         if not ensure_landscape: raise ImportError("ensure_landscape function not available due to import error.")
+        
         try: # Orientation
-            save_start_time = time.time(); full_image = ensure_landscape(full_image); full_image_path = sheet_output_dir / f"{sheet_name}.png"
-            full_image.save(str(full_image_path)); save_time = time.time() - save_start_time
+            save_start_time = time.time()
+            full_image = ensure_landscape(full_image)
+            full_image_path = sheet_output_dir / f"{sheet_name}.png"
+            full_image.save(str(full_image_path))
+            save_time = time.time() - save_start_time
             logger.info(f"[Job {job_id}] Oriented and saved full image to {full_image_path} in {save_time:.2f}s")
-        except Exception as e: logger.error(f"[Job {job_id}] Error ensuring landscape or saving full image: {str(e)}", exc_info=True); raise Exception(f"Image orientation/saving failed: {str(e)}")
+        
+        except Exception as e: 
+            logger.error(f"[Job {job_id}] Error ensuring landscape or saving full image: {str(e)}", exc_info=True)
+            raise Exception(f"Image orientation/saving failed: {str(e)}")
+        
+        # Generate tiles
         update_job_status(job_id, current_phase=PROCESS_PHASES["TILING"], progress=25, progress_message=f"🔳 Creating tiles for {sheet_name}...")
         if not save_tiles_with_metadata: raise ImportError("save_tiles_with_metadata function not available due to import error.")
+        
         try: # Tiling
-            tile_start_time = time.time(); save_tiles_with_metadata(full_image, sheet_output_dir, sheet_name, tile_size=tile_size, overlap_ratio=overlap_ratio)
-            tile_time = time.time() - tile_start_time; metadata_file = sheet_output_dir / f"{sheet_name}_tile_metadata.json"
+            tile_start_time = time.time()
+            # Generate tiles using the original sheet name consistently
+            save_tiles_with_metadata(full_image, sheet_output_dir, sheet_name, tile_size=tile_size, overlap_ratio=overlap_ratio)
+            tile_time = time.time() - tile_start_time
+            
+            metadata_file = sheet_output_dir / f"{sheet_name}_tile_metadata.json"
             if not metadata_file.exists(): raise Exception("Tile metadata file was not created")
+            
             with open(metadata_file, 'r') as f: metadata = json.load(f)
-            tile_count = len(metadata.get("tiles", [])); logger.info(f"[Job {job_id}] Generated {tile_count} tiles for {sheet_name} in {tile_time:.2f}s")
+            tile_count = len(metadata.get("tiles", []))
+            logger.info(f"[Job {job_id}] Generated {tile_count} tiles for {sheet_name} in {tile_time:.2f}s")
+            
             if tile_count == 0: raise Exception("No tiles were generated")
             update_job_status(job_id, progress=35, progress_message=f"✅ Generated {tile_count} tiles.")
-        except Exception as e: logger.error(f"[Job {job_id}] Error creating tiles: {str(e)}", exc_info=True); raise Exception(f"Tile creation failed: {str(e)}")
-        del full_image; gc.collect(); logger.info(f"[Job {job_id}] Full image object released from memory.")
+        
+        except Exception as e: 
+            logger.error(f"[Job {job_id}] Error creating tiles: {str(e)}", exc_info=True)
+            raise Exception(f"Tile creation failed: {str(e)}")
+        
+        # Clean up image from memory
+        del full_image
+        gc.collect()
+        logger.info(f"[Job {job_id}] Full image object released from memory.")
+        
+        # Analyze tiles
         update_job_status(job_id, current_phase=PROCESS_PHASES["ANALYZING_LEGENDS"], progress=40, progress_message=f"📊 Analyzing tiles for {sheet_name} (API calls)...")
         if not analyze_all_tiles: raise ImportError("analyze_all_tiles function not available due to import error.")
         else: logger.info(f"[Job {job_id}] 'analyze_all_tiles' function confirmed available for call.")
-        # Analysis loop
-        retry_count = 0; last_error = None; analysis_successful = False; analysis_start_time = time.time()
+        
+        # Analysis loop with retries
+        retry_count = 0
+        last_error = None
+        analysis_successful = False
+        analysis_start_time = time.time()
+        
         while retry_count < MAX_RETRIES:
             try:
                 logger.info(f"[Job {job_id}] Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
                 update_job_status(job_id, progress_message=f"🔄 Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
                 
-                # Call the analysis function with the correct parameters
-                # FIXED: Changed to match parameters in extract_tile_entities_wow_rev4.py
+                # Call the analysis function - use consistent sheet_name
                 analyze_all_tiles(
                     sheet_folder=sheet_output_dir,
                     sheet_name=sheet_name
@@ -659,26 +710,52 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
                 update_job_status(job_id, progress_message=f"❌ Error: {str(e)}. Retrying in {backoff_time:.1f}s ({retry_count}/{MAX_RETRIES})")
                 time.sleep(backoff_time)
                 
-        analysis_time = time.time() - analysis_start_time; logger.info(f"[Job {job_id}] Tile analysis phase took {analysis_time:.2f}s.")
-        if not analysis_successful: raise Exception(f"Tile analysis failed after {MAX_RETRIES} attempts. Last error: {str(last_error)}")
+        analysis_time = time.time() - analysis_start_time
+        logger.info(f"[Job {job_id}] Tile analysis phase took {analysis_time:.2f}s.")
+        
+        if not analysis_successful: 
+            raise Exception(f"Tile analysis failed after {MAX_RETRIES} attempts. Last error: {str(last_error)}")
+        
         # Final Update
         update_job_status(job_id, progress=99, progress_message="✔️ Verifying final files...")
-        final_status = verify_drawing_files(sheet_name); total_time = time.time() - start_time
-        result_data = {"drawing_name": sheet_name, "file_status": final_status, "processing_time_seconds": round(total_time, 2)}
-        update_job_status(job_id, status="completed", current_phase=PROCESS_PHASES["COMPLETE"], progress=100, result=result_data, progress_message=f"✅ Successfully processed {original_filename} in {total_time:.2f}s")
+        final_status = verify_drawing_files(sheet_name)
+        total_time = time.time() - start_time
+        
+        result_data = {
+            "drawing_name": sheet_name, 
+            "file_status": final_status, 
+            "processing_time_seconds": round(total_time, 2)
+        }
+        
+        update_job_status(
+            job_id, 
+            status="completed", 
+            current_phase=PROCESS_PHASES["COMPLETE"], 
+            progress=100, 
+            result=result_data, 
+            progress_message=f"✅ Successfully processed {original_filename} in {total_time:.2f}s"
+        )
+        
         logger.info(f"[Job {job_id}] ✅ Successfully processed {original_filename} in {total_time:.2f}s")
+    
     except ImportError as imp_err:
          total_time = time.time() - start_time
          logger.error(f"[Job {job_id}] Processing failed due to missing function after {total_time:.2f}s: {imp_err}", exc_info=False)
          update_job_status(job_id, status="failed", current_phase=PROCESS_PHASES["FAILED"], progress=100, error=str(imp_err), progress_message=f"❌ Processing failed due to import error: {imp_err}")
+    
     except Exception as e:
         total_time = time.time() - start_time
         logger.error(f"[Job {job_id}] Processing failed for {original_filename} after {total_time:.2f}s: {str(e)}", exc_info=True)
         update_job_status(job_id, status="failed", current_phase=PROCESS_PHASES["FAILED"], progress=100, error=str(e), progress_message=f"❌ Processing failed after {total_time:.2f}s. Error: {str(e)}")
+    
     finally:
+        # Clean up temporary files
         if os.path.exists(temp_file_path):
-             try: os.remove(temp_file_path); logger.info(f"[Job {job_id}] Cleaned up temporary upload file.")
-             except Exception as clean_e: logger.warning(f"[Job {job_id}] Failed to clean up temp file: {clean_e}")
+             try: 
+                 os.remove(temp_file_path)
+                 logger.info(f"[Job {job_id}] Cleaned up temporary upload file.")
+             except Exception as clean_e: 
+                 logger.warning(f"[Job {job_id}] Failed to clean up temp file: {clean_e}")
 
 # --- Background Job Processors ---
 def process_analysis_job(job_id):
