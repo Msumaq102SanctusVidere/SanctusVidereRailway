@@ -65,23 +65,17 @@ except Exception as e:
 # --- Helper Function for Refreshing Drawings ---
 def refresh_drawings():
     try:
-        # Add a short delay to ensure backend has processed any recent changes
-        time.sleep(0.5)
+        # Call the API endpoint to get drawings
+        response = get_drawings()
         
-        # Clear existing drawings to force a fresh fetch
-        st.session_state.drawings = []
-        
-        # Fetch fresh drawing list from backend
-        drawings = get_drawings()
-        
-        if drawings is not None:
-            # Update session state with new drawings
-            st.session_state.drawings = drawings
+        # Check if response contains a drawings list
+        if isinstance(response, dict) and "drawings" in response:
+            st.session_state.drawings = response["drawings"]
             st.session_state.drawings_last_updated = time.time()
             logger.info(f"Refreshed drawings list, found {len(st.session_state.drawings)} drawings")
             return True
         else:
-            logger.warning("Refresh drawings returned None, keeping existing drawings")
+            logger.error(f"Unexpected response format from get_drawings(): {response}")
             return False
     except Exception as e:
         logger.error(f"Failed to refresh drawings: {e}", exc_info=True)
@@ -104,7 +98,12 @@ def get_detailed_job_status(job_id: str) -> Tuple[Dict[str, Any], List[Dict[str,
             # Get last 50 logs or logs since the last one we saw
             last_log_id = st.session_state.get(f"last_log_id_{job_id}", None)
             logs_response = get_job_logs(job_id, limit=100, since_id=last_log_id)
-            logs = logs_response.get("logs", [])
+            
+            # Extract logs from response
+            if isinstance(logs_response, dict) and "logs" in logs_response:
+                logs = logs_response["logs"]
+            else:
+                logs = []
             
             # Update the last seen log ID if we have logs
             if logs and len(logs) > 0:
@@ -128,7 +127,7 @@ def get_detailed_job_status(job_id: str) -> Tuple[Dict[str, Any], List[Dict[str,
         # Extract API connection status
         api_status = extract_api_status(logs)
         job_status["api_status"] = api_status
-        
+
         # IMPORTANT FIX: Override status if completion is detected in logs
         if check_for_completion(logs):
             job_status["status"] = "completed"
@@ -675,16 +674,8 @@ def main():
             # Mark successful upload for refreshing drawings
             st.session_state.upload_success = True
             st.session_state.api_active = True
-            
-            # Add delay to ensure backend processing is complete
-            time.sleep(1)
-            
-            # Refresh drawings with visual feedback
-            with st.spinner("Updating drawing list..."):
-                refresh_result = refresh_drawings()
-                if not refresh_result:
-                    st.warning("Drawing uploaded but couldn't refresh the drawing list. Try clicking Refresh Drawings.")
-            
+            # Refresh drawings if upload was successful
+            refresh_drawings()
             st.rerun()
     
     # --- Three-column layout ---
@@ -766,15 +757,10 @@ def main():
                 elif not st.session_state.drawings:
                     st.info("No drawings available. Upload a drawing to get started.")
                 else:
-                    # Refresh button - Enhanced for better feedback
+                    # Refresh button
                     if st.button("Refresh Drawings", key="refresh_drawings", use_container_width=True):
                         with st.spinner("Refreshing drawings..."):
-                            success = refresh_drawings()
-                            if success:
-                                st.success("Drawing list refreshed successfully!", icon="✅")
-                            else:
-                                st.error("Failed to refresh drawing list. Please try again.")
-                            time.sleep(0.5)  # Give user time to see the feedback
+                            refresh_drawings()
                             st.rerun()
                     
                     # Use the drawing_list component
@@ -911,54 +897,49 @@ def main():
                     # Get status information
                     status = job_status.get("status", "")
                     current_phase = job_status.get("current_phase", "")
-                    progress = job_status.get("progress", 0)
                     
-                    # Display status info similar to upload drawing component
+                    # Display status info
                     with st.container(border=True):
-                        # Status line with emoji
-                        clean_phase = re.sub(r'[^\w\s]', '', current_phase).strip() if current_phase else "Processing"
-                        
-                        # Use appropriate emoji based on phase
-                        if "COMPLETE" in current_phase or status == "completed":
-                            st.info(f"Status: ✅ COMPLETE")
-                        elif "ANALYZING" in current_phase:
-                            st.info(f"Status: 🔍 {clean_phase}")
-                        elif "QUEUED" in current_phase:
-                            st.info(f"Status: ⏳ {clean_phase}")
-                        elif "TILING" in current_phase:
-                            st.info(f"Status: 🖼️ {clean_phase}")
-                        else:
-                            st.info(f"Status: Processing - {clean_phase}")
-                        
-                        # Format and display latest update message
-                        if st.session_state.all_job_logs:
-                            latest_message = st.session_state.all_job_logs[-1]
-                            # Format message for display (remove timestamps, etc.)
-                            if isinstance(latest_message, str):
-                                if " - " in latest_message:
-                                    _, message = latest_message.split(" - ", 1)
-                                else:
-                                    message = latest_message
-                                
-                                # Clean up message and display
-                                st.caption(f"Latest Update: {message}")
-                        
-                        # Get drawing name from selection
-                        if st.session_state.selected_drawings:
-                            drawing_name = st.session_state.selected_drawings[0]
+                        # Clean up phase name (remove emojis)
+                        if current_phase:
+                            clean_phase = re.sub(r'[^\w\s]', '', current_phase).strip()
                             
-                            # Show batch progress if applicable
-                            if "tile_info" in job_status:
-                                tile_info = job_status["tile_info"]
-                                total = tile_info.get("total_tiles", 0)
-                                processed = tile_info.get("processed_tiles", 0)
-                                
-                                if total > 0:
-                                    st.caption(f"Analyzing drawing {drawing_name}")
-                                    st.caption(f"({processed}/{total} in batch {1})")
+                            # Display status with appropriate emoji
+                            if "COMPLETE" in current_phase or status == "completed":
+                                st.info(f"Status: ✅ COMPLETE")
+                            elif "ANALYZING" in current_phase:
+                                st.info(f"Status: 🔍 {clean_phase}")
+                            elif "QUEUED" in current_phase:
+                                st.info(f"Status: ⏳ {clean_phase}")
+                            elif "TILING" in current_phase:
+                                st.info(f"Status: 🖼️ {clean_phase}")
+                            else:
+                                st.info(f"Status: Processing - {clean_phase}")
+                        
+                        # Latest progress message
+                        if progress_messages:
+                            latest_message = progress_messages[-1]
+                            # Extract just the message part without timestamp
+                            if " - " in latest_message:
+                                latest_message = latest_message.split(" - ", 1)[1]
+                            # Remove emojis for cleaner display
+                            clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
+                            st.caption(f"Latest Update: {clean_message}")
+                        
+                        # Show batch information if available
+                        if "tile_info" in job_status:
+                            tile_info = job_status["tile_info"]
+                            total = tile_info.get("total_tiles", 0)
+                            processed = tile_info.get("processed_tiles", 0)
+                            
+                            if total > 0 and st.session_state.selected_drawings:
+                                drawing_name = st.session_state.selected_drawings[0]
+                                st.caption(f"Analyzing drawing {drawing_name}")
+                                st.caption(f"({processed}/{total} in batch 1)")
                         
                         # Show Results button
                         if st.button("Show Results", key="show_results"):
+                            # Process results when button is clicked
                             process_results()
                             st.rerun()
                     
@@ -975,7 +956,15 @@ def main():
                                 st.rerun()
                     
                     # Check for job completion
-                    job_completed = status == "completed" or check_for_completion(st.session_state.all_job_logs)
+                    job_completed = False
+                    
+                    # Check official status
+                    if status == "completed":
+                        job_completed = True
+                    
+                    # Check logs for completion indicators if not already marked as completed
+                    if not job_completed and not st.session_state.job_completed:
+                        job_completed = check_for_completion(st.session_state.all_job_logs)
                         
                     # If job is completed, process results
                     if job_completed and not st.session_state.job_completed:
@@ -1015,13 +1004,14 @@ def main():
         with results_container:
             # Display results if available
             if st.session_state.analysis_results:
-                # Parse results for display
+                # Format the results for display
                 if isinstance(st.session_state.analysis_results, dict):
-                    # If the results contain an "analysis" field, display it directly
+                    # Check if it has an analysis field
                     if "analysis" in st.session_state.analysis_results:
+                        # Display the analysis content directly as markdown
                         st.markdown(st.session_state.analysis_results["analysis"])
                     else:
-                        # Otherwise, format as JSON
+                        # Format as JSON
                         st.json(st.session_state.analysis_results)
                 else:
                     # If not a dict, display as text
