@@ -82,7 +82,7 @@ def main():
         if upload_ok:
             # After upload completes, refresh the list
             refresh_drawings()
-            st.experimental_rerun()
+            st.rerun()
 
     # --- Three-Column Layout ---
     col1, col2, col3 = st.columns([1, 1, 2])
@@ -97,7 +97,7 @@ def main():
                 st.success("Drawings list updated.")
             else:
                 st.error("Failed to refresh drawings.")
-            st.experimental_rerun()
+            st.rerun()
 
         # Drawing list component
         selected = drawing_list(st.session_state.drawings)
@@ -109,7 +109,7 @@ def main():
             if st.button(f"Delete '{d}'", key=f"del_{d}"):
                 delete_drawing(d)
                 refresh_drawings()
-                st.experimental_rerun()
+                st.rerun()
 
     # --- Middle Column: Query, Analysis Control & Status ---
     with col2:
@@ -136,14 +136,14 @@ def main():
                 st.session_state.job_status = None
             else:
                 st.error(f"Failed to start analysis: {resp}")
-            st.experimental_rerun()
+            st.rerun()
 
         # Stop analysis
         if st.session_state.current_job_id:
             if st.button("Stop Analysis"):  
                 st.session_state.current_job_id = None
                 st.info("Analysis stopped.")
-                st.experimental_rerun()
+                st.rerun()
 
         # Job status display
         jid = st.session_state.current_job_id
@@ -168,7 +168,7 @@ def main():
                 result = job.get('result')
                 st.session_state.analysis_results = result
                 st.session_state.current_job_id = None
-                st.experimental_rerun()
+                st.rerun()
 
     # --- Right Column: Analysis Results ---
     with col3:
