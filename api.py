@@ -565,12 +565,93 @@ def create_analysis_job(query, drawings, use_cache):
         logger.error(f"Error creating analysis job: {e}", exc_info=True)
         raise
 
-# --- PDF Processing (Updated to use original filename) ---
+# --- Custom function to patch metadata with the correct sheet name ---
+def patch_metadata_filenames(metadata_path, original_sheet_name):
+    """
+    Patch the metadata file to use the correct sheet_name in all filenames.
+    This prevents the tile analysis from using temporary filenames.
+    """
+    try:
+        if not os.path.exists(metadata_path):
+            logger.error(f"Cannot patch metadata: File {metadata_path} not found")
+            return False
+            
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+            
+        # Check if this is a metadata file with tiles
+        if 'tiles' not in metadata:
+            logger.warning(f"Metadata file {metadata_path} does not contain tiles array, skipping patch")
+            return False
+            
+        # Extract temporary name from the first tile
+        if not metadata['tiles']:
+            logger.warning(f"Metadata file {metadata_path} has empty tiles array, skipping patch")
+            return False
+            
+        first_filename = metadata['tiles'][0].get('filename', '')
+        if not first_filename:
+            logger.warning(f"Could not find filename in first tile of {metadata_path}, skipping patch")
+            return False
+            
+        # Extract the temporary prefix from the first tile filename
+        parts = first_filename.split('_tile_')
+        if len(parts) != 2:
+            logger.warning(f"Unexpected filename format in {metadata_path}: {first_filename}, skipping patch")
+            return False
+            
+        temp_prefix = parts[0]
+        
+        # Only patch if the prefix differs from the original sheet name
+        if temp_prefix == original_sheet_name:
+            logger.info(f"Metadata already using correct sheet name: {original_sheet_name}, no patching needed")
+            return True
+            
+        patched_tiles = []
+        patched_count = 0
+        
+        # Update all tile filenames to use the original sheet name
+        for tile in metadata['tiles']:
+            if 'filename' in tile:
+                old_filename = tile['filename']
+                if temp_prefix in old_filename:
+                    # Replace the temporary prefix with the original sheet name
+                    new_filename = old_filename.replace(temp_prefix, original_sheet_name)
+                    tile['filename'] = new_filename
+                    patched_count += 1
+                    
+                    # Also rename the actual files if they exist
+                    old_path = os.path.join(os.path.dirname(metadata_path), old_filename)
+                    new_path = os.path.join(os.path.dirname(metadata_path), new_filename)
+                    
+                    if os.path.exists(old_path) and not os.path.exists(new_path):
+                        try:
+                            os.rename(old_path, new_path)
+                            logger.debug(f"Renamed file {old_path} to {new_path}")
+                        except Exception as rename_err:
+                            logger.warning(f"Could not rename file {old_path} to {new_path}: {rename_err}")
+                    
+            patched_tiles.append(tile)
+            
+        # Save the patched metadata back to the file
+        metadata['tiles'] = patched_tiles
+        
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+            
+        logger.info(f"Patched {patched_count} tile filenames in {metadata_path} from {temp_prefix} to {original_sheet_name}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error patching metadata file {metadata_path}: {e}", exc_info=True)
+        return False
+
+# --- PDF Processing (Updated to fix temp filenames) ---
 def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_size=2048, overlap_ratio=0.35):
-    """Process a PDF file, using the original filename rather than temporary names"""
+    """Process a PDF file, properly handling the original filename throughout"""
     global analyze_all_tiles, convert_from_path, ensure_landscape, save_tiles_with_metadata, ensure_dir
     
-    # Create a clean drawing name from the original filename (without using a temporary name)
+    # Create a clean drawing name from the original filename
     safe_original_filename = werkzeug.utils.secure_filename(original_filename)
     sheet_name = Path(safe_original_filename).stem.replace(" ", "_").replace("-", "_").replace(".", "_")
     sheet_output_dir = DRAWINGS_OUTPUT_DIR / sheet_name
@@ -650,6 +731,11 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
             metadata_file = sheet_output_dir / f"{sheet_name}_tile_metadata.json"
             if not metadata_file.exists(): raise Exception("Tile metadata file was not created")
             
+            # NEW: Patch the metadata file to ensure consistent naming
+            patch_result = patch_metadata_filenames(metadata_file, sheet_name)
+            if patch_result:
+                logger.info(f"[Job {job_id}] Successfully patched metadata to use consistent sheet name: {sheet_name}")
+            
             with open(metadata_file, 'r') as f: metadata = json.load(f)
             tile_count = len(metadata.get("tiles", []))
             logger.info(f"[Job {job_id}] Generated {tile_count} tiles for {sheet_name} in {tile_time:.2f}s")
@@ -682,7 +768,7 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
                 logger.info(f"[Job {job_id}] Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
                 update_job_status(job_id, progress_message=f"🔄 Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
                 
-                # Call the analysis function - use consistent sheet_name
+                # IMPORTANT: Pass the sheet_name explicitly to ensure it's used
                 analyze_all_tiles(
                     sheet_folder=sheet_output_dir,
                     sheet_name=sheet_name
@@ -1104,6 +1190,8 @@ def upload_file():
     try:
         filename = werkzeug.utils.secure_filename(file.filename)
         os.makedirs(TEMP_UPLOAD_FOLDER, exist_ok=True)
+        
+        # Generate a temporary path for initial save, but keep original filename
         temp_file_path = os.path.join(TEMP_UPLOAD_FOLDER, f"upload_{uuid.uuid4()}_{filename}")
         file.save(temp_file_path)
         
@@ -1127,7 +1215,7 @@ def upload_file():
         # Start processing in background
         thread = threading.Thread(
             target=process_pdf_job,
-            args=(temp_file_path, job_id, file.filename),
+            args=(temp_file_path, job_id, file.filename),  # Pass the original filename
             name=f"Upload-{job_id[:8]}"
         )
         thread.daemon = True
