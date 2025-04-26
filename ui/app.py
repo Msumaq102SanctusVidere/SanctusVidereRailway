@@ -443,6 +443,8 @@ def initialize_session_state():
         st.session_state.upload_success = False
     if "last_poll_time" not in st.session_state:
         st.session_state.last_poll_time = 0
+    if "full_logs" not in st.session_state:
+        st.session_state.full_logs = []
     logger.info("Session state initialized")
 
 initialize_session_state()
@@ -621,6 +623,8 @@ def main():
                             st.session_state.job_status = None
                             st.session_state.analysis_results = None
                             st.session_state.raw_job_result = None
+                            # Reset logs for new job
+                            st.session_state.full_logs = []
                             logger.info(f"Started analysis job: {st.session_state.current_job_id}")
                             st.rerun()
                         else:
@@ -640,9 +644,20 @@ def main():
             # --- Progress Display ---
             # --- Job Status Section ---
             if st.session_state.current_job_id:
-                # Get job status 
-                job_status = get_job_status(st.session_state.current_job_id)
+                # Get job status AND detailed logs
+                job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
                 
+                # Store logs in session state if we have them
+                if job_logs:
+                    # Extract messages from log objects
+                    log_messages = []
+                    for log in job_logs:
+                        if isinstance(log, dict) and "message" in log:
+                            log_messages.append(log["message"])
+                    
+                    # Update our full logs list with new messages
+                    st.session_state.full_logs = log_messages + st.session_state.full_logs
+                    
                 if job_status:
                     # Only show minimal status info
                     with st.container(border=True):
@@ -665,12 +680,35 @@ def main():
                             clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
                             st.caption(f"Latest Update: {clean_message}")
                         
-                        # Simple technical logs button
+                        # Enhanced Technical logs button
                         if st.button("Show Technical Logs", key="show_tech_logs"):
+                            st.session_state.show_advanced_logs = True
+                    
+                    # Display the comprehensive technical logs
+                    if st.session_state.show_advanced_logs:
+                        with st.expander("Technical Logs", expanded=True):
+                            # Show logs from both job status and detailed logs
+                            all_logs = []
+                            
+                            # Add progress messages from job status
                             if "progress_messages" in job_status:
-                                with st.expander("Technical Logs", expanded=True):
-                                    for message in job_status["progress_messages"]:
-                                        st.text(message)
+                                all_logs.extend(job_status["progress_messages"])
+                            
+                            # Add detailed logs from our session state
+                            if st.session_state.full_logs:
+                                all_logs.extend(st.session_state.full_logs)
+                            
+                            # Remove duplicates while preserving order
+                            unique_logs = []
+                            seen = set()
+                            for log in all_logs:
+                                if log not in seen:
+                                    unique_logs.append(log)
+                                    seen.add(log)
+                            
+                            # Display logs
+                            for message in unique_logs:
+                                st.text(message)
                     
                     # Check if job is complete or failed
                     if status == "completed":
