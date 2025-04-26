@@ -411,6 +411,7 @@ def process_completed_job(job_status):
     except Exception as e:
         logger.error(f"Error processing completed job: {e}", exc_info=True)
         st.session_state.analysis_results = f"Error processing results: {str(e)}"
+
 # --- Initialize Session State ---
 def initialize_session_state():
     if "backend_healthy" not in st.session_state:
@@ -445,6 +446,8 @@ def initialize_session_state():
         st.session_state.last_poll_time = 0
     if "full_logs" not in st.session_state:
         st.session_state.full_logs = []
+    if "tech_info_expanded" not in st.session_state:
+        st.session_state.tech_info_expanded = False
     logger.info("Session state initialized")
 
 initialize_session_state()
@@ -458,6 +461,11 @@ def toggle_advanced_logs():
 def set_log_level_filter(level):
     st.session_state.log_level_filter = level
     logger.info(f"Log level filter set to: {level}")
+
+# --- Toggle Technical Info Expansion ---
+def toggle_tech_info():
+    st.session_state.tech_info_expanded = not st.session_state.tech_info_expanded
+    logger.info(f"Technical information expanded: {st.session_state.tech_info_expanded}")
 
 # --- Main Application Logic ---
 def main():
@@ -625,6 +633,8 @@ def main():
                             st.session_state.raw_job_result = None
                             # Reset logs for new job
                             st.session_state.full_logs = []
+                            # Reset technical info expansion state
+                            st.session_state.tech_info_expanded = False
                             logger.info(f"Started analysis job: {st.session_state.current_job_id}")
                             st.rerun()
                         else:
@@ -680,35 +690,30 @@ def main():
                             clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
                             st.caption(f"Latest Update: {clean_message}")
                         
-                        # Enhanced Technical logs button
-                        if st.button("Show Technical Logs", key="show_tech_logs"):
-                            st.session_state.show_advanced_logs = True
-                    
-                    # Display the comprehensive technical logs
-                    if st.session_state.show_advanced_logs:
-                        with st.expander("Technical Logs", expanded=True):
-                            # Show logs from both job status and detailed logs
-                            all_logs = []
-                            
-                            # Add progress messages from job status
-                            if "progress_messages" in job_status:
+                        # Display logs directly in the status container, no need for button
+                        if "progress_messages" in job_status:
+                            with st.expander("Technical Logs", expanded=False):
+                                # Show logs from both job status and detailed logs
+                                all_logs = []
+                                
+                                # Add progress messages from job status
                                 all_logs.extend(job_status["progress_messages"])
-                            
-                            # Add detailed logs from our session state
-                            if st.session_state.full_logs:
-                                all_logs.extend(st.session_state.full_logs)
-                            
-                            # Remove duplicates while preserving order
-                            unique_logs = []
-                            seen = set()
-                            for log in all_logs:
-                                if log not in seen:
-                                    unique_logs.append(log)
-                                    seen.add(log)
-                            
-                            # Display logs
-                            for message in unique_logs:
-                                st.text(message)
+                                
+                                # Add detailed logs from our session state
+                                if st.session_state.full_logs:
+                                    all_logs.extend(st.session_state.full_logs)
+                                
+                                # Remove duplicates while preserving order
+                                unique_logs = []
+                                seen = set()
+                                for log in all_logs:
+                                    if log not in seen:
+                                        unique_logs.append(log)
+                                        seen.add(log)
+                                
+                                # Display logs
+                                for message in unique_logs:
+                                    st.text(message)
                     
                     # Check if job is complete or failed
                     if status == "completed":
@@ -745,15 +750,17 @@ def main():
                     st.session_state.analysis_results = None
                     st.session_state.raw_job_result = None
                     st.rerun()
-            
-            # --- Technical Information (Expandable) ---
-            if st.session_state.raw_job_result:
-                with st.expander("Technical Information", expanded=False):
-                    st.json(st.session_state.raw_job_result)
-                    
-                    if st.button("Clear Technical Data", key="clear_tech_data"):
-                        st.session_state.raw_job_result = None
-                        st.rerun()
+                
+                # --- Technical Information (Single Expandable Section) ---
+                if st.session_state.raw_job_result:
+                    # Use a single Technical Information expander that persists its state
+                    with st.expander("Technical Information", expanded=st.session_state.tech_info_expanded):
+                        st.json(st.session_state.raw_job_result)
+                        
+                        # Add a button to toggle expansion state
+                        if st.button("Close Technical Data", key="toggle_tech_data"):
+                            st.session_state.tech_info_expanded = False
+                            st.rerun()
                 
     except Exception as e:
         st.error(f"An error occurred in the UI: {e}")
