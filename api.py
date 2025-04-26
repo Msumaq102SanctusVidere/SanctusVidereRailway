@@ -11,6 +11,7 @@ import random
 import uuid
 import threading
 import datetime
+import sqlite3
 from pathlib import Path
 import werkzeug.utils
 from PIL import Image
@@ -86,12 +87,19 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 logger.info("CORS configured.")
 
 # --- Configuration and Path Setup ---
+# Updated to use the specified tiles_output directory
+base_dir = os.environ.get('APP_BASE_DIR', '/app')
+TILES_OUTPUT_DIR = "/app/tiles_output"  # Primary storage location for all drawing files
+
+# Create fallback directories based on current path
 fallback_dir_default = Path(os.path.dirname(os.path.abspath(__file__))).resolve()
 UPLOAD_FOLDER_DEFAULT = fallback_dir_default / 'uploads'
 TEMP_UPLOAD_FOLDER_DEFAULT = UPLOAD_FOLDER_DEFAULT / 'temp_uploads'
-DRAWINGS_OUTPUT_DIR_DEFAULT = fallback_dir_default / 'processed_drawings'
+DRAWINGS_OUTPUT_DIR_DEFAULT = Path(TILES_OUTPUT_DIR).resolve()  # Use the specified path
 MEMORY_STORE_DIR_DEFAULT = fallback_dir_default / 'memory_store'
 DATABASE_DIR_DEFAULT = fallback_dir_default / 'database'
+
+# Initialize with defaults
 UPLOAD_FOLDER = UPLOAD_FOLDER_DEFAULT
 TEMP_UPLOAD_FOLDER = TEMP_UPLOAD_FOLDER_DEFAULT
 DRAWINGS_OUTPUT_DIR = DRAWINGS_OUTPUT_DIR_DEFAULT
@@ -99,26 +107,29 @@ MEMORY_STORE_DIR = MEMORY_STORE_DIR_DEFAULT
 DATABASE_DIR = DATABASE_DIR_DEFAULT
 
 try:
-    base_dir = os.environ.get('APP_BASE_DIR', '/app')
     if Config:
+        # Override Config.DRAWINGS_DIR to ensure it uses the correct path
         Config.configure(base_dir=base_dir)
+        Config.DRAWINGS_DIR = TILES_OUTPUT_DIR  # Force the drawings directory to the specified path
         logger.info(f"Configured base directory using Config: {Config.BASE_DIR}")
-        UPLOAD_FOLDER = os.path.join(Config.BASE_DIR, 'uploads')
+        logger.info(f"Configured drawings directory using Config: {Config.DRAWINGS_DIR}")
+        
+        # Set up other directories
+        UPLOAD_FOLDER = os.path.join(base_dir, 'uploads')
         TEMP_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, 'temp_uploads')
-        DRAWINGS_OUTPUT_DIR = Path(Config.DRAWINGS_DIR).resolve()
-        MEMORY_STORE_DIR = Path(Config.MEMORY_STORE).resolve()
-        DATABASE_DIR = Path(os.path.join(Config.BASE_DIR, 'database')).resolve()
+        DRAWINGS_OUTPUT_DIR = Path(Config.DRAWINGS_DIR).resolve()  # Use the specified path from Config
+        MEMORY_STORE_DIR = Path(Config.MEMORY_STORE).resolve() if hasattr(Config, 'MEMORY_STORE') else Path(os.path.join(base_dir, 'memory_store')).resolve()
+        DATABASE_DIR = Path(os.path.join(base_dir, 'database')).resolve()
     else:
         logger.error("Config class not available from import, using fallback paths.")
         logger.warning(f"Using fallback directories based on: {fallback_dir_default}")
+        # Maintain the configured drawings directory even without Config
+        DRAWINGS_OUTPUT_DIR = Path(TILES_OUTPUT_DIR).resolve()
 except Exception as e:
     logger.error(f"CRITICAL: Error during Config setup: {e}", exc_info=True)
-    UPLOAD_FOLDER = UPLOAD_FOLDER_DEFAULT
-    TEMP_UPLOAD_FOLDER = TEMP_UPLOAD_FOLDER_DEFAULT
-    DRAWINGS_OUTPUT_DIR = DRAWINGS_OUTPUT_DIR_DEFAULT
-    MEMORY_STORE_DIR = MEMORY_STORE_DIR_DEFAULT
-    DATABASE_DIR = DATABASE_DIR_DEFAULT
-    logger.warning(f"Using fallback directories due to error, based on: {fallback_dir_default}")
+    # Maintain the configured drawings directory even after an error
+    DRAWINGS_OUTPUT_DIR = Path(TILES_OUTPUT_DIR).resolve()
+    logger.warning(f"Using fallback directories due to error, with DRAWINGS_OUTPUT_DIR={DRAWINGS_OUTPUT_DIR}")
 
 logger.info(f"Final Uploads directory: {UPLOAD_FOLDER}")
 logger.info(f"Final Temporary uploads directory: {TEMP_UPLOAD_FOLDER}")
@@ -846,7 +857,14 @@ def health_check():
             "analyzer": analyzer is not None,
             "drawing_manager": drawing_manager is not None
         },
-        "database": os.path.exists(DB_PATH)
+        "database": os.path.exists(DB_PATH),
+        "paths": {
+            "drawings_output_dir": str(DRAWINGS_OUTPUT_DIR),
+            "upload_folder": str(UPLOAD_FOLDER),
+            "temp_upload_folder": str(TEMP_UPLOAD_FOLDER),
+            "memory_store_dir": str(MEMORY_STORE_DIR),
+            "database_dir": str(DATABASE_DIR)
+        }
     }
     return jsonify(status)
 
