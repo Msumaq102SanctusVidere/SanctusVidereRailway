@@ -89,7 +89,7 @@ def get_detailed_job_status(job_id: str) -> Tuple[Dict[str, Any], List[Dict[str,
         try:
             # Get last 50 logs or logs since the last one we saw
             last_log_id = st.session_state.get(f"last_log_id_{job_id}", None)
-            logs_response = get_job_logs(job_id, limit=50, since_id=last_log_id)
+            logs_response = get_job_logs(job_id, limit=100, since_id=last_log_id)
             logs = logs_response.get("logs", [])
             
             # Update the last seen log ID if we have logs
@@ -376,7 +376,9 @@ def check_for_completion(logs):
         "Analysis complete",
         "COMPLETE", 
         "completed successfully",
-        "Completed batch"
+        "Completed batch",
+        "completed in",
+        "Analysis complete for all"
     ]
     
     if logs:
@@ -475,6 +477,10 @@ def initialize_session_state():
         st.session_state.all_job_logs = []
     if "job_completed" not in st.session_state:
         st.session_state.job_completed = False
+    if "api_active" not in st.session_state:
+        st.session_state.api_active = False
+    if "last_refresh_time" not in st.session_state:
+        st.session_state.last_refresh_time = time.time()
     logger.info("Session state initialized")
 
 initialize_session_state()
@@ -482,6 +488,9 @@ initialize_session_state()
 # --- Toggle Logs Display ---
 def toggle_logs_display():
     st.session_state.show_logs = not st.session_state.show_logs
+    if st.session_state.show_logs:
+        # When showing logs, also check for and process results
+        process_results()
     logger.info(f"Logs display toggled to: {st.session_state.show_logs}")
 
 # --- Toggle Left Column Expansion ---
@@ -499,15 +508,113 @@ def set_log_level_filter(level):
     st.session_state.log_level_filter = level
     logger.info(f"Log level filter set to: {level}")
 
+# --- Process Results ---
+def process_results():
+    if st.session_state.current_job_id and not st.session_state.job_completed:
+        job_status = get_job_status(st.session_state.current_job_id)
+        if job_status:
+            process_completed_job(job_status)
+            st.session_state.job_completed = True
+            if st.session_state.current_job_id:
+                st.session_state.current_job_id = None
+            logger.info("Processed results manually through button click")
+            st.rerun()
+
 # --- Main Application Logic ---
 def main():
     # --- Page Configuration ---
     st.set_page_config(page_title="Sanctus Videre 1.0", layout="wide", page_icon="🏗️", initial_sidebar_state="expanded")
     
+    # --- Activity Indicator Bar ---
+    if st.session_state.api_active:
+        # Create a pulsing color effect with HTML/CSS
+        st.markdown(
+            """
+            <style>
+            @keyframes pulse {
+                0% { background-color: rgba(49, 51, 63, 0.8); }
+                50% { background-color: rgba(255, 75, 75, 0.8); }
+                100% { background-color: rgba(49, 51, 63, 0.8); }
+            }
+            .indicator-bar {
+                height: 4px;
+                width: 100%;
+                background-color: rgba(49, 51, 63, 0.8);
+                margin-bottom: 10px;
+                animation: pulse 2s infinite;
+            }
+            </style>
+            <div class="indicator-bar"></div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        # Show a static bar when inactive
+        st.markdown(
+            """
+            <style>
+            .indicator-bar {
+                height: 4px;
+                width: 100%;
+                background-color: rgba(49, 51, 63, 0.8);
+                margin-bottom: 10px;
+            }
+            </style>
+            <div class="indicator-bar"></div>
+            """,
+            unsafe_allow_html=True
+        )
+    
     # --- Title Area ---
     st.title("Sanctus Videre 1.0")
     st.caption("Construction Drawing Analysis Platform")
     st.divider()
+    
+    # --- Periodic Refresh Logic ---
+    current_time = time.time()
+    should_refresh = False
+    
+    # Check if 5 seconds have passed since last refresh
+    if current_time - st.session_state.last_refresh_time >= 5:
+        st.session_state.last_refresh_time = current_time
+        should_refresh = True
+        
+        # If we have an active job, update logs and check completion
+        if st.session_state.current_job_id and not st.session_state.job_completed:
+            job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
+            
+            # Update logs
+            if job_logs:
+                log_messages = []
+                for log in job_logs:
+                    if isinstance(log, dict) and "message" in log:
+                        log_messages.append(log["message"])
+                
+                # Add to existing logs without duplicates
+                existing_logs = set(st.session_state.all_job_logs)
+                for message in log_messages:
+                    if message not in existing_logs:
+                        st.session_state.all_job_logs.append(message)
+                        existing_logs.add(message)
+            
+            # Check for completion
+            if job_status:
+                # Check status first
+                if job_status.get("status") == "completed":
+                    process_completed_job(job_status)
+                    st.session_state.job_completed = True
+                    st.session_state.current_job_id = None
+                    st.session_state.api_active = False
+                    logger.info("Job completion detected in auto-refresh (status)")
+                    st.rerun()
+                # Then check logs
+                elif check_for_completion(st.session_state.all_job_logs):
+                    process_completed_job(job_status)
+                    st.session_state.job_completed = True
+                    st.session_state.current_job_id = None
+                    st.session_state.api_active = False
+                    logger.info("Job completion detected in auto-refresh (logs)")
+                    st.rerun()
     
     # --- Backend Health Check & Initial Drawing Fetch ---
     backend_healthy = False
@@ -536,6 +643,7 @@ def main():
         if upload_success:
             # Mark successful upload for refreshing drawings
             st.session_state.upload_success = True
+            st.session_state.api_active = True
             # Refresh drawings if upload was successful
             refresh_drawings()
             st.rerun()
@@ -574,12 +682,14 @@ def main():
                         try:
                             target_drawing = st.session_state.drawing_to_delete
                             logger.info(f"Attempting to delete drawing: {target_drawing}")
+                            st.session_state.api_active = True
                             response = delete_drawing(target_drawing) # Call API
 
                             # Trust only the "success" boolean from the backend
                             if isinstance(response, dict) and response.get("success") is True:
                                 st.success(f"Drawing deleted successfully.")
                                 logger.info(f"Successfully deleted drawing: {target_drawing}")
+                                st.session_state.api_active = False
 
                                 # Refresh UI only on explicit success from backend
                                 if isinstance(st.session_state.selected_drawings, list) and target_drawing in st.session_state.selected_drawings:
@@ -593,12 +703,14 @@ def main():
                                 error_message = response.get("error", default_error) if isinstance(response, dict) else default_error
                                 st.error(error_message) # Display the error received
                                 logger.error(f"API call delete_drawing failed for '{target_drawing}'. Response: {response}")
+                                st.session_state.api_active = False
                         except Exception as e:
                             # Handle exceptions during the API call itself (e.g., network error)
                             st.error(f"Error communicating with server: {e}")
                             logger.error(f"Exception during delete_drawing API call: {e}", exc_info=True)
                             # Clear pending delete on communication exception and rerun
                             st.session_state.drawing_to_delete = None
+                            st.session_state.api_active = False
                             st.rerun()
 
                 with cancel_col:
@@ -686,6 +798,7 @@ def main():
             ):
                 with st.spinner("Starting analysis..."):
                     try:
+                        st.session_state.api_active = True
                         response = analyze_drawings(
                             query,
                             st.session_state.selected_drawings,
@@ -700,12 +813,15 @@ def main():
                             st.session_state.job_completed = False
                             # Reset logs for new job
                             st.session_state.all_job_logs = []
+                            st.session_state.show_logs = False
                             logger.info(f"Started analysis job: {st.session_state.current_job_id}")
                             st.rerun()
                         else:
+                            st.session_state.api_active = False
                             st.error(f"Failed to start analysis: {response}")
                             logger.error(f"Failed to start analysis: {response}")
                     except Exception as e:
+                        st.session_state.api_active = False
                         st.error(f"Error starting analysis: {e}")
                         logger.error(f"Error starting analysis: {e}", exc_info=True)
             
@@ -713,6 +829,7 @@ def main():
             if st.session_state.current_job_id:
                 if st.button("Stop Analysis", key="stop_analysis", use_container_width=True):
                     st.session_state.current_job_id = None
+                    st.session_state.api_active = False
                     st.info("Analysis stopped.")
                     st.rerun()
             
@@ -768,8 +885,10 @@ def main():
                             clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
                             st.caption(f"Latest Update: {clean_message}")
                         
-                        # Technical logs button
-                        if st.button("Show Technical Logs", key="show_tech_logs"):
+                        # Show Results button (renamed from Technical Logs)
+                        if st.button("Show Results", key="show_results"):
+                            # Process results when button is clicked
+                            process_results()
                             toggle_logs_display()
                             st.rerun()
                     
@@ -781,7 +900,7 @@ def main():
                                 st.text(message)
                             
                             # Button to hide logs
-                            if st.button("Hide Technical Logs", key="hide_tech_logs"):
+                            if st.button("Hide Logs", key="hide_logs"):
                                 toggle_logs_display()
                                 st.rerun()
                     
@@ -802,12 +921,14 @@ def main():
                         st.session_state.job_completed = True  # Mark as completed to avoid reprocessing
                         process_completed_job(job_status)
                         st.session_state.current_job_id = None
+                        st.session_state.api_active = False
                         st.success("Analysis completed successfully!")
                         st.rerun()
                     elif status == "failed":
                         error_msg = job_status.get("error", "Unknown error")
                         st.error(f"Analysis failed: {error_msg}")
                         st.session_state.current_job_id = None
+                        st.session_state.api_active = False
                 else:
                     # Fallback for when job status cannot be retrieved
                     st.warning("Unable to retrieve job status. Retrying...")
