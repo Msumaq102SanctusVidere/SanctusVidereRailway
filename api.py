@@ -1,1076 +1,1080 @@
-# --- Filename: api.py (Backend Flask Application - Enhanced with DB Persistence) ---
+# --- Filename: ui/app.py (Frontend Streamlit UI - Three-Column Layout) ---
 
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import os
-import sys
-import logging
-import shutil
+import streamlit as st
 import time
-import random
-import uuid
-import threading
-import datetime
-import sqlite3
-from pathlib import Path
-import werkzeug.utils
-from PIL import Image
-from anthropic import RateLimitError, APIStatusError, APITimeoutError, APIConnectionError
+import logging
+import sys
+import os
 import json
-import gc
-from urllib.parse import unquote
+import re
+from pathlib import Path
+import datetime
+from typing import List, Dict, Any, Tuple, Optional
 
-# --- Initialize all potentially imported names to None ---
-ConstructionAnalyzer, Config, DrawingManager = None, None, None
-ensure_dir, save_tiles_with_metadata, ensure_landscape = None, None, None
-convert_from_path = None
-analyze_all_tiles = None
-
-# IMPORTANT: Fix for decompression bomb warning
-IMAGE_MAX_PIXELS = int(os.environ.get('IMAGE_MAX_PIXELS', 200000000))
-Image.MAX_IMAGE_PIXELS = IMAGE_MAX_PIXELS
-if IMAGE_MAX_PIXELS != 200000000:
-     print(f"Warning: Image.MAX_IMAGE_PIXELS set to {IMAGE_MAX_PIXELS}")
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - API - %(levelname)s - [%(threadName)s] - %(message)s',
-    handlers=[ logging.StreamHandler(sys.stdout) ]
-)
-logger = logging.getLogger(__name__)
-
-# Add paths
-current_dir = os.path.dirname(os.path.abspath(__file__))
-modules_dir = os.path.join(current_dir, 'modules')
-if current_dir not in sys.path: sys.path.append(current_dir)
-if modules_dir not in sys.path: sys.path.append(modules_dir)
-logger.info(f"Python sys.path includes: {current_dir}, {modules_dir}")
-
-# --- ISOLATED IMPORTS ---
-logger.info("--- Starting Custom Module Imports ---")
-try: # Import 1
-    logger.info("Attempting import: construction_drawing_analyzer_rev2_wow_rev6")
-    from construction_drawing_analyzer_rev2_wow_rev6 import ConstructionAnalyzer, Config, DrawingManager
-    logger.info("SUCCESS: Imported from construction_drawing_analyzer_rev2_wow_rev6")
-except Exception as e: logger.error(f"FAILED Import from construction_drawing_analyzer_rev2_wow_rev6: {e}", exc_info=True)
-try: # Import 2
-    logger.info("Attempting import: tile_generator_wow")
-    from tile_generator_wow import ensure_dir, save_tiles_with_metadata, ensure_landscape
-    logger.info("SUCCESS: Imported from tile_generator_wow")
-except Exception as e: logger.error(f"FAILED Import from tile_generator_wow: {e}", exc_info=True)
-try: # Import 3
-    logger.info("Attempting import: pdf2image")
-    from pdf2image import convert_from_path
-    logger.info("SUCCESS: Imported from pdf2image")
-except Exception as e: logger.error(f"FAILED Import from pdf2image: {e}", exc_info=True)
-try: # Import 4
-    logger.info("Attempting import: extract_tile_entities_wow_rev4")
-    from extract_tile_entities_wow_rev4 import analyze_all_tiles
-    logger.info("SUCCESS: Imported from extract_tile_entities_wow_rev4")
-except Exception as e: logger.error(f"FAILED Import from extract_tile_entities_wow_rev4: {e}", exc_info=True)
-logger.info("--- Finished Custom Module Imports ---")
-
-# --- Post-Import Checks ---
-if ConstructionAnalyzer and Config and DrawingManager: logger.info("ConstructionAnalyzer, Config, DrawingManager appear loaded.")
-else: logger.error("One or more from construction_drawing_analyzer failed to load.")
-if ensure_dir and save_tiles_with_metadata and ensure_landscape: logger.info("tile_generator_wow functions appear loaded.")
-else: logger.error("One or more from tile_generator_wow failed to load.")
-if convert_from_path: logger.info("pdf2image function appears loaded.")
-else: logger.error("pdf2image failed to load.")
-if analyze_all_tiles and callable(analyze_all_tiles): logger.info("Global 'analyze_all_tiles' function is available and callable after imports.")
-else: logger.error("Global 'analyze_all_tiles' function is NOT available or not callable after import block.")
-
-
-app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
-logger.info("CORS configured.")
-
-# --- Configuration and Path Setup ---
-fallback_dir_default = Path(os.path.dirname(os.path.abspath(__file__))).resolve()
-UPLOAD_FOLDER_DEFAULT = fallback_dir_default / 'uploads'
-TEMP_UPLOAD_FOLDER_DEFAULT = UPLOAD_FOLDER_DEFAULT / 'temp_uploads'
-DRAWINGS_OUTPUT_DIR_DEFAULT = fallback_dir_default / 'processed_drawings'
-MEMORY_STORE_DIR_DEFAULT = fallback_dir_default / 'memory_store'
-DATABASE_DIR_DEFAULT = fallback_dir_default / 'database'
-UPLOAD_FOLDER = UPLOAD_FOLDER_DEFAULT
-TEMP_UPLOAD_FOLDER = TEMP_UPLOAD_FOLDER_DEFAULT
-DRAWINGS_OUTPUT_DIR = DRAWINGS_OUTPUT_DIR_DEFAULT
-MEMORY_STORE_DIR = MEMORY_STORE_DIR_DEFAULT
-DATABASE_DIR = DATABASE_DIR_DEFAULT
-
+# --- Path Setup ---
 try:
-    base_dir = os.environ.get('APP_BASE_DIR', '/app')
-    if Config:
-        Config.configure(base_dir=base_dir)
-        logger.info(f"Configured base directory using Config: {Config.BASE_DIR}")
-        UPLOAD_FOLDER = os.path.join(Config.BASE_DIR, 'uploads')
-        TEMP_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, 'temp_uploads')
-        DRAWINGS_OUTPUT_DIR = Path(Config.DRAWINGS_DIR).resolve()
-        MEMORY_STORE_DIR = Path(Config.MEMORY_STORE).resolve()
-        DATABASE_DIR = Path(os.path.join(Config.BASE_DIR, 'database')).resolve()
-    else:
-        logger.error("Config class not available from import, using fallback paths.")
-        logger.warning(f"Using fallback directories based on: {fallback_dir_default}")
+    # Add the current directory to Python path
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.append(current_dir)
+        
+    # Set up logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - UI - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Path and logging setup complete")
+except ImportError as e:
+    print(f"Error setting up paths: {e}")
+    sys.exit(1)
+
+# --- Import API Client and UI Components ---
+try:
+    # Import api_client.py from ui folder (root level)
+    from api_client import (
+        health_check as check_backend_health,
+        get_drawings,
+        delete_drawing,
+        upload_drawing,
+        start_analysis as analyze_drawings,
+        get_job_status,
+        get_job_logs  # New function to get detailed logs
+    )
+    
+    # Import components from components folder
+    from components.control_row import control_row
+    from components.drawing_list import drawing_list
+    from components.progress_bar import progress_indicator
+    from components.query_box import query_box
+    from components.results_pane import results_pane
+    from components.upload_drawing import upload_drawing_component
+    from components.log_console import log_console  # Component for log display
+    
+    logger.info("Successfully imported UI components and API client")
+except ImportError as e:
+    logger.error(f"Failed to import UI components or API client: {e}")
+    st.error(f"Failed to load UI components: {e}")
+    sys.exit(1)
 except Exception as e:
-    logger.error(f"CRITICAL: Error during Config setup: {e}", exc_info=True)
-    UPLOAD_FOLDER = UPLOAD_FOLDER_DEFAULT
-    TEMP_UPLOAD_FOLDER = TEMP_UPLOAD_FOLDER_DEFAULT
-    DRAWINGS_OUTPUT_DIR = DRAWINGS_OUTPUT_DIR_DEFAULT
-    MEMORY_STORE_DIR = MEMORY_STORE_DIR_DEFAULT
-    DATABASE_DIR = DATABASE_DIR_DEFAULT
-    logger.warning(f"Using fallback directories due to error, based on: {fallback_dir_default}")
+    logger.error(f"Unexpected error during imports: {e}", exc_info=True)
+    st.error(f"Unexpected error during startup: {e}")
+    sys.exit(1)
 
-logger.info(f"Final Uploads directory: {UPLOAD_FOLDER}")
-logger.info(f"Final Temporary uploads directory: {TEMP_UPLOAD_FOLDER}")
-logger.info(f"Final Processed drawings directory: {DRAWINGS_OUTPUT_DIR}")
-logger.info(f"Final Memory store directory: {MEMORY_STORE_DIR}")
-logger.info(f"Final Database directory: {DATABASE_DIR}")
-
-# Flask App Config
-ALLOWED_EXTENSIONS = {'pdf'}
-app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
-app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_UPLOAD_MB', 100)) * 1024 * 1024
-logger.info(f"Max upload size: {app.config['MAX_CONTENT_LENGTH'] / 1024 / 1024} MB")
-
-# Processing Settings
-MAX_RETRIES = int(os.environ.get('API_MAX_RETRIES', 5))
-MAX_BACKOFF = int(os.environ.get('API_MAX_BACKOFF_SECONDS', 120))
-ANALYSIS_BATCH_SIZE = int(os.environ.get('ANALYSIS_BATCH_SIZE', 3))
-
-# --- Process phases (Corrected Syntax) ---
-PROCESS_PHASES = {
-    "INIT": "🚀 INITIALIZATION",
-    "QUEUED": "⏳ QUEUED",
-    "CONVERTING": "📄 CONVERTING",
-    "TILING": "🖼️ TILING",
-    "ANALYZING_LEGENDS": "🔍 ANALYZING LEGENDS",
-    "ANALYZING_CONTENT": "🧩 ANALYZING CONTENT",
-    "COMPLETE": "✨ COMPLETE",
-    "FAILED": "❌ FAILED",
-    "DISCOVERY": "🔍 DISCOVERY",
-    "ANALYSIS": "🧩 ANALYSIS",
-    "CORRELATION": "🔗 CORRELATION",
-    "SYNTHESIS": "💡 SYNTHESIS",
-}
-
-# --- Create required directories ---
-try:
-    if DRAWINGS_OUTPUT_DIR: os.makedirs(DRAWINGS_OUTPUT_DIR, exist_ok=True)
-    if MEMORY_STORE_DIR: os.makedirs(MEMORY_STORE_DIR, exist_ok=True)
-    if UPLOAD_FOLDER: os.makedirs(Path(UPLOAD_FOLDER), exist_ok=True)
-    if TEMP_UPLOAD_FOLDER: os.makedirs(Path(TEMP_UPLOAD_FOLDER), exist_ok=True)
-    if DATABASE_DIR: os.makedirs(Path(DATABASE_DIR), exist_ok=True)
-    logger.info(f"Ensured directories exist.")
-except Exception as e:
-    logger.error(f"Error creating required directories: {e}", exc_info=True)
-
-# Create global instances
-analyzer = None
-drawing_manager = None
-try:
-    if ConstructionAnalyzer: analyzer = ConstructionAnalyzer()
-    else: logger.error("Skipping ConstructionAnalyzer instantiation - import failed.")
-    if DrawingManager and DRAWINGS_OUTPUT_DIR:
-        if isinstance(DRAWINGS_OUTPUT_DIR, Path) and DRAWINGS_OUTPUT_DIR.is_dir():
-             drawing_manager = DrawingManager(DRAWINGS_OUTPUT_DIR)
-        else: logger.error(f"DRAWINGS_OUTPUT_DIR ('{DRAWINGS_OUTPUT_DIR}') is not a valid directory. Cannot initialize DrawingManager.")
-    elif not DrawingManager: logger.error("Skipping DrawingManager instantiation - import failed.")
-    else: logger.error("Skipping DrawingManager instantiation - DRAWINGS_OUTPUT_DIR not set.")
-    if analyzer and drawing_manager: logger.info("Successfully created analyzer and drawing_manager instances.")
-    else: logger.warning("Could not create analyzer and/or drawing_manager instances.")
-except Exception as e:
-    logger.error(f"ERROR INITIALIZING analyzer/drawing_manager: {str(e)}", exc_info=True)
-    analyzer = None; drawing_manager = None
-
-# Initialize Transformer (optional)
-intent_classifier = None
-try:
-    if os.environ.get('ENABLE_INTENT_CLASSIFIER', 'false').lower() == 'true':
-        from transformers import pipeline; import torch; device = 0 if torch.cuda.is_available() else -1
-        intent_classifier = pipeline("text-classification", model="distilbert-base-uncased", device=device, top_k=None)
-        logger.info(f"Loaded DistilBERT for intent filtering on {'GPU' if device == 0 else 'CPU'}.")
-    else: logger.info("Intent classifier (transformer) is disabled.")
-except Exception as e: logger.warning(f"Failed to load transformer: {e}. Intent filtering disabled.")
-
-# --- Database Setup for Job Persistence ---
-DB_PATH = os.path.join(DATABASE_DIR, 'jobs.db')
-DB_SCHEMA = '''
-CREATE TABLE IF NOT EXISTS jobs (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    status TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    progress INTEGER DEFAULT 0,
-    total_batches INTEGER DEFAULT 0,
-    completed_batches INTEGER DEFAULT 0,
-    current_phase TEXT,
-    result TEXT,
-    error TEXT,
-    details TEXT
-);
-
-CREATE TABLE IF NOT EXISTS job_messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    message TEXT NOT NULL,
-    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
-);
-'''
-
-def init_database():
-    """Initialize the SQLite database for job persistence."""
+# --- Helper Function for Refreshing Drawings ---
+def refresh_drawings():
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.executescript(DB_SCHEMA)
-        conn.commit()
-        conn.close()
-        logger.info(f"Database initialized at {DB_PATH}")
+        # Call the /drawings endpoint through the API client
+        response = get_drawings()
+        
+        # Process the response - extract the 'drawings' array from the response
+        if isinstance(response, dict) and "drawings" in response:
+            st.session_state.drawings = response["drawings"]
+            st.session_state.drawings_last_updated = time.time()
+            logger.info(f"Refreshed drawings list, found {len(st.session_state.drawings)} drawings")
+            return True
+        else:
+            logger.error(f"Unexpected response format from get_drawings(): {response}")
+            return False
     except Exception as e:
-        logger.error(f"Failed to initialize database: {e}", exc_info=True)
+        logger.error(f"Failed to refresh drawings: {e}", exc_info=True)
+        return False
 
-# Initialize database on startup
-init_database()
-
-# --- Database Access Functions ---
-def get_db_connection():
-    """Get a database connection with row factory enabled."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def json_serializable(value):
-    """Make a value JSON serializable."""
-    if isinstance(value, (str, int, float, bool, type(None))):
-        return value
-    elif isinstance(value, (list, tuple)):
-        return [json_serializable(x) for x in value]
-    elif isinstance(value, dict):
-        return {str(k): json_serializable(v) for k, v in value.items()}
-    else:
-        return str(value)
-
-def create_job(job_data):
-    """Create a new job in the database."""
+# --- Enhanced Job Status Tracking ---
+def get_detailed_job_status(job_id: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """
+    Gets both job status and detailed logs for better progress tracking.
+    
+    Returns:
+        Tuple containing (job_status, job_logs)
+    """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # Get basic job status from /job-status endpoint
+        job_status = get_job_status(job_id)
         
-        # Prepare data for the jobs table
-        job_id = job_data.get('id', str(uuid.uuid4()))
-        details = {k: v for k, v in job_data.items() 
-                if k not in ('id', 'type', 'status', 'created_at', 'updated_at', 
-                            'progress', 'total_batches', 'completed_batches', 
-                            'current_phase', 'result', 'error', 'progress_messages')}
-        
-        # Insert into jobs table
-        cursor.execute('''
-        INSERT INTO jobs (
-            id, type, status, created_at, updated_at, 
-            progress, total_batches, completed_batches, 
-            current_phase, result, error, details
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            job_id,
-            job_data.get('type', 'unknown'),
-            job_data.get('status', 'created'),
-            job_data.get('created_at', datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z'),
-            job_data.get('updated_at', datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z'),
-            job_data.get('progress', 0),
-            job_data.get('total_batches', 0),
-            job_data.get('completed_batches', 0),
-            job_data.get('current_phase', PROCESS_PHASES.get('INIT')),
-            json.dumps(json_serializable(job_data.get('result', None))) if job_data.get('result') else None,
-            job_data.get('error', None),
-            json.dumps(details) if details else None
-        ))
-        
-        # Insert initial progress message if provided
-        if 'progress_messages' in job_data and isinstance(job_data['progress_messages'], list):
-            for message in job_data['progress_messages']:
-                timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z'
-                cursor.execute('''
-                INSERT INTO job_messages (job_id, timestamp, message)
-                VALUES (?, ?, ?)
-                ''', (job_id, timestamp, message))
-        
-        conn.commit()
-        logger.info(f"Created job {job_id} in database")
-        return job_id
-    except Exception as e:
-        logger.error(f"Error creating job in database: {e}", exc_info=True)
-        raise
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def update_job(job_id, **kwargs):
-    """Update a job in the database."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Prepare update fields
-        update_fields = []
-        update_values = []
-        
-        # Process regular fields
-        for key in ('status', 'progress', 'completed_batches', 'current_phase', 'error'):
-            if key in kwargs:
-                update_fields.append(f"{key} = ?")
-                update_values.append(kwargs[key])
-        
-        # Process JSON fields
-        if 'result' in kwargs:
-            update_fields.append("result = ?")
-            update_values.append(json.dumps(json_serializable(kwargs['result'])))
-        
-        # Process details - we'll merge with existing details
-        if any(k for k in kwargs.keys() if k not in ('status', 'progress', 'completed_batches', 
-                                                   'current_phase', 'error', 'result', 
-                                                   'progress_message', 'updated_at')):
-            # Get existing details
-            cursor.execute("SELECT details FROM jobs WHERE id = ?", (job_id,))
-            row = cursor.fetchone()
-            if row and row['details']:
-                existing_details = json.loads(row['details'])
+        # Get detailed logs from /job-logs endpoint
+        try:
+            # Get logs since the last one we saw
+            last_log_id = st.session_state.get(f"last_log_id_{job_id}", None)
+            logs_response = get_job_logs(job_id, limit=100, since_id=last_log_id)
+            
+            # Extract logs from response
+            if isinstance(logs_response, dict) and "logs" in logs_response:
+                logs = logs_response.get("logs", [])
             else:
-                existing_details = {}
+                logger.warning(f"Unexpected format from get_job_logs: {logs_response}")
+                logs = []
             
-            # Merge with new details
-            new_details = {k: v for k, v in kwargs.items() 
-                         if k not in ('status', 'progress', 'completed_batches', 
-                                     'current_phase', 'error', 'result', 
-                                     'progress_message', 'updated_at')}
-            existing_details.update(new_details)
-            
-            # Update details field
-            update_fields.append("details = ?")
-            update_values.append(json.dumps(existing_details))
+            # Update the last seen log ID if we have logs
+            if logs and len(logs) > 0:
+                st.session_state[f"last_log_id_{job_id}"] = logs[0].get("id")
+        except Exception as log_e:
+            logger.warning(f"Could not fetch detailed logs: {log_e}")
+            logs = []
         
-        # Always update the updated_at timestamp
-        update_fields.append("updated_at = ?")
-        update_values.append(datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z')
+        # Extract tile processing information
+        tile_info = extract_tile_info(job_status, logs)
+        if tile_info:
+            # Update session state with tile information
+            st.session_state[f"tile_info_{job_id}"] = tile_info
+        else:
+            # Use cached tile info if available
+            tile_info = st.session_state.get(f"tile_info_{job_id}", {})
         
-        # Execute update if we have fields to update
-        if update_fields:
-            query = f"UPDATE jobs SET {', '.join(update_fields)} WHERE id = ?"
-            update_values.append(job_id)
-            cursor.execute(query, update_values)
+        # Add tile info to job status
+        if job_status:
+            job_status["tile_info"] = tile_info
         
-        # Add progress message if provided
-        if 'progress_message' in kwargs and kwargs['progress_message']:
-            timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z'
-            cursor.execute('''
-            INSERT INTO job_messages (job_id, timestamp, message)
-            VALUES (?, ?, ?)
-            ''', (job_id, timestamp, kwargs['progress_message']))
+        # Extract API connection status
+        api_status = extract_api_status(logs)
+        if job_status:
+            job_status["api_status"] = api_status
         
-        conn.commit()
-        logger.debug(f"Updated job {job_id} in database")
+        # IMPORTANT FIX: Override status if completion is detected in logs
+        if job_status and check_for_completion(logs):
+            job_status["status"] = "completed"
+            job_status["current_phase"] = "✨ COMPLETE"
+        
+        return job_status, logs
     except Exception as e:
-        logger.error(f"Error updating job in database: {e}", exc_info=True)
-        raise
-    finally:
-        if 'conn' in locals():
-            conn.close()
+        logger.error(f"Error getting detailed job status: {e}", exc_info=True)
+        return None, []
 
-def get_job(job_id, include_messages=True):
-    """Get a job from the database with its messages."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get job data
-        cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
-        job_row = cursor.fetchone()
-        
-        if not job_row:
-            return None
-        
-        # Convert row to dict
-        job_data = dict(job_row)
-        
-        # Parse JSON fields
-        if job_data.get('result'):
-            try:
-                job_data['result'] = json.loads(job_data['result'])
-            except:
-                job_data['result'] = None
-        
-        if job_data.get('details'):
-            try:
-                details = json.loads(job_data['details'])
-                # Merge details into job data
-                for k, v in details.items():
-                    if k not in job_data:
-                        job_data[k] = v
-            except:
-                pass
-            
-        # Remove details field from output
-        if 'details' in job_data:
-            del job_data['details']
-        
-        # Get progress messages if requested
-        if include_messages:
-            cursor.execute("SELECT timestamp, message FROM job_messages WHERE job_id = ? ORDER BY id", (job_id,))
-            messages = [f"{row['timestamp']} - {row['message']}" for row in cursor.fetchall()]
-            job_data['progress_messages'] = messages
-        
-        return job_data
-    except Exception as e:
-        logger.error(f"Error getting job from database: {e}", exc_info=True)
-        return None
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def list_active_jobs():
-    """List active jobs (queued or processing)."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT id FROM jobs WHERE status IN ('queued', 'processing')")
-        job_ids = [row['id'] for row in cursor.fetchall()]
-        
-        active_jobs = {}
-        for job_id in job_ids:
-            job_data = get_job(job_id, include_messages=False)
-            if job_data:
-                active_jobs[job_id] = job_data
-        
-        return active_jobs
-    except Exception as e:
-        logger.error(f"Error listing active jobs: {e}", exc_info=True)
-        return {}
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def cleanup_old_jobs(hours=24):
-    """Clean up completed/failed jobs older than the specified hours."""
-    try:
-        conn = get_db_connection()
-        cutoff_time = (datetime.datetime.now(datetime.timezone.utc) - 
-                     datetime.timedelta(hours=hours)).isoformat(timespec='milliseconds') + 'Z'
-        
-        # Delete old jobs
-        cursor = conn.cursor()
-        cursor.execute("""
-        DELETE FROM jobs 
-        WHERE status IN ('completed', 'failed') 
-        AND updated_at < ?
-        """, (cutoff_time,))
-        
-        deleted_count = cursor.rowcount
-        conn.commit()
-        
-        if deleted_count > 0:
-            logger.info(f"Cleaned up {deleted_count} old jobs")
-        
-        return deleted_count
-    except Exception as e:
-        logger.error(f"Error cleaning up old jobs: {e}", exc_info=True)
-        return 0
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-# --- Utility Functions ---
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def verify_drawing_files(drawing_name):
-    # (Full implementation)
-    if not drawing_manager: return {"all_required": False, "error": "Drawing manager not ready"}
-    sheet_output_dir = Path(drawing_manager.drawings_dir) / drawing_name
-    if not sheet_output_dir.is_dir(): return {"all_required": False, "error": "Drawing directory not found"}
-    expected = {
-        "metadata": sheet_output_dir / f"{drawing_name}_tile_metadata.json",
-        "tile_analysis": sheet_output_dir / f"{drawing_name}_tile_analysis.json",
-        "legend_knowledge": sheet_output_dir / f"{drawing_name}_legend_knowledge.json",
-        "drawing_goals": sheet_output_dir / f"{drawing_name}_drawing_goals.json",
-        "general_notes": sheet_output_dir / f"{drawing_name}_general_notes_analysis.json",
-        "elevation": sheet_output_dir / f"{drawing_name}_elevation_analysis.json",
-        "detail": sheet_output_dir / f"{drawing_name}_detail_analysis.json",
+def extract_tile_info(job_status: Dict[str, Any], logs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Extract information about tile processing from logs and job status.
+    
+    Returns a dict with:
+    - total_tiles: Total number of tiles detected
+    - processed_tiles: Number of tiles processed so far
+    - current_tile: Name of the current tile being processed
+    - phase: Current processing phase
+    """
+    tile_info = {
+        "total_tiles": 0,
+        "processed_tiles": 0,
+        "current_tile": "",
+        "phase": ""
     }
-    status = {key: path.exists() for key, path in expected.items()}
-    has_analysis = (status.get("tile_analysis", False) or status.get("general_notes", False) or status.get("elevation", False) or status.get("detail", False))
-    status["all_required"] = status.get("metadata", False) and status.get("legend_knowledge", False) and has_analysis
-    logger.info(f"File verification for {drawing_name}: {status}")
-    return status
-
-# --- Job Management Functions ---
-def update_job_status(job_id, **kwargs):
-    """Update job status and add progress message if provided."""
+    
     try:
-        # Update the job in the database
-        update_job(job_id, **kwargs)
+        # Check job status and progress messages
+        if not job_status or not isinstance(job_status, dict):
+            return tile_info
         
-        # Log the update (but not the full result)
-        log_update = {k:v for k,v in kwargs.items() if k not in ['result', 'progress_messages']}
-        job = get_job(job_id, include_messages=False)
-        if job:
-            logger.info(f"Job {job_id} updated: Status='{job.get('status')}', Progress={job.get('progress', 0)}%, Details={log_update}")
-        else:
-            logger.warning(f"Attempted to update status for unknown job_id: {job_id}")
+        # Get progress messages
+        messages = job_status.get("progress_messages", [])
+        
+        # Try to find total tile count
+        for message in messages:
+            if "Generated" in message and "tiles" in message:
+                match = re.search(r"Generated (\d+) tiles", message)
+                if match:
+                    tile_info["total_tiles"] = int(match.group(1))
+                    break
+        
+        # Get current phase
+        tile_info["phase"] = job_status.get("current_phase", "")
+        
+        # Process logs to find current tile and count processed tiles
+        processed_tiles_set = set()
+        current_tile = ""
+        
+        # Convert logs to messages if needed
+        log_messages = []
+        if isinstance(logs, list):
+            for log in logs:
+                if isinstance(log, dict) and "message" in log:
+                    log_messages.append(log["message"])
+                elif isinstance(log, str):
+                    log_messages.append(log)
+        
+        # Add progress messages
+        log_messages.extend(messages)
+        
+        # Process all messages
+        for message in log_messages:
+            # Look for tile processing messages
+            if "Analyzing content tile" in message or "Analyzing legend tile" in message:
+                match = re.search(r"Analyzing (?:content|legend) tile ([^\s]+)", message)
+                if match:
+                    tile_name = match.group(1)
+                    processed_tiles_set.add(tile_name)
+                    current_tile = tile_name
+        
+        # Update tile info
+        tile_info["processed_tiles"] = len(processed_tiles_set)
+        tile_info["current_tile"] = current_tile
+        
+        return tile_info
     except Exception as e:
-        logger.error(f"Error updating job status: {e}", exc_info=True)
+        logger.error(f"Error extracting tile info: {e}", exc_info=True)
+        return tile_info
 
-def create_analysis_job(query, drawings, use_cache):
-    """Create a new analysis job."""
-    try:
-        total_batches = (len(drawings) + ANALYSIS_BATCH_SIZE - 1) // ANALYSIS_BATCH_SIZE if drawings else 0
-        
-        # Create job data
-        job_data = {
-            "id": str(uuid.uuid4()),
-            "type": "analysis",
-            "query": query,
-            "drawings": drawings,
-            "use_cache": use_cache,
-            "status": "queued",
-            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
-            "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
-            "progress": 0,
-            "total_batches": total_batches,
-            "completed_batches": 0,
-            "current_batch": None,
-            "current_phase": PROCESS_PHASES["QUEUED"],
-            "progress_messages": [f"{datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds')}Z - {PROCESS_PHASES['QUEUED']}: Analyze {len(drawings)} drawing(s)"],
-            "result": None,
-            "error": None
-        }
-        
-        # Create the job in the database
-        job_id = create_job(job_data)
-        logger.info(f"Created analysis job {job_id} for query: {query[:50]}...")
-        
-        return job_id
-    except Exception as e:
-        logger.error(f"Error creating analysis job: {e}", exc_info=True)
-        raise
-
-# --- PDF Processing (Now runs in background) ---
-def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_size=2048, overlap_ratio=0.35):
-    # (Full implementation)
-    global analyze_all_tiles, convert_from_path, ensure_landscape, save_tiles_with_metadata, ensure_dir
-    pdf_path_obj = Path(temp_file_path); safe_original_filename = werkzeug.utils.secure_filename(original_filename)
-    sheet_name = Path(safe_original_filename).stem.replace(" ", "_").replace("-", "_").replace(".", "_")
-    sheet_output_dir = DRAWINGS_OUTPUT_DIR / sheet_name; start_time = time.time()
-    logger.info(f"[Job {job_id}] Starting processing for: {original_filename} (Sheet Name: {sheet_name})")
-    update_job_status(job_id, status="processing", progress=1, current_phase=PROCESS_PHASES["INIT"], progress_message="🚀 Starting PDF processing")
-    try:
-        if not ensure_dir: raise ImportError("ensure_dir function not available due to import error.")
-        ensure_dir(sheet_output_dir); logger.info(f"[Job {job_id}] Output directory ensured: {sheet_output_dir}")
-        update_job_status(job_id, current_phase=PROCESS_PHASES["CONVERTING"], progress=5, progress_message=f"📄 Converting {original_filename} to image...")
-        full_image = None
-        if not convert_from_path: raise ImportError("convert_from_path function not available due to import error.")
-        try: # Main conversion
-            file_size = os.path.getsize(temp_file_path); logger.info(f"[Job {job_id}] PDF file size: {file_size / 1024 / 1024:.2f} MB")
-            if file_size == 0: raise Exception("PDF file is empty")
-            logger.info(f"[Job {job_id}] Using DPI: {dpi}")
-            conversion_start_time = time.time()
-            images = convert_from_path(str(temp_file_path), dpi=dpi)
-            conversion_time = time.time() - conversion_start_time
-            if not images: raise Exception("PDF conversion produced no images")
-            full_image = images[0]; logger.info(f"[Job {job_id}] PDF conversion successful in {conversion_time:.2f}s.")
-        except Exception as e: # Alternative conversion
-            logger.error(f"[Job {job_id}] Error converting PDF: {str(e)}", exc_info=False)
-            update_job_status(job_id, progress_message=f"⚠️ PDF conversion error: {str(e)}. Trying alternative method...")
-            try:
-                conversion_start_time = time.time()
-                images = convert_from_path(str(temp_file_path), dpi=dpi, thread_count=1)
-                conversion_time = time.time() - conversion_start_time
-                if not images: raise Exception("Alternative PDF conversion produced no images")
-                full_image = images[0]; logger.info(f"[Job {job_id}] Alternative PDF conversion successful in {conversion_time:.2f}s.")
-            except Exception as alt_e:
-                logger.error(f"[Job {job_id}] Alternative PDF conversion also failed: {str(alt_e)}", exc_info=True)
-                raise Exception(f"PDF conversion failed completely. Last error: {str(alt_e)}")
-        update_job_status(job_id, progress=15, progress_message="📐 Adjusting image orientation & saving...")
-        if not ensure_landscape: raise ImportError("ensure_landscape function not available due to import error.")
-        try: # Orientation
-            save_start_time = time.time(); full_image = ensure_landscape(full_image); full_image_path = sheet_output_dir / f"{sheet_name}.png"
-            full_image.save(str(full_image_path)); save_time = time.time() - save_start_time
-            logger.info(f"[Job {job_id}] Oriented and saved full image to {full_image_path} in {save_time:.2f}s")
-        except Exception as e: logger.error(f"[Job {job_id}] Error ensuring landscape or saving full image: {str(e)}", exc_info=True); raise Exception(f"Image orientation/saving failed: {str(e)}")
-        update_job_status(job_id, current_phase=PROCESS_PHASES["TILING"], progress=25, progress_message=f"🔳 Creating tiles for {sheet_name}...")
-        if not save_tiles_with_metadata: raise ImportError("save_tiles_with_metadata function not available due to import error.")
-        try: # Tiling
-            tile_start_time = time.time(); save_tiles_with_metadata(full_image, sheet_output_dir, sheet_name, tile_size=tile_size, overlap_ratio=overlap_ratio)
-            tile_time = time.time() - tile_start_time; metadata_file = sheet_output_dir / f"{sheet_name}_tile_metadata.json"
-            if not metadata_file.exists(): raise Exception("Tile metadata file was not created")
-            with open(metadata_file, 'r') as f: metadata = json.load(f)
-            tile_count = len(metadata.get("tiles", [])); logger.info(f"[Job {job_id}] Generated {tile_count} tiles for {sheet_name} in {tile_time:.2f}s")
-            if tile_count == 0: raise Exception("No tiles were generated")
-            update_job_status(job_id, progress=35, progress_message=f"✅ Generated {tile_count} tiles.")
-        except Exception as e: logger.error(f"[Job {job_id}] Error creating tiles: {str(e)}", exc_info=True); raise Exception(f"Tile creation failed: {str(e)}")
-        del full_image; gc.collect(); logger.info(f"[Job {job_id}] Full image object released from memory.")
-        update_job_status(job_id, current_phase=PROCESS_PHASES["ANALYZING_LEGENDS"], progress=40, progress_message=f"📊 Analyzing tiles for {sheet_name} (API calls)...")
-        if not analyze_all_tiles: raise ImportError("analyze_all_tiles function not available due to import error.")
-        else: logger.info(f"[Job {job_id}] 'analyze_all_tiles' function confirmed available for call.")
-        # Analysis loop
-        retry_count = 0; last_error = None; analysis_successful = False; analysis_start_time = time.time()
-        while retry_count < MAX_RETRIES:
-            try:
-                logger.info(f"[Job {job_id}] Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
-                update_job_status(job_id, progress_message=f"🔄 Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
-                
-                # Call the analysis function with the correct parameters
-                # FIXED: Changed to match parameters in extract_tile_entities_wow_rev4.py
-                analyze_all_tiles(
-                    sheet_folder=sheet_output_dir,
-                    sheet_name=sheet_name
-                )
-                
-                # If we reach here, analysis was successful
-                analysis_successful = True
-                logger.info(f"[Job {job_id}] Analysis completed successfully on attempt #{retry_count+1}")
-                update_job_status(job_id, progress=80, progress_message=f"✅ Analysis completed successfully")
-                break
-                
-            except (RateLimitError, APIStatusError, APITimeoutError, APIConnectionError) as api_err:
-                retry_count += 1
-                last_error = api_err
-                backoff_time = min(2 ** retry_count + random.uniform(0, 1), MAX_BACKOFF)
-                logger.warning(f"[Job {job_id}] API error during analysis (attempt {retry_count}/{MAX_RETRIES}): {str(api_err)}. Retrying in {backoff_time:.1f}s")
-                update_job_status(job_id, progress_message=f"⚠️ API error: {str(api_err)}. Retrying in {backoff_time:.1f}s ({retry_count}/{MAX_RETRIES})")
-                time.sleep(backoff_time)
-                
-            except Exception as e:
-                retry_count += 1
-                last_error = e
-                backoff_time = min(2 ** retry_count + random.uniform(0, 1), MAX_BACKOFF)
-                logger.error(f"[Job {job_id}] Error during analysis (attempt {retry_count}/{MAX_RETRIES}): {str(e)}", exc_info=True)
-                update_job_status(job_id, progress_message=f"❌ Error: {str(e)}. Retrying in {backoff_time:.1f}s ({retry_count}/{MAX_RETRIES})")
-                time.sleep(backoff_time)
-                
-        analysis_time = time.time() - analysis_start_time; logger.info(f"[Job {job_id}] Tile analysis phase took {analysis_time:.2f}s.")
-        if not analysis_successful: raise Exception(f"Tile analysis failed after {MAX_RETRIES} attempts. Last error: {str(last_error)}")
-        # Final Update
-        update_job_status(job_id, progress=99, progress_message="✔️ Verifying final files...")
-        final_status = verify_drawing_files(sheet_name); total_time = time.time() - start_time
-        result_data = {"drawing_name": sheet_name, "file_status": final_status, "processing_time_seconds": round(total_time, 2)}
-        update_job_status(job_id, status="completed", current_phase=PROCESS_PHASES["COMPLETE"], progress=100, result=result_data, progress_message=f"✅ Successfully processed {original_filename} in {total_time:.2f}s")
-        logger.info(f"[Job {job_id}] ✅ Successfully processed {original_filename} in {total_time:.2f}s")
-    except ImportError as imp_err:
-         total_time = time.time() - start_time
-         logger.error(f"[Job {job_id}] Processing failed due to missing function after {total_time:.2f}s: {imp_err}", exc_info=False)
-         update_job_status(job_id, status="failed", current_phase=PROCESS_PHASES["FAILED"], progress=100, error=str(imp_err), progress_message=f"❌ Processing failed due to import error: {imp_err}")
-    except Exception as e:
-        total_time = time.time() - start_time
-        logger.error(f"[Job {job_id}] Processing failed for {original_filename} after {total_time:.2f}s: {str(e)}", exc_info=True)
-        update_job_status(job_id, status="failed", current_phase=PROCESS_PHASES["FAILED"], progress=100, error=str(e), progress_message=f"❌ Processing failed after {total_time:.2f}s. Error: {str(e)}")
-    finally:
-        if os.path.exists(temp_file_path):
-             try: os.remove(temp_file_path); logger.info(f"[Job {job_id}] Cleaned up temporary upload file.")
-             except Exception as clean_e: logger.warning(f"[Job {job_id}] Failed to clean up temp file: {clean_e}")
-
-# --- Flask Routes ---
-@app.route('/health', methods=['GET'])
-def health_check():
-    status = {
-        "status": "ok",
-        "time": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
-        "imports": {
-            "construction_analyzer": ConstructionAnalyzer is not None,
-            "drawing_manager": DrawingManager is not None,
-            "config": Config is not None,
-            "tile_generator": all([ensure_dir, save_tiles_with_metadata, ensure_landscape]),
-            "pdf2image": convert_from_path is not None,
-            "tile_analyzer": analyze_all_tiles is not None and callable(analyze_all_tiles)
-        },
-        "instances": {
-            "analyzer": analyzer is not None,
-            "drawing_manager": drawing_manager is not None
-        },
-        "database": os.path.exists(DB_PATH)
+def extract_api_status(logs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Extract API connection status information from logs.
+    
+    Returns a dict with:
+    - status: "good", "warning", or "error"
+    - success_count: Number of successful API calls
+    - error_count: Number of API errors
+    - retry_count: Number of retries
+    - last_error: Last error message
+    """
+    api_status = {
+        "status": "unknown",
+        "success_count": 0,
+        "error_count": 0,
+        "retry_count": 0,
+        "last_error": ""
     }
-    return jsonify(status)
-
-@app.route('/drawings', methods=['GET'])
-def get_drawings():
-    if not drawing_manager:
-        return jsonify({"error": "Drawing manager not available"}), 500
+    
     try:
-        include_details = request.args.get('include_details', 'false').lower() == 'true'
-        logger.info(f"Getting drawings list with include_details={include_details}")
+        # Convert logs to messages if needed
+        log_messages = []
+        if isinstance(logs, list):
+            for log in logs:
+                if isinstance(log, dict) and "message" in log:
+                    log_messages.append(log["message"])
+                elif isinstance(log, str):
+                    log_messages.append(log)
         
-        try:
-            # Call the new list_drawings method (instead of the previous approach)
-            drawings = drawing_manager.list_drawings(include_details=include_details)
+        # Process all messages
+        for message in log_messages:
+            # Count successful API calls
+            if "HTTP Request: POST" in message and "HTTP/1.1 200 OK" in message:
+                api_status["success_count"] += 1
             
-            # Check if we got a valid response
-            if drawings is None:
-                logger.error("Drawing manager returned None for list_drawings")
-                drawings = []
-                
-            # Log successful retrieval
-            logger.info(f"Successfully retrieved {len(drawings)} drawings")
+            # Count errors and retries
+            if "API error" in message:
+                api_status["error_count"] += 1
+                api_status["last_error"] = message
             
-            # Return the drawings list
-            return jsonify({"drawings": drawings})
-            
-        except AttributeError as e:
-            # Fallback to get_available_drawings if list_drawings doesn't exist
-            # (This is for backward compatibility during deployment transition)
-            logger.warning(f"list_drawings method not available, falling back to get_available_drawings: {e}")
-            
-            drawings = drawing_manager.get_available_drawings()
-            logger.info(f"Fallback retrieved {len(drawings)} drawings using get_available_drawings")
-            
-            # If details were requested but we couldn't provide them, log a warning
-            if include_details:
-                logger.warning("Could not provide detailed drawing information as requested")
-                
-            return jsonify({"drawings": drawings})
+            if "Retrying" in message:
+                api_status["retry_count"] += 1
+        
+        # Determine overall status
+        if api_status["error_count"] == 0 and api_status["success_count"] > 0:
+            api_status["status"] = "good"
+        elif api_status["error_count"] > 0 and api_status["success_count"] > 0:
+            api_status["status"] = "warning"
+        elif api_status["error_count"] > 0 and api_status["success_count"] == 0:
+            api_status["status"] = "error"
+        
+        return api_status
     except Exception as e:
-        logger.error(f"Error listing drawings: {str(e)}", exc_info=True)
-        return jsonify({"error": f"Failed to list drawings: {str(e)}"}), 500
+        logger.error(f"Error extracting API status: {e}", exc_info=True)
+        return api_status
 
-@app.route('/delete_drawing/<path:drawing_name>', methods=['DELETE'])
-def delete_drawing(drawing_name):
-    if not drawing_manager:
-        return jsonify({"error": "Drawing manager not available"}), 500
-    try:
-        unquoted_name = unquote(drawing_name)
-        sheet_dir = DRAWINGS_OUTPUT_DIR / unquoted_name
-        if sheet_dir.is_dir():
-            shutil.rmtree(sheet_dir)
-            logger.info(f"Deleted drawing directory: {sheet_dir}")
-            return jsonify({"success": True, "message": f"Drawing '{unquoted_name}' deleted"})
+# --- Job Progress Visualization Functions ---
+def get_phase_status(job_status: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Analyze job status and return phase information for visualization.
+    """
+    phases = [
+        {"id": "init", "name": "Initialization", "emoji": "🚀"},
+        {"id": "convert", "name": "PDF Conversion", "emoji": "📄"},
+        {"id": "tile", "name": "Image Tiling", "emoji": "🖼️"},
+        {"id": "analyze", "name": "Content Analysis", "emoji": "🔍"},
+        {"id": "complete", "name": "Completion", "emoji": "✨"}
+    ]
+    
+    current_phase = job_status.get("current_phase", "")
+    progress = job_status.get("progress", 0)
+    status = job_status.get("status", "")
+    
+    # Map backend phase to frontend phase
+    phase_mapping = {
+        "🚀 INITIALIZATION": "init",
+        "⏳ QUEUED": "init",
+        "📄 CONVERTING": "convert",
+        "🖼️ TILING": "tile",
+        "🔍 ANALYZING LEGENDS": "analyze",
+        "🧩 ANALYZING CONTENT": "analyze",
+        "✨ COMPLETE": "complete",
+        "❌ FAILED": ""
+    }
+    
+    # Check logs for more accurate phase detection
+    tile_info = job_status.get("tile_info", {})
+    if tile_info:
+        # Override phase based on tile processing information
+        if "Analyzing content" in str(tile_info.get("current_tile", "")):
+            current_phase = "🧩 ANALYZING CONTENT"
+    
+    current_phase_id = phase_mapping.get(current_phase, "")
+    
+    # Determine the status of each phase
+    phase_statuses = []
+    found_current = False
+    
+    for phase in phases:
+        if status == "failed":
+            # If job failed, mark the current phase as failed and earlier phases as complete
+            if phase["id"] == current_phase_id:
+                phase_status = "failed"
+            elif found_current:
+                phase_status = "pending"
+            else:
+                phase_status = "complete"
+        elif phase["id"] == current_phase_id:
+            phase_status = "active"
+            found_current = True
+        elif found_current:
+            phase_status = "pending"
         else:
-            return jsonify({"error": f"Drawing '{unquoted_name}' not found"}), 404
-    except Exception as e:
-        logger.error(f"Error deleting drawing {drawing_name}: {str(e)}", exc_info=True)
-        return jsonify({"error": f"Failed to delete drawing: {str(e)}"}), 500
-
-@app.route('/analyze', methods=['POST'])
-def analyze_drawings():
-    if not analyzer or not drawing_manager:
-        return jsonify({"error": "Analyzer or drawing manager not available"}), 500
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "No JSON data provided"}), 400
-        query = data.get('query', '').strip()
-        if not query:
-            return jsonify({"error": "Query is required"}), 400
-        drawings = data.get('drawings', [])
-        if not drawings:
-            return jsonify({"error": "At least one drawing must be specified"}), 400
-        use_cache = data.get('use_cache', True)
+            phase_status = "complete"
         
-        # Create the job in the database
-        job_id = create_analysis_job(query, drawings, use_cache)
-        
-        # Start processing in background
-        analysis_thread = threading.Thread(
-            target=process_analysis_job,
-            args=(job_id,),
-            name=f"AnalysisJob-{job_id[:8]}"
-        )
-        analysis_thread.daemon = True
-        analysis_thread.start()
-        
-        # Return immediately with job ID
-        return jsonify({"job_id": job_id})
-    except Exception as e:
-        logger.error(f"Error starting analysis: {str(e)}", exc_info=True)
-        return jsonify({"error": f"Failed to start analysis: {str(e)}"}), 500
-
-@app.route('/job-status/<job_id>', methods=['GET'])
-def get_job_status(job_id):
-    try:
-        job = get_job(job_id)
-        if job:
-            return jsonify(job)
-        else:
-            return jsonify({"error": f"Job {job_id} not found"}), 404
-    except Exception as e:
-        logger.error(f"Error getting job status: {str(e)}", exc_info=True)
-        return jsonify({"error": f"Failed to get job status: {str(e)}"}), 500
-
-@app.route('/job-logs/<job_id>', methods=['GET'])
-def get_job_logs(job_id):
-    """Get detailed logs for a job."""
-    try:
-        limit = int(request.args.get('limit', 100))
-        since_id = request.args.get('since_id', None)
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        if since_id:
-            cursor.execute("""
-            SELECT id, timestamp, message FROM job_messages 
-            WHERE job_id = ? AND id > ? 
-            ORDER BY id DESC LIMIT ?
-            """, (job_id, since_id, limit))
-        else:
-            cursor.execute("""
-            SELECT id, timestamp, message FROM job_messages 
-            WHERE job_id = ? 
-            ORDER BY id DESC LIMIT ?
-            """, (job_id, limit))
-        
-        logs = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        
-        return jsonify({
-            "job_id": job_id,
-            "logs": logs,
-            "count": len(logs)
+        phase_statuses.append({
+            "id": phase["id"],
+            "name": phase["name"],
+            "emoji": phase["emoji"],
+            "status": phase_status
         })
-    except Exception as e:
-        logger.error(f"Error getting job logs: {str(e)}", exc_info=True)
-        return jsonify({"error": f"Failed to get job logs: {str(e)}"}), 500
-
-@app.route('/jobs', methods=['GET'])
-def list_jobs():
-    try:
-        active_jobs = list_active_jobs()
-        return jsonify({"active_jobs": active_jobs})
-    except Exception as e:
-        logger.error(f"Error listing jobs: {str(e)}", exc_info=True)
-        return jsonify({"error": f"Failed to list jobs: {str(e)}"}), 500
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    if not allowed_file(file.filename):
-        return jsonify({"error": f"File type not allowed. Supported types: {', '.join(ALLOWED_EXTENSIONS)}"}), 400
-    try:
-        filename = werkzeug.utils.secure_filename(file.filename)
-        os.makedirs(TEMP_UPLOAD_FOLDER, exist_ok=True)
-        temp_file_path = os.path.join(TEMP_UPLOAD_FOLDER, f"upload_{uuid.uuid4()}_{filename}")
-        file.save(temp_file_path)
-        
-        # Create job in database
-        job_data = {
-            "id": str(uuid.uuid4()),
-            "type": "conversion",
-            "filename": file.filename,
-            "status": "queued",
-            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
-            "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
-            "progress": 0,
-            "current_phase": PROCESS_PHASES["QUEUED"],
-            "progress_messages": [f"{datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds')}Z - Job created for {file.filename}"],
-            "result": None,
-            "error": None
-        }
-        job_id = create_job(job_data)
-        logger.info(f"Created job {job_id} for file {file.filename}")
-        
-        # Start processing in background
-        thread = threading.Thread(
-            target=process_pdf_job,
-            args=(temp_file_path, job_id, file.filename),
-            name=f"Upload-{job_id[:8]}"
-        )
-        thread.daemon = True
-        thread.start()
-        
-        # Return immediately with job ID
-        return jsonify({"job_id": job_id})
-    except Exception as e:
-        logger.error(f"Error during upload: {str(e)}", exc_info=True)
-        return jsonify({"error": f"Upload failed: {str(e)}"}), 500
-
-# --- Background Job Processors ---
-def process_analysis_job(job_id):
-    try:
-        # Get job from database
-        job = get_job(job_id)
-        if not job:
-            logger.error(f"Job {job_id} not found for processing")
-            return
-        
-        query = job.get("query", "")
-        drawings = job.get("drawings", [])
-        use_cache = job.get("use_cache", True)
-        
-        logger.info(f"Starting analysis job {job_id} for query: '{query[:50]}...', drawings: {len(drawings)}")
-        update_job_status(job_id, status="processing", progress=5, progress_message=f"🚀 Starting analysis of {len(drawings)} drawing(s)")
-        
-        total_batches = job.get("total_batches", 1)
-        batch_size = ANALYSIS_BATCH_SIZE
-        
-        # Store accumulated results from all batches
-        accumulated_results = {
-            "message": f"Analysis of {len(drawings)} drawing(s)",
-            "batches": []
-        }
-        
-        for batch_num in range(total_batches):
-            start_idx = batch_num * batch_size
-            end_idx = min(start_idx + batch_size, len(drawings))
-            current_batch = drawings[start_idx:end_idx]
-            
-            update_job_status(
-                job_id, 
-                current_batch=current_batch,
-                progress=5 + int(90 * batch_num / total_batches),
-                progress_message=f"📊 Processing batch {batch_num+1}/{total_batches}: {', '.join(current_batch)}"
-            )
-            
-            # Process this batch with retries
-            batch_result = process_batch_with_retry(job_id, query, current_batch, use_cache, batch_num+1, total_batches)
-            
-            # Add batch result to accumulated results
-            accumulated_results["batches"].append({
-                "batch_number": batch_num+1,
-                "drawings": current_batch,
-                "result": batch_result
-            })
-            
-            # Also preserve the analysis text from the most recent batch for backward compatibility
-            if "analysis" in batch_result:
-                accumulated_results["analysis"] = batch_result["analysis"]
-            
-            update_job_status(
-                job_id,
-                completed_batches=batch_num+1,
-                progress=5 + int(90 * (batch_num+1) / total_batches),
-                progress_message=f"✅ Completed batch {batch_num+1}/{total_batches}",
-                # Update result as we go so it's always available
-                result=accumulated_results
-            )
-        
-        # All batches complete - preserve the accumulated results
-        update_job_status(
-            job_id,
-            status="completed",
-            progress=100,
-            current_phase=PROCESS_PHASES["COMPLETE"],
-            progress_message=f"✨ Analysis complete for all {len(drawings)} drawing(s)",
-            result=accumulated_results
-        )
-        logger.info(f"Job {job_id} completed successfully")
-        
-    except Exception as e:
-        logger.error(f"Error in analysis job {job_id}: {str(e)}", exc_info=True)
-        update_job_status(
-            job_id,
-            status="failed",
-            current_phase=PROCESS_PHASES["FAILED"],
-            progress=100,
-            error=str(e),
-            progress_message=f"❌ Analysis failed: {str(e)}"
-        )
-
-def process_batch_with_retry(job_id, query, batch_drawings, use_cache, batch_number, total_batches):
-    """Process a batch of drawings with retry logic."""
-    retry_count = 0
-    max_retries = MAX_RETRIES
     
-    while retry_count < max_retries:
-        try:
-            # Check if analyzer is available
-            if not analyzer:
-                raise Exception("Analyzer not available")
-            
-            logger.info(f"[Job {job_id}] Processing batch {batch_number}/{total_batches} with {len(batch_drawings)} drawing(s)")
-            
-            # Call the actual analyze_query method from ConstructionAnalyzer
-            update_job_status(
-                job_id,
-                progress_message=f"🧩 Running analysis using ConstructionAnalyzer for query: {query[:50]}..."
-            )
-            
-            # Store results for all drawings in the batch
-            batch_results = {}
-            
-            for i, drawing_name in enumerate(batch_drawings):
-                progress = 5 + int(90 * (batch_number - 1) / total_batches) + int(90 / total_batches * (i / len(batch_drawings)))
-                update_job_status(
-                    job_id,
-                    progress=progress,
-                    progress_message=f"🔍 Analyzing drawing {drawing_name} ({i+1}/{len(batch_drawings)} in batch {batch_number})"
-                )
-            
-            # When finished processing all drawings in the batch, call analyze_query once
-            analysis_start_time = time.time()
-            response_text = analyzer.analyze_query(query, use_cache)
-            analysis_time = time.time() - analysis_start_time
-            
-            logger.info(f"[Job {job_id}] Analysis completed in {analysis_time:.2f}s for query: {query[:50]}...")
-            
-            # Update job with comprehensive analysis result
-            update_job_status(
-                job_id,
-                progress_message=f"✅ Analysis complete in {analysis_time:.2f}s",
-                result={
-                    "message": f"Successfully analyzed {len(batch_drawings)} drawing(s)",
-                    "analysis": response_text
-                }
-            )
-            
-            # Return success result
-            return {
-                "success": True, 
-                "batch_number": batch_number,
-                "analysis": response_text
+    return {
+        "phases": phase_statuses,
+        "current_phase_id": current_phase_id,
+        "progress": progress,
+        "status": status
+    }
+
+def format_time_elapsed(seconds: float) -> str:
+    """Format seconds into a human-readable time string."""
+    if seconds < 60:
+        return f"{int(seconds)} seconds"
+    elif seconds < 3600:
+        minutes = int(seconds / 60)
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    else:
+        hours = int(seconds / 3600)
+        minutes = int((seconds % 3600) / 60)
+        return f"{hours} hour{'s' if hours != 1 else ''}, {minutes} minute{'s' if minutes != 1 else ''}"
+
+def estimate_time_remaining(job_status: Dict[str, Any]) -> str:
+    """Estimate remaining time based on progress and time elapsed."""
+    try:
+        progress = job_status.get("progress", 0)
+        if progress <= 0:
+            return "Calculating..."
+        
+        created_at = job_status.get("created_at", "")
+        if not created_at:
+            return "Unknown"
+        
+        # Parse ISO timestamp
+        created_datetime = datetime.datetime.fromisoformat(created_at.rstrip('Z'))
+        if created_datetime.tzinfo is None:
+            created_datetime = created_datetime.replace(tzinfo=datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        
+        # Calculate elapsed time
+        elapsed_seconds = (now - created_datetime).total_seconds()
+        
+        # Estimate total time based on progress percentage
+        if progress < 5:  # Too early for accurate estimation
+            return "Calculating..."
+        
+        total_estimated_seconds = elapsed_seconds * 100 / progress
+        remaining_seconds = total_estimated_seconds - elapsed_seconds
+        
+        # Format remaining time
+        if remaining_seconds < 0:
+            return "Almost done..."
+        
+        return format_time_elapsed(remaining_seconds)
+    except Exception as e:
+        logger.error(f"Error estimating time: {e}")
+        return "Calculating..."
+
+# --- Check for Completion in Logs ---
+def check_for_completion(logs):
+    """Check logs for completion indicators"""
+    completion_indicators = [
+        "Analysis completed",
+        "Analysis complete",
+        "COMPLETE", 
+        "completed successfully",
+        "Completed batch",
+        "completed in",
+        "Analysis complete for all"
+    ]
+    
+    # Convert logs to a list of strings if needed
+    log_messages = []
+    if isinstance(logs, list):
+        for log in logs:
+            if isinstance(log, dict) and "message" in log:
+                log_messages.append(log["message"])
+            elif isinstance(log, str):
+                log_messages.append(log)
+    else:
+        log_messages = logs
+    
+    # Check for completion indicators
+    if log_messages:
+        for message in log_messages:
+            for indicator in completion_indicators:
+                if indicator in str(message):
+                    logger.info(f"Job completion detected in logs: {message}")
+                    return True
+    return False
+
+# --- Process Completed Job ---
+def process_completed_job(job_status):
+    """Process a completed job and extract results for display."""
+    try:
+        # Get the result object
+        result = job_status.get("result", {})
+        
+        # Store the complete result object for potential debugging
+        st.session_state.raw_job_result = result
+        
+        # If result is a string, try to parse it
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except json.JSONDecodeError:
+                # If not valid JSON, store as-is
+                st.session_state.analysis_results = result
+                logger.info(f"Stored string results: {result[:100]}...")
+                return
+        
+        # Extract analysis text from result structure
+        if isinstance(result, dict):
+            # Direct analysis field
+            if "analysis" in result:
+                st.session_state.analysis_results = result
+                logger.info(f"Stored results with direct analysis field")
+                return
+                
+            # Check for batch structure
+            if "batches" in result and isinstance(result["batches"], list) and result["batches"]:
+                for batch in result["batches"]:
+                    if isinstance(batch, dict) and "result" in batch:
+                        batch_result = batch["result"]
+                        if isinstance(batch_result, dict) and "analysis" in batch_result:
+                            # Store the entire result structure for access to both 
+                            # analysis text and technical details
+                            st.session_state.analysis_results = result
+                            logger.info(f"Stored results with batch structure")
+                            return
+        
+        # Fallback: store the whole result
+        st.session_state.analysis_results = result
+        logger.info(f"Stored raw result object: {type(result)}")
+        
+    except Exception as e:
+        logger.error(f"Error processing completed job: {e}", exc_info=True)
+        st.session_state.analysis_results = f"Error processing results: {str(e)}"
+
+# --- Initialize Session State ---
+def initialize_session_state():
+    if "backend_healthy" not in st.session_state:
+        st.session_state.backend_healthy = False
+    if "drawings" not in st.session_state:
+        st.session_state.drawings = []
+    if "drawings_last_updated" not in st.session_state:
+        st.session_state.drawings_last_updated = 0
+    if "selected_drawings" not in st.session_state:
+        st.session_state.selected_drawings = []
+    if "query" not in st.session_state:
+        st.session_state.query = ""
+    if "current_job_id" not in st.session_state:
+        st.session_state.current_job_id = None
+    if "job_status" not in st.session_state:
+        st.session_state.job_status = None
+    if "analysis_results" not in st.session_state:
+        st.session_state.analysis_results = None
+    if "raw_job_result" not in st.session_state:
+        st.session_state.raw_job_result = None
+    if "drawing_to_delete" not in st.session_state:
+        st.session_state.drawing_to_delete = None
+    if "upload_job_id" not in st.session_state:
+        st.session_state.upload_job_id = None
+    if "show_logs" not in st.session_state:
+        st.session_state.show_logs = False
+    if "log_level_filter" not in st.session_state:
+        st.session_state.log_level_filter = "INFO"
+    if "upload_success" not in st.session_state:
+        st.session_state.upload_success = False
+    if "last_poll_time" not in st.session_state:
+        st.session_state.last_poll_time = 0
+    if "left_column_expanded" not in st.session_state:
+        st.session_state.left_column_expanded = True
+    if "middle_column_expanded" not in st.session_state:
+        st.session_state.middle_column_expanded = True
+    if "all_job_logs" not in st.session_state:
+        st.session_state.all_job_logs = []
+    if "job_completed" not in st.session_state:
+        st.session_state.job_completed = False
+    if "api_active" not in st.session_state:
+        st.session_state.api_active = False
+    if "last_refresh_time" not in st.session_state:
+        st.session_state.last_refresh_time = time.time()
+    logger.info("Session state initialized")
+
+initialize_session_state()
+
+# --- Toggle Logs Display ---
+def toggle_logs_display():
+    st.session_state.show_logs = not st.session_state.show_logs
+    if st.session_state.show_logs:
+        # When showing logs, also check for and process results
+        process_results()
+    logger.info(f"Logs display toggled to: {st.session_state.show_logs}")
+
+# --- Toggle Left Column Expansion ---
+def toggle_left_column():
+    st.session_state.left_column_expanded = not st.session_state.left_column_expanded
+    logger.info(f"Left column expanded: {st.session_state.left_column_expanded}")
+
+# --- Toggle Middle Column Expansion ---
+def toggle_middle_column():
+    st.session_state.middle_column_expanded = not st.session_state.middle_column_expanded
+    logger.info(f"Middle column expanded: {st.session_state.middle_column_expanded}")
+
+# --- Set Log Level Filter ---
+def set_log_level_filter(level):
+    st.session_state.log_level_filter = level
+    logger.info(f"Log level filter set to: {level}")
+
+# --- Process Results ---
+def process_results():
+    if st.session_state.current_job_id and not st.session_state.job_completed:
+        job_status = get_job_status(st.session_state.current_job_id)
+        if job_status:
+            process_completed_job(job_status)
+            st.session_state.job_completed = True
+            if st.session_state.current_job_id:
+                st.session_state.current_job_id = None
+            logger.info("Processed results manually through button click")
+            st.rerun()
+
+# --- Main Application Logic ---
+def main():
+    # --- Page Configuration ---
+    st.set_page_config(page_title="Sanctus Videre 1.0", layout="wide", page_icon="🏗️", initial_sidebar_state="expanded")
+    
+    # --- Activity Indicator Bar ---
+    if st.session_state.api_active:
+        # Create a pulsing color effect with HTML/CSS
+        st.markdown(
+            """
+            <style>
+            @keyframes pulse {
+                0% { background-color: rgba(49, 51, 63, 0.8); }
+                50% { background-color: rgba(75, 75, 255, 0.8); }
+                100% { background-color: rgba(49, 51, 63, 0.8); }
             }
-            
-        except (RateLimitError, APIStatusError, APITimeoutError, APIConnectionError) as api_err:
-            retry_count += 1
-            backoff_time = min(2 ** retry_count + random.uniform(0, 1), MAX_BACKOFF)
-            logger.warning(f"[Job {job_id}] API error during batch {batch_number} (attempt {retry_count}/{max_retries}): {str(api_err)}. Retrying in {backoff_time:.1f}s")
-            update_job_status(
-                job_id,
-                progress_message=f"⚠️ API error in batch {batch_number}: {str(api_err)}. Retrying in {backoff_time:.1f}s ({retry_count}/{max_retries})"
-            )
-            time.sleep(backoff_time)
-            
-        except Exception as e:
-            retry_count += 1
-            backoff_time = min(2 ** retry_count + random.uniform(0, 1), MAX_BACKOFF)
-            logger.error(f"[Job {job_id}] Error during batch {batch_number} (attempt {retry_count}/{max_retries}): {str(e)}", exc_info=True)
-            update_job_status(
-                job_id,
-                progress_message=f"❌ Error in batch {batch_number}: {str(e)}. Retrying in {backoff_time:.1f}s ({retry_count}/{max_retries})"
-            )
-            time.sleep(backoff_time)
+            .indicator-bar {
+                height: 4px;
+                width: 100%;
+                background-color: rgba(49, 51, 63, 0.8);
+                margin-bottom: 10px;
+                animation: pulse 2s infinite;
+            }
+            </style>
+            <div class="indicator-bar"></div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        # Show a static bar when inactive
+        st.markdown(
+            """
+            <style>
+            .indicator-bar {
+                height: 4px;
+                width: 100%;
+                background-color: rgba(49, 51, 63, 0.8);
+                margin-bottom: 10px;
+            }
+            </style>
+            <div class="indicator-bar"></div>
+            """,
+            unsafe_allow_html=True
+        )
     
-    # If we get here, all retries failed
-    raise Exception(f"Failed to process batch {batch_number} after {max_retries} attempts")
-
-# --- Cleanup Thread ---
-def cleanup_old_jobs_thread():
-    while True:
-        try:
-            time.sleep(3600)  # Check once per hour
-            deleted_count = cleanup_old_jobs(hours=24)
-            if deleted_count > 0:
-                logger.info(f"Cleaned up {deleted_count} old jobs")
-        except Exception as e:
-            logger.error(f"Error in job cleanup thread: {str(e)}", exc_info=True)
-
-cleanup_thread = threading.Thread(target=cleanup_old_jobs_thread, name="JobCleanupThread")
-cleanup_thread.daemon = True
-cleanup_thread.start()
-
-# --- Server Start ---
-if __name__ == "__main__":
-    server_port = int(os.environ.get('PORT', 5000))
-    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
-    use_waitress = os.environ.get('USE_WAITRESS', 'true').lower() == 'true'
-    logger.info(f"Starting server on port {server_port} (Debug: {debug_mode}, Waitress: {use_waitress})")
+    # --- Title Area ---
+    st.title("Sanctus Videre 1.0")
+    st.caption("Construction Drawing Analysis Platform")
+    st.divider()
+    
+    # --- Periodic Refresh Logic ---
+    current_time = time.time()
+    should_refresh = False
+    
+    # Check if 5 seconds have passed since last refresh
+    if current_time - st.session_state.last_refresh_time >= 5:
+        st.session_state.last_refresh_time = current_time
+        should_refresh = True
+        
+        # If we have an active job, update logs and check completion
+        if st.session_state.current_job_id and not st.session_state.job_completed:
+            job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
+            
+            # Update logs
+            if job_logs:
+                log_messages = []
+                for log in job_logs:
+                    if isinstance(log, dict) and "message" in log:
+                        log_messages.append(log["message"])
+                
+                # Add to existing logs without duplicates
+                existing_logs = set(st.session_state.all_job_logs)
+                for message in log_messages:
+                    if message not in existing_logs:
+                        st.session_state.all_job_logs.append(message)
+                        existing_logs.add(message)
+            
+            # Check for completion
+            if job_status:
+                # Check status first
+                if job_status.get("status") == "completed":
+                    process_completed_job(job_status)
+                    st.session_state.job_completed = True
+                    st.session_state.current_job_id = None
+                    st.session_state.api_active = False
+                    logger.info("Job completion detected in auto-refresh (status)")
+                    st.rerun()
+                # Then check logs
+                elif check_for_completion(st.session_state.all_job_logs):
+                    process_completed_job(job_status)
+                    st.session_state.job_completed = True
+                    st.session_state.current_job_id = None
+                    st.session_state.api_active = False
+                    logger.info("Job completion detected in auto-refresh (logs)")
+                    st.rerun()
+        
+        # Also check if upload job is active and need to refresh
+        if st.session_state.upload_job_id and not st.session_state.upload_success:
+            try:
+                # Check upload job status
+                upload_status = get_job_status(st.session_state.upload_job_id)
+                if upload_status and upload_status.get("status") == "completed":
+                    logger.info("Upload job completed, refreshing drawings")
+                    st.session_state.upload_success = True
+                    st.session_state.upload_job_id = None
+                    # Refresh drawings list
+                    refresh_drawings()
+                    st.rerun()
+            except Exception as e:
+                logger.error(f"Error checking upload job status: {e}")
+    
+    # --- Backend Health Check & Initial Drawing Fetch ---
+    backend_healthy = False
     try:
-        if use_waitress:
-            import waitress
-            waitress.serve(app, host='0.0.0.0', port=server_port, threads=int(os.environ.get('WAITRESS_THREADS', 4)))
+        health_status = check_backend_health()
+        backend_healthy = health_status.get("status") == "ok"
+        if backend_healthy:
+            st.session_state.backend_healthy = True
+            # If drawings haven't been loaded or it's been over 30 seconds
+            if not st.session_state.drawings or (time.time() - st.session_state.drawings_last_updated) > 30:
+                refresh_drawings()
+            logger.info("Backend health check passed, drawings refreshed if needed")
         else:
-            app.run(host='0.0.0.0', port=server_port, debug=debug_mode)
+            st.session_state.backend_healthy = False
+            st.error("⚠️ Backend service unavailable. Please check server status.")
+            logger.error(f"Backend unhealthy: {health_status}")
     except Exception as e:
-        logger.error(f"Server failed to start: {str(e)}", exc_info=True)
+        st.session_state.backend_healthy = False
+        st.error(f"⚠️ Unable to connect to backend service: {e}")
+        logger.error(f"Backend connection error: {e}", exc_info=True)
+
+    # --- Sidebar for Upload ---
+    with st.sidebar:
+        st.header("Upload Drawing")
+        upload_result = upload_drawing_component()
+        
+        # Handle upload result, which might contain a job ID
+        if isinstance(upload_result, dict) and "job_id" in upload_result:
+            # Store the job ID for tracking
+            job_id = upload_result["job_id"]
+            logger.info(f"Upload started with job ID: {job_id}")
+            st.session_state.upload_job_id = job_id
+            st.session_state.api_active = True
+            st.rerun()
+        elif upload_result:
+            # For backward compatibility - handle simple success flag
+            st.session_state.upload_success = True
+            st.session_state.api_active = True
+            refresh_drawings()
+            st.rerun()
+    
+    # --- Three-column layout ---
+    # Create three columns with flexible widths
+    # Determine column widths based on expansion state
+    left_width = 1 if st.session_state.left_column_expanded else 0.5
+    middle_width = 1 if st.session_state.middle_column_expanded else 0.5
+    right_width = 2  # Right column always gets more space
+    
+    col1, col2, col3 = st.columns([left_width, middle_width, right_width])
+    
+    # --- Left Column: Drawing Selection (Collapsible) ---
+    with col1:
+        # Collapsible header
+        left_col_header = st.container()
+        with left_col_header:
+            col1a, col1b = st.columns([5, 1])
+            with col1a:
+                st.subheader("Select Drawings")
+            with col1b:
+                # Toggle button for left column
+                if st.button("↔️", key="toggle_left_col", help="Expand/Collapse"):
+                    toggle_left_column()
+                    st.rerun()
+        
+        # If expanded, show full content, otherwise show minimal content
+        if st.session_state.left_column_expanded:
+            # --- Deletion Confirmation UI ---
+            if st.session_state.drawing_to_delete:
+                st.warning(f"**Confirm Deletion:** Are you sure you want to permanently delete `{st.session_state.drawing_to_delete}`?")
+                confirm_col, cancel_col = st.columns(2)
+                with confirm_col:
+                    if st.button("Yes, Delete", type="primary", key="confirm_delete_button", use_container_width=True):
+                        try:
+                            target_drawing = st.session_state.drawing_to_delete
+                            logger.info(f"Attempting to delete drawing: {target_drawing}")
+                            st.session_state.api_active = True
+                            
+                            # Call the delete_drawing endpoint
+                            response = delete_drawing(target_drawing)
+                            
+                            # Check if deletion was successful
+                            if isinstance(response, dict) and response.get("success") is True:
+                                st.success(f"Drawing deleted successfully.")
+                                logger.info(f"Successfully deleted drawing: {target_drawing}")
+                                st.session_state.api_active = False
+
+                                # Remove from selected drawings
+                                if isinstance(st.session_state.selected_drawings, list) and target_drawing in st.session_state.selected_drawings:
+                                    st.session_state.selected_drawings.remove(target_drawing)
+                                st.session_state.drawing_to_delete = None
+                                
+                                # Refresh drawings list after deletion
+                                refresh_drawings()
+                                st.rerun()
+                            else:
+                                # If not success==True, show the error from the backend
+                                default_error = f"Failed to delete drawing. Unknown error."
+                                error_message = response.get("error", default_error) if isinstance(response, dict) else default_error
+                                st.error(error_message) # Display the error received
+                                logger.error(f"API call delete_drawing failed for '{target_drawing}'. Response: {response}")
+                                st.session_state.api_active = False
+                        except Exception as e:
+                            # Handle exceptions during the API call itself (e.g., network error)
+                            st.error(f"Error communicating with server: {e}")
+                            logger.error(f"Exception during delete_drawing API call: {e}", exc_info=True)
+                            # Clear pending delete on communication exception and rerun
+                            st.session_state.drawing_to_delete = None
+                            st.session_state.api_active = False
+                            st.rerun()
+
+                with cancel_col:
+                    if st.button("Cancel", key="cancel_delete_button", use_container_width=True):
+                        logger.info(f"Deletion cancelled for: {st.session_state.drawing_to_delete}")
+                        st.session_state.drawing_to_delete = None # Clear pending delete state
+                        st.rerun()
+                st.divider()
+
+            # --- Drawing List Rendering ---
+            with st.container(border=True):
+                if not st.session_state.backend_healthy:
+                    st.warning("⚠️ Cannot load drawings. Backend is unavailable.")
+                elif not st.session_state.drawings:
+                    st.info("No drawings available. Upload a drawing to get started.")
+                else:
+                    # Refresh button - Enhanced for better feedback
+                    if st.button("Refresh Drawings", key="refresh_drawings", use_container_width=True):
+                        with st.spinner("Refreshing drawings..."):
+                            success = refresh_drawings()
+                            if success:
+                                st.success("Drawing list refreshed successfully!", icon="✅")
+                            else:
+                                st.error("Failed to refresh drawing list. Please try again.")
+                            time.sleep(0.5)  # Give user time to see the feedback
+                            st.rerun()
+                    
+                    # Use the drawing_list component to display and select drawings
+                    selected_drawing_names = drawing_list(st.session_state.drawings)
+                    
+                    # Update selection in session state
+                    if selected_drawing_names is not None:
+                        st.session_state.selected_drawings = selected_drawing_names
+                        
+                    # Display delete buttons for each selected drawing
+                    if st.session_state.selected_drawings:
+                        st.divider()
+                        for drawing in st.session_state.selected_drawings:
+                            if st.button(f"Delete '{drawing}'", key=f"delete_{drawing}"):
+                                st.session_state.drawing_to_delete = drawing
+                                st.rerun()
+                    else:
+                        st.caption("Select one or more drawings to analyze")
+        else:
+            # Show minimal view when collapsed
+            st.info(f"Selected: {len(st.session_state.selected_drawings)} drawing(s)")
+    
+    # --- Middle Column: Query Input & Status (Collapsible) ---
+    with col2:
+        # Collapsible header
+        middle_col_header = st.container()
+        with middle_col_header:
+            col2a, col2b = st.columns([5, 1])
+            with col2a:
+                st.subheader("Query & Status")
+            with col2b:
+                # Toggle button for middle column
+                if st.button("↔️", key="toggle_middle_col", help="Expand/Collapse"):
+                    toggle_middle_column()
+                    st.rerun()
+        
+        # If expanded, show full content, otherwise show minimal content
+        if st.session_state.middle_column_expanded:
+            # --- Query Input ---
+            query = st.text_area(
+                "Type your question here...",
+                value=st.session_state.get("query", ""),
+                height=120,
+                disabled=not st.session_state.backend_healthy,
+                placeholder="Example: What are the finishes specified for the private offices?"
+            )
+
+            # Store the query in session state
+            st.session_state.query = query
+
+            # Force new analysis checkbox
+            force_new = st.checkbox("Force new analysis (ignore cache)", value=False)
+
+            # Submit button
+            disabled = not (st.session_state.backend_healthy and 
+                        st.session_state.selected_drawings and 
+                        query.strip())
+                        
+            if st.button(
+                "Analyze Drawings",
+                type="primary",
+                disabled=disabled,
+                use_container_width=True,
+                key="analyze_button"
+            ):
+                with st.spinner("Starting analysis..."):
+                    try:
+                        st.session_state.api_active = True
+                        
+                        # Call the analyze_drawings endpoint with selected drawings
+                        response = analyze_drawings(
+                            query,
+                            st.session_state.selected_drawings,
+                            use_cache=not force_new
+                        )
+                        
+                        # Check if we got a job ID back
+                        if response and "job_id" in response:
+                            st.session_state.current_job_id = response["job_id"]
+                            st.session_state.job_status = None
+                            st.session_state.analysis_results = None
+                            st.session_state.raw_job_result = None
+                            st.session_state.job_completed = False
+                            # Reset logs for new job
+                            st.session_state.all_job_logs = []
+                            st.session_state.show_logs = False
+                            logger.info(f"Started analysis job: {st.session_state.current_job_id}")
+                            st.rerun()
+                        else:
+                            st.session_state.api_active = False
+                            st.error(f"Failed to start analysis: {response}")
+                            logger.error(f"Failed to start analysis: {response}")
+                    except Exception as e:
+                        st.session_state.api_active = False
+                        st.error(f"Error starting analysis: {e}")
+                        logger.error(f"Error starting analysis: {e}", exc_info=True)
+            
+            # Stop analysis button
+            if st.session_state.current_job_id:
+                if st.button("Stop Analysis", key="stop_analysis", use_container_width=True):
+                    st.session_state.current_job_id = None
+                    st.session_state.api_active = False
+                    st.info("Analysis stopped.")
+                    st.rerun()
+            
+            # --- Job Status & Technical Logs ---
+            if st.session_state.current_job_id:
+                # Get job status AND detailed logs from the endpoints
+                job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
+                
+                # Extract log messages from job_logs
+                log_messages = []
+                if job_logs:
+                    for log in job_logs:
+                        if isinstance(log, dict) and "message" in log:
+                            log_messages.append(log["message"])
+                
+                # Add progress messages from job status
+                progress_messages = []
+                if job_status and "progress_messages" in job_status:
+                    progress_messages = job_status.get("progress_messages", [])
+                
+                # Update the cumulative logs in session state
+                if log_messages or progress_messages:
+                    # Get existing logs
+                    all_logs = st.session_state.all_job_logs.copy()
+                    
+                    # Add new log messages
+                    for message in log_messages + progress_messages:
+                        if message not in all_logs:
+                            all_logs.append(message)
+                    
+                    # Store updated logs
+                    st.session_state.all_job_logs = all_logs
+                
+                if job_status:
+                    # Get status information directly from the job status
+                    status = job_status.get("status", "")
+                    current_phase = job_status.get("current_phase", "")
+                    progress = job_status.get("progress", 0)
+                    
+                    # Display status info similar to upload drawing component
+                    with st.container(border=True):
+                        # Status line with emoji
+                        clean_phase = re.sub(r'[^\w\s]', '', current_phase).strip() if current_phase else "Processing"
+                        
+                        # Use appropriate emoji based on phase
+                        if "COMPLETE" in current_phase or status == "completed":
+                            st.info(f"Status: ✅ COMPLETE")
+                        elif "ANALYZING" in current_phase:
+                            st.info(f"Status: 🔍 {clean_phase}")
+                        elif "QUEUED" in current_phase:
+                            st.info(f"Status: ⏳ {clean_phase}")
+                        elif "TILING" in current_phase:
+                            st.info(f"Status: 🖼️ {clean_phase}")
+                        else:
+                            st.info(f"Status: Processing - {clean_phase}")
+                        
+                        # Progress bar if available
+                        if progress > 0 and progress < 100 and status != "completed":
+                            st.progress(progress / 100)
+                        
+                        # Format and display latest update message
+                        if st.session_state.all_job_logs:
+                            latest_message = st.session_state.all_job_logs[-1]
+                            # Format message for display (remove timestamps, etc.)
+                            if isinstance(latest_message, str):
+                                if " - " in latest_message:
+                                    _, message = latest_message.split(" - ", 1)
+                                else:
+                                    message = latest_message
+                                
+                                # Clean up message and display
+                                st.caption(f"Latest Update: {message}")
+                        
+                        # Get drawing name from selection
+                        if st.session_state.selected_drawings:
+                            drawing_name = st.session_state.selected_drawings[0]
+                            
+                            # Show batch progress if applicable
+                            if "tile_info" in job_status:
+                                tile_info = job_status["tile_info"]
+                                total = tile_info.get("total_tiles", 0)
+                                processed = tile_info.get("processed_tiles", 0)
+                                
+                                if total > 0:
+                                    st.caption(f"Analyzing drawing {drawing_name}")
+                                    st.caption(f"({processed}/{total} in batch {1})")
+                        
+                        # Show Results button
+                        if st.button("Show Results", key="show_results"):
+                            process_results()
+                            st.rerun()
+                    
+                    # Show technical logs if toggled
+                    if st.session_state.show_logs:
+                        with st.expander("Technical Logs", expanded=True):
+                            # Display all collected logs
+                            for message in st.session_state.all_job_logs:
+                                st.text(message)
+                            
+                            # Button to hide logs
+                            if st.button("Hide Logs", key="hide_logs"):
+                                toggle_logs_display()
+                                st.rerun()
+                    
+                    # Check for job completion
+                    job_completed = status == "completed" or check_for_completion(st.session_state.all_job_logs)
+                        
+                    # If job is completed, process results
+                    if job_completed and not st.session_state.job_completed:
+                        logger.info("Job completion detected - processing results")
+                        st.session_state.job_completed = True  # Mark as completed to avoid reprocessing
+                        process_completed_job(job_status)
+                        st.session_state.current_job_id = None
+                        st.session_state.api_active = False
+                        st.success("Analysis completed successfully!")
+                        st.rerun()
+                    elif status == "failed":
+                        error_msg = job_status.get("error", "Unknown error")
+                        st.error(f"Analysis failed: {error_msg}")
+                        st.session_state.current_job_id = None
+                        st.session_state.api_active = False
+                else:
+                    # Fallback for when job status cannot be retrieved
+                    st.warning("Unable to retrieve job status. Retrying...")
+                    time.sleep(0.5)
+                    st.rerun()
+        else:
+            # Show minimal view when collapsed
+            if st.session_state.current_job_id:
+                st.info("Analysis in progress...")
+            elif st.session_state.analysis_results:
+                st.info("Analysis complete")
+            else:
+                st.info("Ready for query")
+    
+    # --- Right Column: Analysis Results (Always Expanded) ---
+    with col3:
+        st.subheader("Analysis Results")
+        
+        # Create a scrollable container for the results
+        results_container = st.container(border=True, height=600)
+        
+        with results_container:
+            # Display results if available
+            if st.session_state.analysis_results:
+                # Parse results for display
+                if isinstance(st.session_state.analysis_results, dict):
+                    # If the results contain an "analysis" field, display it directly
+                    if "analysis" in st.session_state.analysis_results:
+                        st.markdown(st.session_state.analysis_results["analysis"])
+                    else:
+                        # Otherwise, format as JSON
+                        st.json(st.session_state.analysis_results)
+                else:
+                    # If not a dict, display as text
+                    st.text(st.session_state.analysis_results)
+                
+                # Add a copy button with a UNIQUE key
+                if st.button("Copy Results", key="right_column_copy_results", help="Copy results to clipboard"):
+                    st.success("Results copied to clipboard!")
+            else:
+                # Show placeholder when no results are available
+                st.info("Results will appear here after analysis is complete.")
+        
+        # Clear results button
+        if st.session_state.analysis_results:
+            if st.button("Clear Results", key="clear_results"):
+                st.session_state.analysis_results = None
+                st.session_state.raw_job_result = None
+                st.session_state.job_completed = False
+                st.rerun()
+
+
+# --- Run the App ---
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        st.error(f"Application error: {e}")
+        logger.error(f"Application error: {e}", exc_info=True)
