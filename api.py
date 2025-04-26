@@ -905,6 +905,12 @@ def process_analysis_job(job_id):
         total_batches = job.get("total_batches", 1)
         batch_size = ANALYSIS_BATCH_SIZE
         
+        # Store accumulated results from all batches
+        accumulated_results = {
+            "message": f"Analysis of {len(drawings)} drawing(s)",
+            "batches": []
+        }
+        
         for batch_num in range(total_batches):
             start_idx = batch_num * batch_size
             end_idx = min(start_idx + batch_size, len(drawings))
@@ -920,21 +926,34 @@ def process_analysis_job(job_id):
             # Process this batch with retries
             batch_result = process_batch_with_retry(job_id, query, current_batch, use_cache, batch_num+1, total_batches)
             
+            # Add batch result to accumulated results
+            accumulated_results["batches"].append({
+                "batch_number": batch_num+1,
+                "drawings": current_batch,
+                "result": batch_result
+            })
+            
+            # Also preserve the analysis text from the most recent batch for backward compatibility
+            if "analysis" in batch_result:
+                accumulated_results["analysis"] = batch_result["analysis"]
+            
             update_job_status(
                 job_id,
                 completed_batches=batch_num+1,
                 progress=5 + int(90 * (batch_num+1) / total_batches),
-                progress_message=f"✅ Completed batch {batch_num+1}/{total_batches}"
+                progress_message=f"✅ Completed batch {batch_num+1}/{total_batches}",
+                # Update result as we go so it's always available
+                result=accumulated_results
             )
         
-        # All batches complete
+        # All batches complete - preserve the accumulated results
         update_job_status(
             job_id,
             status="completed",
             progress=100,
             current_phase=PROCESS_PHASES["COMPLETE"],
             progress_message=f"✨ Analysis complete for all {len(drawings)} drawing(s)",
-            result={"message": f"Successfully analyzed {len(drawings)} drawing(s)"}
+            result=accumulated_results
         )
         logger.info(f"Job {job_id} completed successfully")
         
