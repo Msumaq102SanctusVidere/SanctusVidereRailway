@@ -1,4 +1,4 @@
-# --- Filename: ui/app.py (Frontend Streamlit UI - Simplified Delete Handling) ---
+# --- Filename: ui/app.py (Frontend Streamlit UI - Enhanced Progress Tracking) ---
 
 import streamlit as st
 import time
@@ -7,6 +7,8 @@ import sys
 import os
 import json
 from pathlib import Path
+import datetime
+from typing import List, Dict, Any, Tuple, Optional
 
 # --- Path Setup ---
 try:
@@ -36,7 +38,8 @@ try:
         delete_drawing,
         upload_drawing,
         start_analysis as analyze_drawings,
-        get_job_status
+        get_job_status,
+        get_job_logs  # New function to get detailed logs
     )
     
     # Import components from components folder
@@ -46,6 +49,7 @@ try:
     from components.query_box import query_box
     from components.results_pane import results_pane
     from components.upload_drawing import upload_drawing_component
+    from components.log_console import log_console  # New component for log display
     
     logger.info("Successfully imported UI components and API client")
 except ImportError as e:
@@ -67,6 +71,149 @@ def refresh_drawings():
     except Exception as e:
         logger.error(f"Failed to refresh drawings: {e}", exc_info=True)
         return False
+
+# --- Enhanced Job Status Tracking ---
+def get_detailed_job_status(job_id: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """
+    Gets both job status and detailed logs for better progress tracking.
+    
+    Returns:
+        Tuple containing (job_status, job_logs)
+    """
+    try:
+        # Get basic job status
+        job_status = get_job_status(job_id)
+        
+        # Get detailed logs
+        try:
+            # Get last 50 logs or logs since the last one we saw
+            last_log_id = st.session_state.get(f"last_log_id_{job_id}", None)
+            logs_response = get_job_logs(job_id, limit=50, since_id=last_log_id)
+            logs = logs_response.get("logs", [])
+            
+            # Update the last seen log ID if we have logs
+            if logs and len(logs) > 0:
+                st.session_state[f"last_log_id_{job_id}"] = logs[0].get("id")
+        except Exception as log_e:
+            logger.warning(f"Could not fetch detailed logs: {log_e}")
+            logs = []
+        
+        return job_status, logs
+    except Exception as e:
+        logger.error(f"Error getting detailed job status: {e}", exc_info=True)
+        return None, []
+
+# --- Job Progress Visualization Functions ---
+def get_phase_status(job_status: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Analyze job status and return phase information for visualization.
+    """
+    phases = [
+        {"id": "init", "name": "Initialization", "emoji": "🚀"},
+        {"id": "convert", "name": "PDF Conversion", "emoji": "📄"},
+        {"id": "tile", "name": "Image Tiling", "emoji": "🖼️"},
+        {"id": "analyze", "name": "Content Analysis", "emoji": "🔍"},
+        {"id": "complete", "name": "Completion", "emoji": "✨"}
+    ]
+    
+    current_phase = job_status.get("current_phase", "")
+    progress = job_status.get("progress", 0)
+    status = job_status.get("status", "")
+    
+    # Map backend phase to frontend phase
+    phase_mapping = {
+        "🚀 INITIALIZATION": "init",
+        "⏳ QUEUED": "init",
+        "📄 CONVERTING": "convert",
+        "🖼️ TILING": "tile",
+        "🔍 ANALYZING LEGENDS": "analyze",
+        "🧩 ANALYZING CONTENT": "analyze",
+        "✨ COMPLETE": "complete",
+        "❌ FAILED": ""
+    }
+    
+    current_phase_id = phase_mapping.get(current_phase, "")
+    
+    # Determine the status of each phase
+    phase_statuses = []
+    found_current = False
+    
+    for phase in phases:
+        if status == "failed":
+            # If job failed, mark the current phase as failed and earlier phases as complete
+            if phase["id"] == current_phase_id:
+                phase_status = "failed"
+            elif found_current:
+                phase_status = "pending"
+            else:
+                phase_status = "complete"
+        elif phase["id"] == current_phase_id:
+            phase_status = "active"
+            found_current = True
+        elif found_current:
+            phase_status = "pending"
+        else:
+            phase_status = "complete"
+        
+        phase_statuses.append({
+            "id": phase["id"],
+            "name": phase["name"],
+            "emoji": phase["emoji"],
+            "status": phase_status
+        })
+    
+    return {
+        "phases": phase_statuses,
+        "current_phase_id": current_phase_id,
+        "progress": progress,
+        "status": status
+    }
+
+def format_time_elapsed(seconds: float) -> str:
+    """Format seconds into a human-readable time string."""
+    if seconds < 60:
+        return f"{int(seconds)} seconds"
+    elif seconds < 3600:
+        minutes = int(seconds / 60)
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    else:
+        hours = int(seconds / 3600)
+        minutes = int((seconds % 3600) / 60)
+        return f"{hours} hour{'s' if hours != 1 else ''}, {minutes} minute{'s' if minutes != 1 else ''}"
+
+def estimate_time_remaining(job_status: Dict[str, Any]) -> str:
+    """Estimate remaining time based on progress and time elapsed."""
+    try:
+        progress = job_status.get("progress", 0)
+        if progress <= 0:
+            return "Calculating..."
+        
+        created_at = job_status.get("created_at", "")
+        if not created_at:
+            return "Unknown"
+        
+        # Parse ISO timestamp
+        created_datetime = datetime.datetime.fromisoformat(created_at.rstrip('Z'))
+        now = datetime.datetime.now(datetime.timezone.utc)
+        
+        # Calculate elapsed time
+        elapsed_seconds = (now - created_datetime).total_seconds()
+        
+        # Estimate total time based on progress percentage
+        if progress < 5:  # Too early for accurate estimation
+            return "Calculating..."
+        
+        total_estimated_seconds = elapsed_seconds * 100 / progress
+        remaining_seconds = total_estimated_seconds - elapsed_seconds
+        
+        # Format remaining time
+        if remaining_seconds < 0:
+            return "Almost done..."
+        
+        return format_time_elapsed(remaining_seconds)
+    except Exception as e:
+        logger.error(f"Error estimating time: {e}")
+        return "Calculating..."
 
 # --- Initialize Session State ---
 def initialize_session_state():
@@ -90,9 +237,23 @@ def initialize_session_state():
         st.session_state.drawing_to_delete = None
     if "upload_job_id" not in st.session_state:
         st.session_state.upload_job_id = None
+    if "show_advanced_logs" not in st.session_state:
+        st.session_state.show_advanced_logs = False
+    if "log_level_filter" not in st.session_state:
+        st.session_state.log_level_filter = "INFO"
     logger.info("Session state initialized")
 
 initialize_session_state()
+
+# --- Toggle Advanced Logs ---
+def toggle_advanced_logs():
+    st.session_state.show_advanced_logs = not st.session_state.show_advanced_logs
+    logger.info(f"Advanced logs toggled to: {st.session_state.show_advanced_logs}")
+
+# --- Set Log Level Filter ---
+def set_log_level_filter(level):
+    st.session_state.log_level_filter = level
+    logger.info(f"Log level filter set to: {level}")
 
 # --- Main Application Logic ---
 def main():
@@ -254,21 +415,126 @@ def main():
                 st.success("Analysis stopped.")
                 st.rerun()
             
-            # Display job progress or results using progress_indicator
+            # --- Enhanced Progress Display ---
             if st.session_state.current_job_id:
-                result = progress_indicator(st.session_state.current_job_id)
+                # Get detailed job status and logs
+                job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
                 
-                if result and result.get("status") == "completed":
-                    st.session_state.analysis_results = result.get("result", {})
-                    st.session_state.current_job_id = None
-                    st.success("Analysis completed successfully!")
-                elif result and result.get("status") == "failed":
-                    error_msg = result.get("error", "Unknown error")
-                    st.error(f"Analysis failed: {error_msg}")
-                    st.session_state.current_job_id = None
+                if job_status:
+                    # Store job status in session
+                    st.session_state.job_status = job_status
+                    
+                    # Progress container with phases
+                    with st.container(border=True):
+                        # Get phase status for visualization
+                        phase_status = get_phase_status(job_status)
+                        
+                        # Header with time estimation
+                        st.subheader(f"Processing Status - {job_status.get('progress', 0)}% Complete")
+                        
+                        # Time estimation
+                        time_remaining = estimate_time_remaining(job_status)
+                        st.write(f"⏱️ Estimated time remaining: {time_remaining}")
+                        
+                        # Main progress bar
+                        st.progress(job_status.get("progress", 0) / 100)
+                        
+                        # Phase visualization
+                        phase_cols = st.columns(len(phase_status["phases"]))
+                        for i, phase in enumerate(phase_status["phases"]):
+                            with phase_cols[i]:
+                                if phase["status"] == "complete":
+                                    st.markdown(f"### {phase['emoji']} ✓")
+                                elif phase["status"] == "active":
+                                    st.markdown(f"### {phase['emoji']} ⟳")
+                                elif phase["status"] == "failed":
+                                    st.markdown(f"### {phase['emoji']} ❌")
+                                else:
+                                    st.markdown(f"### {phase['emoji']} ○")
+                                st.caption(phase["name"])
+                        
+                        # Current phase description
+                        current_phase = job_status.get("current_phase", "")
+                        st.write(f"**Current Phase:** {current_phase}")
+                        
+                        # Latest progress message
+                        if "progress_messages" in job_status and job_status["progress_messages"]:
+                            latest_message = job_status["progress_messages"][-1]
+                            # Extract just the message part without timestamp
+                            if " - " in latest_message:
+                                latest_message = latest_message.split(" - ", 1)[1]
+                            st.write(f"**Latest Update:** {latest_message}")
+                        
+                        # Controls for advanced logs
+                        col1, col2, col3 = st.columns([2, 1, 1])
+                        with col1:
+                            if st.button(
+                                "🔍 " + ("Hide" if st.session_state.show_advanced_logs else "Show") + " Technical Logs", 
+                                key="toggle_logs_button"
+                            ):
+                                toggle_advanced_logs()
+                                st.rerun()
+                        
+                        with col2:
+                            if st.session_state.show_advanced_logs:
+                                log_level = st.selectbox(
+                                    "Log Level",
+                                    options=["ALL", "INFO", "WARNING", "ERROR"],
+                                    index=["ALL", "INFO", "WARNING", "ERROR"].index(st.session_state.log_level_filter),
+                                    key="log_level_selector"
+                                )
+                                if log_level != st.session_state.log_level_filter:
+                                    set_log_level_filter(log_level)
+                                    st.rerun()
+                        
+                        # Advanced logs display
+                        if st.session_state.show_advanced_logs:
+                            # Display progress messages as a log console
+                            messages = []
+                            if "progress_messages" in job_status:
+                                messages = job_status["progress_messages"]
+                            
+                            # Filter messages by log level if needed
+                            if st.session_state.log_level_filter != "ALL":
+                                filtered_messages = []
+                                for msg in messages:
+                                    if st.session_state.log_level_filter == "ERROR" and "❌" in msg:
+                                        filtered_messages.append(msg)
+                                    elif st.session_state.log_level_filter == "WARNING" and ("⚠️" in msg or "❌" in msg):
+                                        filtered_messages.append(msg)
+                                    elif st.session_state.log_level_filter == "INFO":
+                                        filtered_messages.append(msg)
+                                messages = filtered_messages
+                            
+                            # Use the log console component
+                            log_console(messages, max_height=300)
+                    
+                    # Check if job is complete or failed
+                    if job_status.get("status") == "completed":
+                        st.session_state.analysis_results = job_status.get("result", {})
+                        st.session_state.current_job_id = None
+                        st.success("Analysis completed successfully!")
+                        st.rerun()
+                    elif job_status.get("status") == "failed":
+                        error_msg = job_status.get("error", "Unknown error")
+                        st.error(f"Analysis failed: {error_msg}")
+                        st.session_state.current_job_id = None
+                else:
+                    # Fallback to standard progress indicator if detailed status not available
+                    result = progress_indicator(st.session_state.current_job_id)
+                    
+                    if result and result.get("status") in ["completed", "failed"]:
+                        st.session_state.current_job_id = None
+                        if result.get("status") == "completed":
+                            st.session_state.analysis_results = result.get("result", {})
+                            st.success("Analysis completed successfully!")
+                        else:
+                            error_msg = result.get("error", "Unknown error")
+                            st.error(f"Analysis failed: {error_msg}")
             
             # Show stored results if available
             if st.session_state.analysis_results:
+                st.header("Analysis Results")
                 results_text = json.dumps(st.session_state.analysis_results, indent=2)
                 results_pane(results_text)
                 
