@@ -6,6 +6,7 @@ import logging
 import sys
 import os
 import json
+import re
 from pathlib import Path
 import datetime
 from typing import List, Dict, Any, Tuple, Optional
@@ -49,7 +50,7 @@ try:
     from components.query_box import query_box
     from components.results_pane import results_pane
     from components.upload_drawing import upload_drawing_component
-    from components.log_console import log_console  # New component for log display
+    from components.log_console import log_console  # Component for log display
     
     logger.info("Successfully imported UI components and API client")
 except ImportError as e:
@@ -98,10 +99,153 @@ def get_detailed_job_status(job_id: str) -> Tuple[Dict[str, Any], List[Dict[str,
             logger.warning(f"Could not fetch detailed logs: {log_e}")
             logs = []
         
+        # Extract tile processing information
+        tile_info = extract_tile_info(job_status, logs)
+        if tile_info:
+            # Update session state with tile information
+            st.session_state[f"tile_info_{job_id}"] = tile_info
+        else:
+            # Use cached tile info if available
+            tile_info = st.session_state.get(f"tile_info_{job_id}", {})
+        
+        # Add tile info to job status
+        job_status["tile_info"] = tile_info
+        
+        # Extract API connection status
+        api_status = extract_api_status(logs)
+        job_status["api_status"] = api_status
+        
         return job_status, logs
     except Exception as e:
         logger.error(f"Error getting detailed job status: {e}", exc_info=True)
         return None, []
+
+def extract_tile_info(job_status: Dict[str, Any], logs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Extract information about tile processing from logs and job status.
+    
+    Returns a dict with:
+    - total_tiles: Total number of tiles detected
+    - processed_tiles: Number of tiles processed so far
+    - current_tile: Name of the current tile being processed
+    - phase: Current processing phase
+    """
+    tile_info = {
+        "total_tiles": 0,
+        "processed_tiles": 0,
+        "current_tile": "",
+        "phase": ""
+    }
+    
+    try:
+        # Check job status and progress messages
+        if not job_status or not isinstance(job_status, dict):
+            return tile_info
+        
+        # Get progress messages
+        messages = job_status.get("progress_messages", [])
+        
+        # Try to find total tile count
+        for message in messages:
+            if "Generated" in message and "tiles" in message:
+                match = re.search(r"Generated (\d+) tiles", message)
+                if match:
+                    tile_info["total_tiles"] = int(match.group(1))
+                    break
+        
+        # Get current phase
+        tile_info["phase"] = job_status.get("current_phase", "")
+        
+        # Process logs to find current tile and count processed tiles
+        processed_tiles_set = set()
+        current_tile = ""
+        
+        # Convert logs to messages if needed
+        log_messages = []
+        if isinstance(logs, list):
+            for log in logs:
+                if isinstance(log, dict) and "message" in log:
+                    log_messages.append(log["message"])
+                elif isinstance(log, str):
+                    log_messages.append(log)
+        
+        # Add progress messages
+        log_messages.extend(messages)
+        
+        # Process all messages
+        for message in log_messages:
+            # Look for tile processing messages
+            if "Analyzing content tile" in message or "Analyzing legend tile" in message:
+                match = re.search(r"Analyzing (?:content|legend) tile ([^\s]+)", message)
+                if match:
+                    tile_name = match.group(1)
+                    processed_tiles_set.add(tile_name)
+                    current_tile = tile_name
+        
+        # Update tile info
+        tile_info["processed_tiles"] = len(processed_tiles_set)
+        tile_info["current_tile"] = current_tile
+        
+        return tile_info
+    except Exception as e:
+        logger.error(f"Error extracting tile info: {e}", exc_info=True)
+        return tile_info
+
+def extract_api_status(logs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Extract API connection status information from logs.
+    
+    Returns a dict with:
+    - status: "good", "warning", or "error"
+    - success_count: Number of successful API calls
+    - error_count: Number of API errors
+    - retry_count: Number of retries
+    - last_error: Last error message
+    """
+    api_status = {
+        "status": "unknown",
+        "success_count": 0,
+        "error_count": 0,
+        "retry_count": 0,
+        "last_error": ""
+    }
+    
+    try:
+        # Convert logs to messages if needed
+        log_messages = []
+        if isinstance(logs, list):
+            for log in logs:
+                if isinstance(log, dict) and "message" in log:
+                    log_messages.append(log["message"])
+                elif isinstance(log, str):
+                    log_messages.append(log)
+        
+        # Process all messages
+        for message in log_messages:
+            # Count successful API calls
+            if "HTTP Request: POST" in message and "HTTP/1.1 200 OK" in message:
+                api_status["success_count"] += 1
+            
+            # Count errors and retries
+            if "API error" in message:
+                api_status["error_count"] += 1
+                api_status["last_error"] = message
+            
+            if "Retrying" in message:
+                api_status["retry_count"] += 1
+        
+        # Determine overall status
+        if api_status["error_count"] == 0 and api_status["success_count"] > 0:
+            api_status["status"] = "good"
+        elif api_status["error_count"] > 0 and api_status["success_count"] > 0:
+            api_status["status"] = "warning"
+        elif api_status["error_count"] > 0 and api_status["success_count"] == 0:
+            api_status["status"] = "error"
+        
+        return api_status
+    except Exception as e:
+        logger.error(f"Error extracting API status: {e}", exc_info=True)
+        return api_status
 
 # --- Job Progress Visualization Functions ---
 def get_phase_status(job_status: Dict[str, Any]) -> Dict[str, Any]:
@@ -131,6 +275,13 @@ def get_phase_status(job_status: Dict[str, Any]) -> Dict[str, Any]:
         "✨ COMPLETE": "complete",
         "❌ FAILED": ""
     }
+    
+    # Check logs for more accurate phase detection
+    tile_info = job_status.get("tile_info", {})
+    if tile_info:
+        # Override phase based on tile processing information
+        if "Analyzing content" in str(tile_info.get("current_tile", "")):
+            current_phase = "🧩 ANALYZING CONTENT"
     
     current_phase_id = phase_mapping.get(current_phase, "")
     
@@ -194,6 +345,8 @@ def estimate_time_remaining(job_status: Dict[str, Any]) -> str:
         
         # Parse ISO timestamp
         created_datetime = datetime.datetime.fromisoformat(created_at.rstrip('Z'))
+        if created_datetime.tzinfo is None:
+            created_datetime = created_datetime.replace(tzinfo=datetime.timezone.utc)
         now = datetime.datetime.now(datetime.timezone.utc)
         
         # Calculate elapsed time
@@ -457,6 +610,50 @@ def main():
                         current_phase = job_status.get("current_phase", "")
                         st.write(f"**Current Phase:** {current_phase}")
                         
+                        # Tile Processing Information
+                        tile_info = job_status.get("tile_info", {})
+                        if tile_info and tile_info.get("total_tiles", 0) > 0:
+                            total_tiles = tile_info.get("total_tiles", 0)
+                            processed_tiles = tile_info.get("processed_tiles", 0)
+                            current_tile = tile_info.get("current_tile", "")
+                            
+                            # Create progress meter for tiles
+                            if total_tiles > 0:
+                                tile_progress = min(processed_tiles / total_tiles, 1.0)
+                                st.write(f"**Tile Processing:** {processed_tiles} of {total_tiles} tiles processed ({int(tile_progress * 100)}%)")
+                                
+                                # Tile progress bar
+                                st.progress(tile_progress)
+                                
+                                # Current tile information
+                                if current_tile:
+                                    st.caption(f"Currently processing: {current_tile}")
+                        
+                        # API Connection Status
+                        api_status = job_status.get("api_status", {})
+                        api_status_value = api_status.get("status", "unknown")
+                        api_success_count = api_status.get("success_count", 0)
+                        api_error_count = api_status.get("error_count", 0)
+                        
+                        # API Status indicator
+                        st.write("**Foundation Model Connection:**")
+                        status_cols = st.columns([1, 3])
+                        with status_cols[0]:
+                            if api_status_value == "good":
+                                st.success("✓ Good")
+                            elif api_status_value == "warning":
+                                st.warning("⚠️ Issues Detected")
+                            elif api_status_value == "error":
+                                st.error("❌ Connection Problems")
+                            else:
+                                st.info("ℹ️ Unknown")
+                        
+                        with status_cols[1]:
+                            if api_success_count > 0:
+                                st.write(f"✓ {api_success_count} successful API calls")
+                            if api_error_count > 0:
+                                st.write(f"⚠️ {api_error_count} errors (with automatic retry)")
+                        
                         # Latest progress message
                         if "progress_messages" in job_status and job_status["progress_messages"]:
                             latest_message = job_status["progress_messages"][-1]
@@ -498,9 +695,9 @@ def main():
                             if st.session_state.log_level_filter != "ALL":
                                 filtered_messages = []
                                 for msg in messages:
-                                    if st.session_state.log_level_filter == "ERROR" and "❌" in msg:
+                                    if st.session_state.log_level_filter == "ERROR" and ("❌" in msg or "error" in msg.lower() or "failed" in msg.lower()):
                                         filtered_messages.append(msg)
-                                    elif st.session_state.log_level_filter == "WARNING" and ("⚠️" in msg or "❌" in msg):
+                                    elif st.session_state.log_level_filter == "WARNING" and ("⚠️" in msg or "warning" in msg.lower() or "❌" in msg or "error" in msg.lower() or "failed" in msg.lower()):
                                         filtered_messages.append(msg)
                                     elif st.session_state.log_level_filter == "INFO":
                                         filtered_messages.append(msg)
