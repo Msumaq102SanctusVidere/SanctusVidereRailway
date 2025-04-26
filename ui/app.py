@@ -73,300 +73,84 @@ def refresh_drawings():
         logger.error(f"Failed to refresh drawings: {e}", exc_info=True)
         return False
 
-# --- Enhanced Job Status Tracking ---
-def get_detailed_job_status(job_id: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+# --- Get Current Job Status ---
+def get_current_job_status(job_id: str, force_refresh: bool = False) -> Dict[str, Any]:
     """
-    Gets both job status and detailed logs for better progress tracking.
+    Get the current job status with error handling and caching.
     
+    Args:
+        job_id: The ID of the job to query
+        force_refresh: Whether to force a fresh API call
+        
     Returns:
-        Tuple containing (job_status, job_logs)
+        Dict containing the job status
     """
+    # Use cached status if available and not forcing refresh
+    if not force_refresh and "job_status" in st.session_state and st.session_state.job_status:
+        cached_status = st.session_state.job_status
+        # Only use cache if it's for the right job and fresh (less than 1 second old)
+        if (cached_status.get("id") == job_id and 
+            "cached_at" in cached_status and 
+            time.time() - cached_status["cached_at"] < 1.0):
+            return cached_status
+    
+    # Get fresh status from API
     try:
-        # Get basic job status
-        job_status = get_job_status(job_id)
-        
-        # Get detailed logs
-        try:
-            # Get last 50 logs or logs since the last one we saw
-            last_log_id = st.session_state.get(f"last_log_id_{job_id}", None)
-            logs_response = get_job_logs(job_id, limit=50, since_id=last_log_id)
-            logs = logs_response.get("logs", [])
-            
-            # Update the last seen log ID if we have logs
-            if logs and len(logs) > 0:
-                st.session_state[f"last_log_id_{job_id}"] = logs[0].get("id")
-        except Exception as log_e:
-            logger.warning(f"Could not fetch detailed logs: {log_e}")
-            logs = []
-        
-        # Extract tile processing information
-        tile_info = extract_tile_info(job_status, logs)
-        if tile_info:
-            # Update session state with tile information
-            st.session_state[f"tile_info_{job_id}"] = tile_info
+        status = get_job_status(job_id)
+        if status and isinstance(status, dict):
+            # Add cache timestamp
+            status["cached_at"] = time.time()
+            # Store in session state
+            st.session_state.job_status = status
+            return status
         else:
-            # Use cached tile info if available
-            tile_info = st.session_state.get(f"tile_info_{job_id}", {})
-        
-        # Add tile info to job status
-        job_status["tile_info"] = tile_info
-        
-        # Extract API connection status
-        api_status = extract_api_status(logs)
-        job_status["api_status"] = api_status
-        
-        return job_status, logs
+            logger.warning(f"Received invalid status for job {job_id}: {status}")
+            return {}
     except Exception as e:
-        logger.error(f"Error getting detailed job status: {e}", exc_info=True)
-        return None, []
+        logger.error(f"Error fetching job status for {job_id}: {e}", exc_info=True)
+        return {}
 
-def extract_tile_info(job_status: Dict[str, Any], logs: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Extract information about tile processing from logs and job status.
-    
-    Returns a dict with:
-    - total_tiles: Total number of tiles detected
-    - processed_tiles: Number of tiles processed so far
-    - current_tile: Name of the current tile being processed
-    - phase: Current processing phase
-    """
-    tile_info = {
-        "total_tiles": 0,
-        "processed_tiles": 0,
-        "current_tile": "",
-        "phase": ""
-    }
-    
+# --- Process Completed Jobs ---
+def process_completed_job(job_status: Dict[str, Any]) -> None:
+    """Process a completed job and extract results."""
     try:
-        # Check job status and progress messages
-        if not job_status or not isinstance(job_status, dict):
-            return tile_info
+        # Get the result object
+        result = job_status.get("result", {})
         
-        # Get progress messages
-        messages = job_status.get("progress_messages", [])
+        # Store the complete result object for debugging
+        st.session_state.raw_job_result = result
         
-        # Try to find total tile count
-        for message in messages:
-            if "Generated" in message and "tiles" in message:
-                match = re.search(r"Generated (\d+) tiles", message)
-                if match:
-                    tile_info["total_tiles"] = int(match.group(1))
-                    break
+        # If result is a string, try to parse it
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except json.JSONDecodeError:
+                # If not valid JSON, store as-is
+                st.session_state.analysis_results = result
+                return
         
-        # Get current phase
-        tile_info["phase"] = job_status.get("current_phase", "")
+        # Extract analysis text from result structure
+        if isinstance(result, dict):
+            # Direct analysis field
+            if "analysis" in result:
+                st.session_state.analysis_results = result["analysis"]
+                return
+                
+            # Check for batch structure
+            if "batches" in result and isinstance(result["batches"], list) and result["batches"]:
+                for batch in result["batches"]:
+                    if isinstance(batch, dict) and "result" in batch:
+                        batch_result = batch["result"]
+                        if isinstance(batch_result, dict) and "analysis" in batch_result:
+                            st.session_state.analysis_results = batch_result["analysis"]
+                            return
         
-        # Process logs to find current tile and count processed tiles
-        processed_tiles_set = set()
-        current_tile = ""
+        # Fallback: store the whole result
+        st.session_state.analysis_results = json.dumps(result, indent=2)
         
-        # Convert logs to messages if needed
-        log_messages = []
-        if isinstance(logs, list):
-            for log in logs:
-                if isinstance(log, dict) and "message" in log:
-                    log_messages.append(log["message"])
-                elif isinstance(log, str):
-                    log_messages.append(log)
-        
-        # Add progress messages
-        log_messages.extend(messages)
-        
-        # Process all messages
-        for message in log_messages:
-            # Look for tile processing messages
-            if "Analyzing content tile" in message or "Analyzing legend tile" in message:
-                match = re.search(r"Analyzing (?:content|legend) tile ([^\s]+)", message)
-                if match:
-                    tile_name = match.group(1)
-                    processed_tiles_set.add(tile_name)
-                    current_tile = tile_name
-        
-        # Update tile info
-        tile_info["processed_tiles"] = len(processed_tiles_set)
-        tile_info["current_tile"] = current_tile
-        
-        return tile_info
     except Exception as e:
-        logger.error(f"Error extracting tile info: {e}", exc_info=True)
-        return tile_info
-
-def extract_api_status(logs: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Extract API connection status information from logs.
-    
-    Returns a dict with:
-    - status: "good", "warning", or "error"
-    - success_count: Number of successful API calls
-    - error_count: Number of API errors
-    - retry_count: Number of retries
-    - last_error: Last error message
-    """
-    api_status = {
-        "status": "unknown",
-        "success_count": 0,
-        "error_count": 0,
-        "retry_count": 0,
-        "last_error": ""
-    }
-    
-    try:
-        # Convert logs to messages if needed
-        log_messages = []
-        if isinstance(logs, list):
-            for log in logs:
-                if isinstance(log, dict) and "message" in log:
-                    log_messages.append(log["message"])
-                elif isinstance(log, str):
-                    log_messages.append(log)
-        
-        # Process all messages
-        for message in log_messages:
-            # Count successful API calls
-            if "HTTP Request: POST" in message and "HTTP/1.1 200 OK" in message:
-                api_status["success_count"] += 1
-            
-            # Count errors and retries
-            if "API error" in message:
-                api_status["error_count"] += 1
-                api_status["last_error"] = message
-            
-            if "Retrying" in message:
-                api_status["retry_count"] += 1
-        
-        # Determine overall status
-        if api_status["error_count"] == 0 and api_status["success_count"] > 0:
-            api_status["status"] = "good"
-        elif api_status["error_count"] > 0 and api_status["success_count"] > 0:
-            api_status["status"] = "warning"
-        elif api_status["error_count"] > 0 and api_status["success_count"] == 0:
-            api_status["status"] = "error"
-        
-        return api_status
-    except Exception as e:
-        logger.error(f"Error extracting API status: {e}", exc_info=True)
-        return api_status
-
-# --- Job Progress Visualization Functions ---
-def get_phase_status(job_status: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Analyze job status and return phase information for visualization.
-    """
-    phases = [
-        {"id": "init", "name": "Initialization", "emoji": "🚀"},
-        {"id": "convert", "name": "PDF Conversion", "emoji": "📄"},
-        {"id": "tile", "name": "Image Tiling", "emoji": "🖼️"},
-        {"id": "analyze", "name": "Content Analysis", "emoji": "🔍"},
-        {"id": "complete", "name": "Completion", "emoji": "✨"}
-    ]
-    
-    current_phase = job_status.get("current_phase", "")
-    progress = job_status.get("progress", 0)
-    status = job_status.get("status", "")
-    
-    # Map backend phase to frontend phase
-    phase_mapping = {
-        "🚀 INITIALIZATION": "init",
-        "⏳ QUEUED": "init",
-        "📄 CONVERTING": "convert",
-        "🖼️ TILING": "tile",
-        "🔍 ANALYZING LEGENDS": "analyze",
-        "🧩 ANALYZING CONTENT": "analyze",
-        "✨ COMPLETE": "complete",
-        "❌ FAILED": ""
-    }
-    
-    # Check logs for more accurate phase detection
-    tile_info = job_status.get("tile_info", {})
-    if tile_info:
-        # Override phase based on tile processing information
-        if "Analyzing content" in str(tile_info.get("current_tile", "")):
-            current_phase = "🧩 ANALYZING CONTENT"
-    
-    current_phase_id = phase_mapping.get(current_phase, "")
-    
-    # Determine the status of each phase
-    phase_statuses = []
-    found_current = False
-    
-    for phase in phases:
-        if status == "failed":
-            # If job failed, mark the current phase as failed and earlier phases as complete
-            if phase["id"] == current_phase_id:
-                phase_status = "failed"
-            elif found_current:
-                phase_status = "pending"
-            else:
-                phase_status = "complete"
-        elif phase["id"] == current_phase_id:
-            phase_status = "active"
-            found_current = True
-        elif found_current:
-            phase_status = "pending"
-        else:
-            phase_status = "complete"
-        
-        phase_statuses.append({
-            "id": phase["id"],
-            "name": phase["name"],
-            "emoji": phase["emoji"],
-            "status": phase_status
-        })
-    
-    return {
-        "phases": phase_statuses,
-        "current_phase_id": current_phase_id,
-        "progress": progress,
-        "status": status
-    }
-
-def format_time_elapsed(seconds: float) -> str:
-    """Format seconds into a human-readable time string."""
-    if seconds < 60:
-        return f"{int(seconds)} seconds"
-    elif seconds < 3600:
-        minutes = int(seconds / 60)
-        return f"{minutes} minute{'s' if minutes != 1 else ''}"
-    else:
-        hours = int(seconds / 3600)
-        minutes = int((seconds % 3600) / 60)
-        return f"{hours} hour{'s' if hours != 1 else ''}, {minutes} minute{'s' if minutes != 1 else ''}"
-
-def estimate_time_remaining(job_status: Dict[str, Any]) -> str:
-    """Estimate remaining time based on progress and time elapsed."""
-    try:
-        progress = job_status.get("progress", 0)
-        if progress <= 0:
-            return "Calculating..."
-        
-        created_at = job_status.get("created_at", "")
-        if not created_at:
-            return "Unknown"
-        
-        # Parse ISO timestamp
-        created_datetime = datetime.datetime.fromisoformat(created_at.rstrip('Z'))
-        if created_datetime.tzinfo is None:
-            created_datetime = created_datetime.replace(tzinfo=datetime.timezone.utc)
-        now = datetime.datetime.now(datetime.timezone.utc)
-        
-        # Calculate elapsed time
-        elapsed_seconds = (now - created_datetime).total_seconds()
-        
-        # Estimate total time based on progress percentage
-        if progress < 5:  # Too early for accurate estimation
-            return "Calculating..."
-        
-        total_estimated_seconds = elapsed_seconds * 100 / progress
-        remaining_seconds = total_estimated_seconds - elapsed_seconds
-        
-        # Format remaining time
-        if remaining_seconds < 0:
-            return "Almost done..."
-        
-        return format_time_elapsed(remaining_seconds)
-    except Exception as e:
-        logger.error(f"Error estimating time: {e}")
-        return "Calculating..."
+        logger.error(f"Error processing completed job: {e}", exc_info=True)
+        st.session_state.analysis_results = f"Error processing results: {str(e)}"
 
 # --- Initialize Session State ---
 def initialize_session_state():
@@ -386,6 +170,8 @@ def initialize_session_state():
         st.session_state.job_status = None
     if "analysis_results" not in st.session_state:
         st.session_state.analysis_results = None
+    if "raw_job_result" not in st.session_state:
+        st.session_state.raw_job_result = None
     if "drawing_to_delete" not in st.session_state:
         st.session_state.drawing_to_delete = None
     if "upload_job_id" not in st.session_state:
@@ -396,26 +182,22 @@ def initialize_session_state():
         st.session_state.log_level_filter = "INFO"
     if "upload_success" not in st.session_state:
         st.session_state.upload_success = False
+    if "last_poll_time" not in st.session_state:
+        st.session_state.last_poll_time = 0
     logger.info("Session state initialized")
 
 initialize_session_state()
-
-# --- Toggle Advanced Logs ---
-def toggle_advanced_logs():
-    st.session_state.show_advanced_logs = not st.session_state.show_advanced_logs
-    logger.info(f"Advanced logs toggled to: {st.session_state.show_advanced_logs}")
-
-# --- Set Log Level Filter ---
-def set_log_level_filter(level):
-    st.session_state.log_level_filter = level
-    logger.info(f"Log level filter set to: {level}")
 
 # --- Main Application Logic ---
 def main():
     # --- Page Configuration ---
     st.set_page_config(page_title="Sanctus Videre 1.0", layout="wide", page_icon="🏗️", initial_sidebar_state="expanded")
+    
     # --- Title Area ---
-    st.title("🏗️ Sanctus Videre 1.0"); st.caption("Visionary Construction Insights"); st.divider()
+    st.title("Sanctus Videre 1.0")
+    st.caption("Construction Drawing Analysis Platform")
+    st.divider()
+    
     # --- Backend Health Check & Initial Drawing Fetch ---
     backend_healthy = False
     try:
@@ -429,7 +211,7 @@ def main():
             logger.info("Backend health check passed, drawings refreshed if needed")
         else:
             st.session_state.backend_healthy = False
-            st.error("⚠️ Backend service unhealthy. Please check server status.")
+            st.error("⚠️ Backend service unavailable. Please check server status.")
             logger.error(f"Backend unhealthy: {health_status}")
     except Exception as e:
         st.session_state.backend_healthy = False
@@ -438,6 +220,7 @@ def main():
 
     # --- Sidebar for Upload ---
     with st.sidebar:
+        st.header("Upload Drawing")
         upload_success = upload_drawing_component()
         if upload_success:
             # Mark successful upload for refreshing drawings
@@ -464,10 +247,9 @@ def main():
                         logger.info(f"Attempting to delete drawing: {target_drawing}")
                         response = delete_drawing(target_drawing) # Call API
 
-                        # --- SIMPLIFIED ERROR HANDLING ---
                         # Trust only the "success" boolean from the backend
                         if isinstance(response, dict) and response.get("success") is True:
-                            st.success(f"Drawing `{target_drawing}` deleted successfully.")
+                            st.success(f"Drawing deleted successfully.")
                             logger.info(f"Successfully deleted drawing: {target_drawing}")
 
                             # Refresh UI only on explicit success from backend
@@ -478,16 +260,13 @@ def main():
                             st.rerun()
                         else:
                             # If not success==True, show the error from the backend
-                            default_error = f"Failed to delete '{target_drawing}'. Unknown error."
+                            default_error = f"Failed to delete drawing. Unknown error."
                             error_message = response.get("error", default_error) if isinstance(response, dict) else default_error
                             st.error(error_message) # Display the error received
                             logger.error(f"API call delete_drawing failed for '{target_drawing}'. Response: {response}")
-                            # Do NOT clear drawing_to_delete or rerun here - let user Cancel
-                        # --- END SIMPLIFIED HANDLING ---
-
                     except Exception as e:
                         # Handle exceptions during the API call itself (e.g., network error)
-                        st.error(f"Error communicating with server during deletion: {e}")
+                        st.error(f"Error communicating with server: {e}")
                         logger.error(f"Exception during delete_drawing API call: {e}", exc_info=True)
                         # Clear pending delete on communication exception and rerun
                         st.session_state.drawing_to_delete = None
@@ -508,7 +287,7 @@ def main():
                 st.info("No drawings available. Upload a drawing to get started.")
             else:
                 # Refresh button
-                if st.button("🔄 Refresh", key="refresh_drawings", use_container_width=True):
+                if st.button("Refresh Drawings", key="refresh_drawings", use_container_width=True):
                     with st.spinner("Refreshing drawings..."):
                         refresh_drawings()
                         st.rerun()
@@ -524,31 +303,57 @@ def main():
                 if st.session_state.selected_drawings:
                     st.divider()
                     for drawing in st.session_state.selected_drawings:
-                        if st.button(f"🗑️ Delete '{drawing}'", key=f"delete_{drawing}"):
+                        if st.button(f"Delete '{drawing}'", key=f"delete_{drawing}"):
                             st.session_state.drawing_to_delete = drawing
                             st.rerun()
                 else:
-                    st.caption("Select drawings to analyze or delete")
+                    st.caption("Select one or more drawings to analyze")
 
     # --- Right Column: Query, Controls, Progress, Results ---
     try:
         with col2:
-            # Use the query_box component
-            query = query_box(disabled=not st.session_state.backend_healthy)
+            # --- Query Input ---
+            # Use a form for the query and submit button
+            with st.form(key="query_form", clear_on_submit=False):
+                # Query text area
+                query = st.text_area(
+                    "Type your question here...",
+                    value=st.session_state.get("query", ""),
+                    height=120,
+                    disabled=not st.session_state.backend_healthy,
+                    placeholder="Example: What are the finishes specified for the private offices?"
+                )
+                
+                # Force new analysis checkbox
+                force_new = st.checkbox("Force new analysis (ignore cache)", value=False)
+                
+                # Submit button
+                disabled = not (st.session_state.backend_healthy and 
+                              st.session_state.selected_drawings and 
+                              query.strip())
+                submit_clicked = st.form_submit_button(
+                    "Analyze Drawings",
+                    type="primary",
+                    disabled=disabled,
+                    use_container_width=True
+                )
+            
+            # Store the query in session state
             st.session_state.query = query
             
-            # Use the control_row component
-            disabled = not (st.session_state.backend_healthy and 
-                          st.session_state.selected_drawings and 
-                          st.session_state.query.strip())
-            force_new, analyze_clicked, stop_clicked = control_row(disabled=disabled)
+            # Stop analysis button
+            if st.session_state.current_job_id:
+                if st.button("Stop Analysis", key="stop_analysis", use_container_width=True):
+                    st.session_state.current_job_id = None
+                    st.info("Analysis stopped.")
+                    st.rerun()
             
-            # Handle analyze button click
-            if analyze_clicked and st.session_state.selected_drawings and st.session_state.query.strip():
+            # Handle form submission
+            if submit_clicked and st.session_state.selected_drawings and query.strip():
                 with st.spinner("Starting analysis..."):
                     try:
                         response = analyze_drawings(
-                            st.session_state.query,
+                            query,
                             st.session_state.selected_drawings,
                             use_cache=not force_new
                         )
@@ -557,6 +362,7 @@ def main():
                             st.session_state.current_job_id = response["job_id"]
                             st.session_state.job_status = None
                             st.session_state.analysis_results = None
+                            st.session_state.raw_job_result = None
                             logger.info(f"Started analysis job: {st.session_state.current_job_id}")
                             st.rerun()
                         else:
@@ -566,211 +372,110 @@ def main():
                         st.error(f"Error starting analysis: {e}")
                         logger.error(f"Error starting analysis: {e}", exc_info=True)
             
-            # Handle stop button click
-            if stop_clicked and st.session_state.current_job_id:
-                st.session_state.current_job_id = None
-                st.success("Analysis stopped.")
-                st.rerun()
-            
-            # --- Enhanced Progress Display ---
+            # --- Progress Display ---
             if st.session_state.current_job_id:
-                # Get detailed job status and logs
-                job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
+                # Get fresh job status (force refresh every 2 seconds to avoid stale data)
+                current_time = time.time()
+                force_refresh = (current_time - st.session_state.get("last_poll_time", 0)) >= 2.0
                 
+                job_status = get_current_job_status(st.session_state.current_job_id, force_refresh)
+                if force_refresh:
+                    st.session_state.last_poll_time = current_time
+                
+                # Display progress using the progress_indicator component
                 if job_status:
-                    # Store job status in session
-                    st.session_state.job_status = job_status
+                    # Update the progress bar
+                    progress = job_status.get("progress", 0)
+                    status = job_status.get("status", "")
                     
-                    # Progress container with phases
+                    # Progress container
                     with st.container(border=True):
-                        # Get phase status for visualization
-                        phase_status = get_phase_status(job_status)
-                        
-                        # Header with time estimation
-                        st.subheader(f"Processing Status - {job_status.get('progress', 0)}% Complete")
-                        
-                        # Time estimation
-                        time_remaining = estimate_time_remaining(job_status)
-                        st.write(f"⏱️ Estimated time remaining: {time_remaining}")
+                        # Progress header
+                        if status == "completed":
+                            st.success("Processing Complete (100%)")
+                        elif status == "failed":
+                            st.error("Processing Failed")
+                            error_msg = job_status.get("error", "Unknown error")
+                            st.error(f"Error: {error_msg}")
+                        else:
+                            st.subheader(f"Processing: {progress}% Complete")
                         
                         # Main progress bar
-                        st.progress(job_status.get("progress", 0) / 100)
+                        st.progress(progress / 100)
                         
-                        # Phase visualization
-                        phase_cols = st.columns(len(phase_status["phases"]))
-                        for i, phase in enumerate(phase_status["phases"]):
-                            with phase_cols[i]:
-                                if phase["status"] == "complete":
-                                    st.markdown(f"### {phase['emoji']} ✓")
-                                elif phase["status"] == "active":
-                                    st.markdown(f"### {phase['emoji']} ⟳")
-                                elif phase["status"] == "failed":
-                                    st.markdown(f"### {phase['emoji']} ❌")
-                                else:
-                                    st.markdown(f"### {phase['emoji']} ○")
-                                st.caption(phase["name"])
-                        
-                        # Current phase description
+                        # Status information
                         current_phase = job_status.get("current_phase", "")
-                        st.write(f"**Current Phase:** {current_phase}")
                         
-                        # Tile Processing Information
-                        tile_info = job_status.get("tile_info", {})
-                        if tile_info and tile_info.get("total_tiles", 0) > 0:
-                            total_tiles = tile_info.get("total_tiles", 0)
-                            processed_tiles = tile_info.get("processed_tiles", 0)
-                            current_tile = tile_info.get("current_tile", "")
-                            
-                            # Create progress meter for tiles
-                            if total_tiles > 0:
-                                tile_progress = min(processed_tiles / total_tiles, 1.0)
-                                st.write(f"**Tile Processing:** {processed_tiles} of {total_tiles} tiles processed ({int(tile_progress * 100)}%)")
-                                
-                                # Tile progress bar
-                                st.progress(tile_progress)
-                                
-                                # Current tile information
-                                if current_tile:
-                                    st.caption(f"Currently processing: {current_tile}")
+                        # Clean up phase text
+                        if current_phase:
+                            # Remove emojis from phase 
+                            current_phase = re.sub(r'[^\w\s]', '', current_phase).strip()
+                            st.info(f"Current Phase: {current_phase}")
                         
-                        # API Connection Status
-                        api_status = job_status.get("api_status", {})
-                        api_status_value = api_status.get("status", "unknown")
-                        api_success_count = api_status.get("success_count", 0)
-                        api_error_count = api_status.get("error_count", 0)
-                        
-                        # API Status indicator
-                        st.write("**Foundation Model Connection:**")
-                        status_cols = st.columns([1, 3])
-                        with status_cols[0]:
-                            if api_status_value == "good":
-                                st.success("✓ Good")
-                            elif api_status_value == "warning":
-                                st.warning("⚠️ Issues Detected")
-                            elif api_status_value == "error":
-                                st.error("❌ Connection Problems")
-                            else:
-                                st.info("ℹ️ Unknown")
-                        
-                        with status_cols[1]:
-                            if api_success_count > 0:
-                                st.write(f"✓ {api_success_count} successful API calls")
-                            if api_error_count > 0:
-                                st.write(f"⚠️ {api_error_count} errors (with automatic retry)")
-                        
-                        # Latest progress message
-                        if "progress_messages" in job_status and job_status["progress_messages"]:
-                            latest_message = job_status["progress_messages"][-1]
+                        # Show latest message
+                        messages = job_status.get("progress_messages", [])
+                        if messages:
+                            latest_message = messages[-1]
                             # Extract just the message part without timestamp
                             if " - " in latest_message:
                                 latest_message = latest_message.split(" - ", 1)[1]
-                            st.write(f"**Latest Update:** {latest_message}")
-                        
-                        # Controls for advanced logs
-                        col1, col2, col3 = st.columns([2, 1, 1])
-                        with col1:
-                            if st.button(
-                                "🔍 " + ("Hide" if st.session_state.show_advanced_logs else "Show") + " Technical Logs", 
-                                key="toggle_logs_button"
-                            ):
-                                toggle_advanced_logs()
-                                st.rerun()
-                        
-                        with col2:
-                            if st.session_state.show_advanced_logs:
-                                log_level = st.selectbox(
-                                    "Log Level",
-                                    options=["ALL", "INFO", "WARNING", "ERROR"],
-                                    index=["ALL", "INFO", "WARNING", "ERROR"].index(st.session_state.log_level_filter),
-                                    key="log_level_selector"
-                                )
-                                if log_level != st.session_state.log_level_filter:
-                                    set_log_level_filter(log_level)
-                                    st.rerun()
-                        
-                        # Advanced logs display
-                        if st.session_state.show_advanced_logs:
-                            # Display progress messages as a log console
-                            messages = []
-                            if "progress_messages" in job_status:
-                                messages = job_status["progress_messages"]
                             
-                            # Filter messages by log level if needed
-                            if st.session_state.log_level_filter != "ALL":
-                                filtered_messages = []
-                                for msg in messages:
-                                    if st.session_state.log_level_filter == "ERROR" and ("❌" in msg or "error" in msg.lower() or "failed" in msg.lower()):
-                                        filtered_messages.append(msg)
-                                    elif st.session_state.log_level_filter == "WARNING" and ("⚠️" in msg or "warning" in msg.lower() or "❌" in msg or "error" in msg.lower() or "failed" in msg.lower()):
-                                        filtered_messages.append(msg)
-                                    elif st.session_state.log_level_filter == "INFO":
-                                        filtered_messages.append(msg)
-                                messages = filtered_messages
+                            # Remove emojis
+                            latest_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
                             
-                            # Use the log console component
-                            log_console(messages, max_height=300)
+                            # Show latest update
+                            st.write(f"Latest Update: {latest_message}")
                     
                     # Check if job is complete or failed
-                    if job_status.get("status") == "completed":
-                        # Store results and clear job ID
-                        st.session_state.analysis_results = job_status.get("result", {})
+                    if status == "completed":
+                        # Process completed job
+                        process_completed_job(job_status)
                         st.session_state.current_job_id = None
-                        
-                        # AUTO-REFRESH THE DRAWINGS LIST when an upload job completes
-                        if job_status.get("type") == "conversion":
-                            with st.spinner("Refreshing drawings list..."):
-                                # Clear any cached drawing data to ensure we get fresh data
-                                if "drawings_last_updated" in st.session_state:
-                                    st.session_state.drawings_last_updated = 0
-                                # Force a refresh of the drawings list
-                                refresh_success = refresh_drawings()
-                                if refresh_success:
-                                    st.success("Processing completed successfully! Drawing list updated.")
-                                else:
-                                    st.success("Processing completed successfully!")
-                                    st.warning("Note: Could not refresh drawing list. Please refresh manually.")
-                        else:
-                            st.success("Analysis completed successfully!")
+                        st.success("Analysis completed successfully!")
                         st.rerun()
-                    elif job_status.get("status") == "failed":
+                    elif status == "failed":
                         error_msg = job_status.get("error", "Unknown error")
-                        st.error(f"Processing failed: {error_msg}")
+                        st.error(f"Analysis failed: {error_msg}")
                         st.session_state.current_job_id = None
                 else:
-                    # Fallback to standard progress indicator if detailed status not available
-                    result = progress_indicator(st.session_state.current_job_id)
-                    
-                    if result and result.get("status") in ["completed", "failed"]:
-                        st.session_state.current_job_id = None
-                        if result.get("status") == "completed":
-                            st.session_state.analysis_results = result.get("result", {})
-                            st.success("Analysis completed successfully!")
-                        else:
-                            error_msg = result.get("error", "Unknown error")
-                            st.error(f"Analysis failed: {error_msg}")
+                    # Fallback to basic progress if detailed status not available
+                    st.warning("Unable to retrieve job status. Retrying...")
+                    time.sleep(1)  # Brief delay
+                    st.rerun()  # Force refresh
             
-            # Show stored results if available
+            # --- Results Display ---
             if st.session_state.analysis_results:
                 st.header("Analysis Results")
-                results_text = json.dumps(st.session_state.analysis_results, indent=2)
+                
+                # Display results using the results_pane component
+                if isinstance(st.session_state.analysis_results, dict):
+                    results_text = json.dumps(st.session_state.analysis_results, indent=2)
+                else:
+                    results_text = str(st.session_state.analysis_results)
+                
+                # Use the results_pane component
                 results_pane(results_text)
                 
                 # Clear results button
                 if st.button("Clear Results", key="clear_results"):
                     st.session_state.analysis_results = None
+                    st.session_state.raw_job_result = None
                     st.rerun()
-
-            # --- Add Auto-refresh for Upload Success ---
-            # This section checks for upload success indicator from the upload component
-            if "upload_success" in st.session_state and st.session_state.upload_success:
-                # Reset the flag
-                st.session_state.upload_success = False
-                # Force a refresh of drawings list
-                with st.spinner("Refreshing drawings list after upload..."):
-                    st.session_state.drawings_last_updated = 0
-                    refresh_drawings()
-                    st.rerun()
+            
+            # --- Technical Information (Expandable) ---
+            if st.session_state.raw_job_result:
+                with st.expander("Technical Information", expanded=False):
+                    st.json(st.session_state.raw_job_result)
                     
+                    if st.button("Copy Raw JSON", key="copy_json"):
+                        # Copy to clipboard via JavaScript
+                        raw_json = json.dumps(st.session_state.raw_job_result)
+                        st.write("JSON copied to clipboard!")
+                    
+                    if st.button("Clear Technical Data", key="clear_tech_data"):
+                        st.session_state.raw_job_result = None
+                        st.rerun()
+                
     except Exception as e:
         st.error(f"An error occurred in the UI: {e}")
         logger.error(f"Unhandled UI exception: {e}", exc_info=True)
