@@ -1,4 +1,4 @@
-# --- Filename: ui/api_client.py (Revised with Delete Function) ---
+# --- Filename: ui/api_client.py (Revised with Delete Function & Job Logs) ---
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) # Disables warnings for verify=False
@@ -28,7 +28,7 @@ if not API_BASE_URL:
 
 
 def health_check():
-    """Ping the API to make sure it’s up."""
+    """Ping the API to make sure it's up."""
     if not API_BASE_URL: return {"status": "error", "message": "Backend URL not configured"}
     url = f"{API_BASE_URL}/health"
     logger.info(f"Sending health check to: {url}")
@@ -141,7 +141,7 @@ def start_analysis(query, drawings, use_cache=True):
         return {"error": f"Unexpected error: {str(e)}"}
 
 def get_job_status(job_id):
-    """Check on a running job’s status and progress."""
+    """Check on a running job's status and progress."""
     if not API_BASE_URL: return {"error": "Backend URL not configured"}
     url = f"{API_BASE_URL}/job-status/{job_id}"
     logger.info(f"Getting job status for {job_id} from: {url}")
@@ -156,7 +156,33 @@ def get_job_status(job_id):
         logger.error(f"Unexpected error getting job status: {e}")
         return {"error": f"Unexpected error: {str(e)}", "status": "error"}
 
-# --- NEW FUNCTION ---
+# --- NEW FUNCTION FOR JOB LOGS ---
+def get_job_logs(job_id, limit=100, since_id=None):
+    """Get detailed logs for a specific job, optionally filtering by log ID."""
+    if not API_BASE_URL: 
+        return {"error": "Backend URL not configured", "logs": []}
+    
+    # Construct URL with query parameters
+    url = f"{API_BASE_URL}/job-logs/{job_id}"
+    params = {"limit": limit}
+    if since_id:
+        params["since_id"] = since_id
+    
+    logger.info(f"Getting job logs for {job_id} from: {url} with params: {params}")
+    
+    try:
+        resp = requests.get(url, params=params, verify=False, timeout=60)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to get job logs for {job_id}: {e}")
+        return {"error": str(e), "logs": []}
+    except Exception as e:
+        logger.error(f"Unexpected error getting job logs: {e}")
+        return {"error": f"Unexpected error: {str(e)}", "logs": []}
+# --- END NEW FUNCTION ---
+
+# --- DELETE DRAWING FUNCTION ---
 def delete_drawing(drawing_name):
     """Request deletion of a specific drawing file from the backend."""
     if not API_BASE_URL:
@@ -220,4 +246,4 @@ def delete_drawing(drawing_name):
         # Catch any other unexpected errors
         logger.error(f"Unexpected error in delete_drawing for '{drawing_name}': {e}", exc_info=True)
         return {"success": False, "error": f"Client-side error during delete request: {str(e)}"}
-# --- END NEW FUNCTION ---
+# --- END DELETE FUNCTION ---
