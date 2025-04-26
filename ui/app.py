@@ -68,57 +68,50 @@ def refresh_drawings():
         # Call the /drawings endpoint through the API client
         response = get_drawings()
         
-        # Process the response - expect a dict with 'drawings' key containing a list
-        if isinstance(response, dict) and "drawings" in response and isinstance(response["drawings"], list):
+        # Process the response - extract the 'drawings' array from the response
+        if isinstance(response, dict) and "drawings" in response:
             st.session_state.drawings = response["drawings"]
             st.session_state.drawings_last_updated = time.time()
             logger.info(f"Refreshed drawings list, found {len(st.session_state.drawings)} drawings")
             return True
         else:
-            logger.error(f"Invalid response from /drawings endpoint: {response}")
-            st.error("Failed to fetch drawings: Invalid response format")
+            logger.error(f"Unexpected response format from get_drawings(): {response}")
             return False
     except Exception as e:
-        logger.error(f"Failed to refresh drawings from /drawings endpoint: {e}", exc_info=True)
-        st.error(f"Error fetching drawings: {str(e)}")
+        logger.error(f"Failed to refresh drawings: {e}", exc_info=True)
         return False
 
 # --- Enhanced Job Status Tracking ---
 def get_detailed_job_status(job_id: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
-    Gets both job status and detailed logs for better progress tracking using /job-status and /job-logs endpoints.
+    Gets both job status and detailed logs for better progress tracking.
     
     Returns:
         Tuple containing (job_status, job_logs)
     """
     try:
         # Get basic job status from /job-status endpoint
-        job_status_response = get_job_status(job_id)
-        
-        # Validate job status response
-        if isinstance(job_status_response, dict) and "status" in job_status_response:
-            job_status = job_status_response
-        else:
-            logger.warning(f"Invalid response from /job-status for job {job_id}: {job_status_response}")
-            job_status = {"status": "unknown", "progress_messages": []}
+        job_status = get_job_status(job_id)
         
         # Get detailed logs from /job-logs endpoint
-        logs = []
         try:
             # Get logs since the last one we saw
             last_log_id = st.session_state.get(f"last_log_id_{job_id}", None)
             logs_response = get_job_logs(job_id, limit=100, since_id=last_log_id)
             
-            # Validate logs response
-            if isinstance(logs_response, dict) and "logs" in logs_response and isinstance(logs_response["logs"], list):
-                logs = logs_response["logs"]
-                # Update the last seen log ID if we have logs
-                if logs and len(logs) > 0:
-                    st.session_state[f"last_log_id_{job_id}"] = logs[0].get("id")
+            # Extract logs from response
+            if isinstance(logs_response, dict) and "logs" in logs_response:
+                logs = logs_response.get("logs", [])
             else:
-                logger.warning(f"Invalid response from /job-logs for job {job_id}: {logs_response}")
+                logger.warning(f"Unexpected format from get_job_logs: {logs_response}")
+                logs = []
+            
+            # Update the last seen log ID if we have logs
+            if logs and len(logs) > 0:
+                st.session_state[f"last_log_id_{job_id}"] = logs[0].get("id")
         except Exception as log_e:
-            logger.warning(f"Could not fetch detailed logs from /job-logs: {log_e}")
+            logger.warning(f"Could not fetch detailed logs: {log_e}")
+            logs = []
         
         # Extract tile processing information
         tile_info = extract_tile_info(job_status, logs)
@@ -130,21 +123,23 @@ def get_detailed_job_status(job_id: str) -> Tuple[Dict[str, Any], List[Dict[str,
             tile_info = st.session_state.get(f"tile_info_{job_id}", {})
         
         # Add tile info to job status
-        job_status["tile_info"] = tile_info
+        if job_status:
+            job_status["tile_info"] = tile_info
         
         # Extract API connection status
         api_status = extract_api_status(logs)
-        job_status["api_status"] = api_status
+        if job_status:
+            job_status["api_status"] = api_status
         
-        # Override status if completion is detected in logs
-        if check_for_completion(logs):
+        # IMPORTANT FIX: Override status if completion is detected in logs
+        if job_status and check_for_completion(logs):
             job_status["status"] = "completed"
             job_status["current_phase"] = "✨ COMPLETE"
         
         return job_status, logs
     except Exception as e:
-        logger.error(f"Error accessing /job-status or /job-logs for job {job_id}: {e}", exc_info=True)
-        return {"status": "error", "error": str(e)}, []
+        logger.error(f"Error getting detailed job status: {e}", exc_info=True)
+        return None, []
 
 def extract_tile_info(job_status: Dict[str, Any], logs: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
@@ -550,7 +545,7 @@ def set_log_level_filter(level):
 def process_results():
     if st.session_state.current_job_id and not st.session_state.job_completed:
         job_status = get_job_status(st.session_state.current_job_id)
-        if job_status and job_status.get("status") == "completed":
+        if job_status:
             process_completed_job(job_status)
             st.session_state.job_completed = True
             if st.session_state.current_job_id:
@@ -856,8 +851,8 @@ def main():
 
             # Submit button
             disabled = not (st.session_state.backend_healthy and 
-                            st.session_state.selected_drawings and 
-                            query.strip())
+                        st.session_state.selected_drawings and 
+                        query.strip())
                         
             if st.button(
                 "Analyze Drawings",
@@ -908,25 +903,48 @@ def main():
             
             # --- Job Status & Technical Logs ---
             if st.session_state.current_job_id:
-                # Get job status and logs from endpoints
+                # Get job status AND detailed logs from the endpoints
                 job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
                 
+                # Extract log messages from job_logs
+                log_messages = []
+                if job_logs:
+                    for log in job_logs:
+                        if isinstance(log, dict) and "message" in log:
+                            log_messages.append(log["message"])
+                
+                # Add progress messages from job status
+                progress_messages = []
+                if job_status and "progress_messages" in job_status:
+                    progress_messages = job_status.get("progress_messages", [])
+                
+                # Update the cumulative logs in session state
+                if log_messages or progress_messages:
+                    # Get existing logs
+                    all_logs = st.session_state.all_job_logs.copy()
+                    
+                    # Add new log messages
+                    for message in log_messages + progress_messages:
+                        if message not in all_logs:
+                            all_logs.append(message)
+                    
+                    # Store updated logs
+                    st.session_state.all_job_logs = all_logs
+                
                 if job_status:
-                    # Get status information
-                    status = job_status.get("status", "unknown")
+                    # Get status information directly from the job status
+                    status = job_status.get("status", "")
                     current_phase = job_status.get("current_phase", "")
                     progress = job_status.get("progress", 0)
                     
-                    # Display status info
+                    # Display status info similar to upload drawing component
                     with st.container(border=True):
-                        # Clean up phase name (remove emojis)
+                        # Status line with emoji
                         clean_phase = re.sub(r'[^\w\s]', '', current_phase).strip() if current_phase else "Processing"
                         
-                        # Display status with appropriate emoji
-                        if status == "completed":
-                            st.info(f"Status: ✅ {clean_phase}")
-                        elif status == "failed":
-                            st.error(f"Status: ❌ Failed")
+                        # Use appropriate emoji based on phase
+                        if "COMPLETE" in current_phase or status == "completed":
+                            st.info(f"Status: ✅ COMPLETE")
                         elif "ANALYZING" in current_phase:
                             st.info(f"Status: 🔍 {clean_phase}")
                         elif "QUEUED" in current_phase:
@@ -934,33 +952,42 @@ def main():
                         elif "TILING" in current_phase:
                             st.info(f"Status: 🖼️ {clean_phase}")
                         else:
-                            st.info(f"Status: 🚀 {clean_phase}")
+                            st.info(f"Status: Processing - {clean_phase}")
                         
-                        # Show progress bar if not completed
+                        # Progress bar if available
                         if progress > 0 and progress < 100 and status != "completed":
                             st.progress(progress / 100)
                         
-                        # Display latest progress message
-                        progress_messages = job_status.get("progress_messages", [])
-                        if progress_messages:
-                            latest_message = progress_messages[-1]
-                            # Clean up message for display
-                            if " - " in latest_message:
-                                latest_message = latest_message.split(" - ", 1)[1]
-                            clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
-                            st.caption(f"Latest Update: {clean_message}")
+                        # Format and display latest update message
+                        if st.session_state.all_job_logs:
+                            latest_message = st.session_state.all_job_logs[-1]
+                            # Format message for display (remove timestamps, etc.)
+                            if isinstance(latest_message, str):
+                                if " - " in latest_message:
+                                    _, message = latest_message.split(" - ", 1)
+                                else:
+                                    message = latest_message
+                                
+                                # Clean up message and display
+                                st.caption(f"Latest Update: {message}")
                         
-                        # Display tile progress if available
-                        tile_info = job_status.get("tile_info", {})
-                        if tile_info.get("total_tiles", 0) > 0:
-                            total = tile_info["total_tiles"]
-                            processed = tile_info["processed_tiles"]
-                            drawing_name = st.session_state.selected_drawings[0] if st.session_state.selected_drawings else "Drawing"
-                            st.caption(f"Analyzing {drawing_name}: {processed}/{total} tiles")
+                        # Get drawing name from selection
+                        if st.session_state.selected_drawings:
+                            drawing_name = st.session_state.selected_drawings[0]
+                            
+                            # Show batch progress if applicable
+                            if "tile_info" in job_status:
+                                tile_info = job_status["tile_info"]
+                                total = tile_info.get("total_tiles", 0)
+                                processed = tile_info.get("processed_tiles", 0)
+                                
+                                if total > 0:
+                                    st.caption(f"Analyzing drawing {drawing_name}")
+                                    st.caption(f"({processed}/{total} in batch {1})")
                         
-                        # Technical logs toggle
-                        if st.button("Show Technical Logs", key="show_tech_logs"):
-                            toggle_logs_display()
+                        # Show Results button
+                        if st.button("Show Results", key="show_results"):
+                            process_results()
                             st.rerun()
                     
                     # Show technical logs if toggled
@@ -971,16 +998,17 @@ def main():
                                 st.text(message)
                             
                             # Button to hide logs
-                            if st.button("Hide Technical Logs", key="hide_tech_logs"):
+                            if st.button("Hide Logs", key="hide_logs"):
                                 toggle_logs_display()
                                 st.rerun()
                     
                     # Check for job completion
-                    job_completed = status == "completed" or check_for_completion(job_logs)
-                    
+                    job_completed = status == "completed" or check_for_completion(st.session_state.all_job_logs)
+                        
+                    # If job is completed, process results
                     if job_completed and not st.session_state.job_completed:
                         logger.info("Job completion detected - processing results")
-                        st.session_state.job_completed = True
+                        st.session_state.job_completed = True  # Mark as completed to avoid reprocessing
                         process_completed_job(job_status)
                         st.session_state.current_job_id = None
                         st.session_state.api_active = False
@@ -991,8 +1019,8 @@ def main():
                         st.error(f"Analysis failed: {error_msg}")
                         st.session_state.current_job_id = None
                         st.session_state.api_active = False
-                        st.rerun()
                 else:
+                    # Fallback for when job status cannot be retrieved
                     st.warning("Unable to retrieve job status. Retrying...")
                     time.sleep(0.5)
                     st.rerun()
@@ -1041,6 +1069,7 @@ def main():
                 st.session_state.raw_job_result = None
                 st.session_state.job_completed = False
                 st.rerun()
+
 
 # --- Run the App ---
 if __name__ == "__main__":
