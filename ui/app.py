@@ -1,4 +1,4 @@
-# --- Filename: ui/app.py (Frontend Streamlit UI - Enhanced Progress Tracking) ---
+# --- Filename: ui/app.py (Frontend Streamlit UI - Three-Column Layout) ---
 
 import streamlit as st
 import time
@@ -247,25 +247,6 @@ def extract_api_status(logs: List[Dict[str, Any]]) -> Dict[str, Any]:
         logger.error(f"Error extracting API status: {e}", exc_info=True)
         return api_status
 
-# --- Helper function to check for completion in logs ---
-def check_for_completion(logs):
-    """Check logs for completion indicators"""
-    completion_indicators = [
-        "Analysis completed",
-        "Analysis complete",
-        "COMPLETE",
-        "Completed batch",
-        "completed successfully"
-    ]
-    
-    if logs:
-        for message in logs:
-            for indicator in completion_indicators:
-                if indicator in message:
-                    logger.info(f"Job completion detected in logs: {message}")
-                    return True
-    return False
-
 # --- Job Progress Visualization Functions ---
 def get_phase_status(job_status: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -394,6 +375,9 @@ def process_completed_job(job_status):
         # Get the result object
         result = job_status.get("result", {})
         
+        # Store the complete result object for potential debugging
+        st.session_state.raw_job_result = result
+        
         # If result is a string, try to parse it
         if isinstance(result, str):
             try:
@@ -408,7 +392,6 @@ def process_completed_job(job_status):
             # Direct analysis field
             if "analysis" in result:
                 st.session_state.analysis_results = result
-                logger.info("Found direct analysis field in result")
                 return
                 
             # Check for batch structure
@@ -420,11 +403,9 @@ def process_completed_job(job_status):
                             # Store the entire result structure for access to both 
                             # analysis text and technical details
                             st.session_state.analysis_results = result
-                            logger.info("Found analysis in batch result structure")
                             return
         
         # Fallback: store the whole result
-        logger.info(f"No standard analysis structure found, storing raw result: {type(result)}")
         st.session_state.analysis_results = result
         
     except Exception as e:
@@ -455,36 +436,62 @@ def initialize_session_state():
         st.session_state.drawing_to_delete = None
     if "upload_job_id" not in st.session_state:
         st.session_state.upload_job_id = None
-    if "show_technical_logs" not in st.session_state:
-        st.session_state.show_technical_logs = False
+    if "show_logs" not in st.session_state:
+        st.session_state.show_logs = False
     if "log_level_filter" not in st.session_state:
         st.session_state.log_level_filter = "INFO"
     if "upload_success" not in st.session_state:
         st.session_state.upload_success = False
     if "last_poll_time" not in st.session_state:
         st.session_state.last_poll_time = 0
+    if "left_column_expanded" not in st.session_state:
+        st.session_state.left_column_expanded = True
+    if "middle_column_expanded" not in st.session_state:
+        st.session_state.middle_column_expanded = True
     if "all_job_logs" not in st.session_state:
         st.session_state.all_job_logs = []
-    if "force_show_results" not in st.session_state:
-        st.session_state.force_show_results = False
     logger.info("Session state initialized")
 
 initialize_session_state()
 
-# --- Toggle Technical Logs ---
-def toggle_technical_logs():
-    st.session_state.show_technical_logs = not st.session_state.show_technical_logs
-    logger.info(f"Technical logs toggled to: {st.session_state.show_technical_logs}")
+# --- Toggle Logs Display ---
+def toggle_logs_display():
+    st.session_state.show_logs = not st.session_state.show_logs
+    logger.info(f"Logs display toggled to: {st.session_state.show_logs}")
+
+# --- Toggle Left Column Expansion ---
+def toggle_left_column():
+    st.session_state.left_column_expanded = not st.session_state.left_column_expanded
+    logger.info(f"Left column expanded: {st.session_state.left_column_expanded}")
+
+# --- Toggle Middle Column Expansion ---
+def toggle_middle_column():
+    st.session_state.middle_column_expanded = not st.session_state.middle_column_expanded
+    logger.info(f"Middle column expanded: {st.session_state.middle_column_expanded}")
 
 # --- Set Log Level Filter ---
 def set_log_level_filter(level):
     st.session_state.log_level_filter = level
     logger.info(f"Log level filter set to: {level}")
 
-# --- Force Show Results ---
-def force_show_results():
-    st.session_state.force_show_results = True
-    logger.info("Results display forced by user")
+# --- Check for Completion in Logs ---
+def check_for_completion(logs):
+    """Check logs for completion indicators"""
+    completion_indicators = [
+        "Analysis completed",
+        "Analysis complete",
+        "COMPLETE",
+        "Completed batch",
+        "completed successfully"
+    ]
+    
+    if logs:
+        for message in logs:
+            for indicator in completion_indicators:
+                if indicator in message:
+                    logger.info(f"Job completion detected in logs: {message}")
+                    return True
+    return False
 
 # --- Main Application Logic ---
 def main():
@@ -526,90 +533,124 @@ def main():
             # Refresh drawings if upload was successful
             refresh_drawings()
             st.rerun()
-
-    # --- Main Layout (Two Columns) ---
-    col1, col2 = st.columns([1, 2])
-
-    # --- Left Column: Drawing Selection & Deletion ---
+    
+    # --- Three-column layout ---
+    # Create three columns with flexible widths
+    # Determine column widths based on expansion state
+    left_width = 1 if st.session_state.left_column_expanded else 0.5
+    middle_width = 1 if st.session_state.middle_column_expanded else 0.5
+    right_width = 2  # Right column always gets more space
+    
+    col1, col2, col3 = st.columns([left_width, middle_width, right_width])
+    
+    # --- Left Column: Drawing Selection (Collapsible) ---
     with col1:
-        st.subheader("Select Drawings")
+        # Collapsible header
+        left_col_header = st.container()
+        with left_col_header:
+            col1a, col1b = st.columns([5, 1])
+            with col1a:
+                st.subheader("Select Drawings")
+            with col1b:
+                # Toggle button for left column
+                if st.button("↔️", key="toggle_left_col", help="Expand/Collapse"):
+                    toggle_left_column()
+                    st.rerun()
+        
+        # If expanded, show full content, otherwise show minimal content
+        if st.session_state.left_column_expanded:
+            # --- Deletion Confirmation UI ---
+            if st.session_state.drawing_to_delete:
+                st.warning(f"**Confirm Deletion:** Are you sure you want to permanently delete `{st.session_state.drawing_to_delete}`?")
+                confirm_col, cancel_col = st.columns(2)
+                with confirm_col:
+                    if st.button("Yes, Delete", type="primary", key="confirm_delete_button", use_container_width=True):
+                        try:
+                            target_drawing = st.session_state.drawing_to_delete
+                            logger.info(f"Attempting to delete drawing: {target_drawing}")
+                            response = delete_drawing(target_drawing) # Call API
 
-        # --- Deletion Confirmation UI ---
-        if st.session_state.drawing_to_delete:
-            st.warning(f"**Confirm Deletion:** Are you sure you want to permanently delete `{st.session_state.drawing_to_delete}`?")
-            confirm_col, cancel_col = st.columns(2)
-            with confirm_col:
-                if st.button("Yes, Delete", type="primary", key="confirm_delete_button", use_container_width=True):
-                    try:
-                        target_drawing = st.session_state.drawing_to_delete
-                        logger.info(f"Attempting to delete drawing: {target_drawing}")
-                        response = delete_drawing(target_drawing) # Call API
+                            # Trust only the "success" boolean from the backend
+                            if isinstance(response, dict) and response.get("success") is True:
+                                st.success(f"Drawing deleted successfully.")
+                                logger.info(f"Successfully deleted drawing: {target_drawing}")
 
-                        # Trust only the "success" boolean from the backend
-                        if isinstance(response, dict) and response.get("success") is True:
-                            st.success(f"Drawing deleted successfully.")
-                            logger.info(f"Successfully deleted drawing: {target_drawing}")
-
-                            # Refresh UI only on explicit success from backend
-                            if isinstance(st.session_state.selected_drawings, list) and target_drawing in st.session_state.selected_drawings:
-                                st.session_state.selected_drawings.remove(target_drawing)
+                                # Refresh UI only on explicit success from backend
+                                if isinstance(st.session_state.selected_drawings, list) and target_drawing in st.session_state.selected_drawings:
+                                    st.session_state.selected_drawings.remove(target_drawing)
+                                st.session_state.drawing_to_delete = None
+                                refresh_drawings()
+                                st.rerun()
+                            else:
+                                # If not success==True, show the error from the backend
+                                default_error = f"Failed to delete drawing. Unknown error."
+                                error_message = response.get("error", default_error) if isinstance(response, dict) else default_error
+                                st.error(error_message) # Display the error received
+                                logger.error(f"API call delete_drawing failed for '{target_drawing}'. Response: {response}")
+                        except Exception as e:
+                            # Handle exceptions during the API call itself (e.g., network error)
+                            st.error(f"Error communicating with server: {e}")
+                            logger.error(f"Exception during delete_drawing API call: {e}", exc_info=True)
+                            # Clear pending delete on communication exception and rerun
                             st.session_state.drawing_to_delete = None
+                            st.rerun()
+
+                with cancel_col:
+                    if st.button("Cancel", key="cancel_delete_button", use_container_width=True):
+                        logger.info(f"Deletion cancelled for: {st.session_state.drawing_to_delete}")
+                        st.session_state.drawing_to_delete = None # Clear pending delete state
+                        st.rerun()
+                st.divider()
+
+            # --- Drawing List Rendering ---
+            with st.container(border=True):
+                if not st.session_state.backend_healthy:
+                    st.warning("⚠️ Cannot load drawings. Backend is unavailable.")
+                elif not st.session_state.drawings:
+                    st.info("No drawings available. Upload a drawing to get started.")
+                else:
+                    # Refresh button
+                    if st.button("Refresh Drawings", key="refresh_drawings", use_container_width=True):
+                        with st.spinner("Refreshing drawings..."):
                             refresh_drawings()
                             st.rerun()
-                        else:
-                            # If not success==True, show the error from the backend
-                            default_error = f"Failed to delete drawing. Unknown error."
-                            error_message = response.get("error", default_error) if isinstance(response, dict) else default_error
-                            st.error(error_message) # Display the error received
-                            logger.error(f"API call delete_drawing failed for '{target_drawing}'. Response: {response}")
-                    except Exception as e:
-                        # Handle exceptions during the API call itself (e.g., network error)
-                        st.error(f"Error communicating with server: {e}")
-                        logger.error(f"Exception during delete_drawing API call: {e}", exc_info=True)
-                        # Clear pending delete on communication exception and rerun
-                        st.session_state.drawing_to_delete = None
-                        st.rerun()
-
-            with cancel_col:
-                if st.button("Cancel", key="cancel_delete_button", use_container_width=True):
-                    logger.info(f"Deletion cancelled for: {st.session_state.drawing_to_delete}")
-                    st.session_state.drawing_to_delete = None # Clear pending delete state
-                    st.rerun()
-            st.divider()
-
-        # --- Drawing List Rendering ---
-        with st.container(border=True):
-            if not st.session_state.backend_healthy:
-                st.warning("⚠️ Cannot load drawings. Backend is unavailable.")
-            elif not st.session_state.drawings:
-                st.info("No drawings available. Upload a drawing to get started.")
-            else:
-                # Refresh button
-                if st.button("Refresh Drawings", key="refresh_drawings", use_container_width=True):
-                    with st.spinner("Refreshing drawings..."):
-                        refresh_drawings()
-                        st.rerun()
-                
-                # Use the drawing_list component
-                selected_drawing_names = drawing_list(st.session_state.drawings)
-                
-                # Update selection in session state
-                if selected_drawing_names is not None:
-                    st.session_state.selected_drawings = selected_drawing_names
                     
-                # Display delete buttons for each selected drawing
-                if st.session_state.selected_drawings:
-                    st.divider()
-                    for drawing in st.session_state.selected_drawings:
-                        if st.button(f"Delete '{drawing}'", key=f"delete_{drawing}"):
-                            st.session_state.drawing_to_delete = drawing
-                            st.rerun()
-                else:
-                    st.caption("Select one or more drawings to analyze")
-
-    # --- Right Column: Query, Controls, Progress, Results ---
-    try:
-        with col2:
+                    # Use the drawing_list component
+                    selected_drawing_names = drawing_list(st.session_state.drawings)
+                    
+                    # Update selection in session state
+                    if selected_drawing_names is not None:
+                        st.session_state.selected_drawings = selected_drawing_names
+                        
+                    # Display delete buttons for each selected drawing
+                    if st.session_state.selected_drawings:
+                        st.divider()
+                        for drawing in st.session_state.selected_drawings:
+                            if st.button(f"Delete '{drawing}'", key=f"delete_{drawing}"):
+                                st.session_state.drawing_to_delete = drawing
+                                st.rerun()
+                    else:
+                        st.caption("Select one or more drawings to analyze")
+        else:
+            # Show minimal view when collapsed
+            st.info(f"Selected: {len(st.session_state.selected_drawings)} drawing(s)")
+    
+    # --- Middle Column: Query Input & Status (Collapsible) ---
+    with col2:
+        # Collapsible header
+        middle_col_header = st.container()
+        with middle_col_header:
+            col2a, col2b = st.columns([5, 1])
+            with col2a:
+                st.subheader("Query & Status")
+            with col2b:
+                # Toggle button for middle column
+                if st.button("↔️", key="toggle_middle_col", help="Expand/Collapse"):
+                    toggle_middle_column()
+                    st.rerun()
+        
+        # If expanded, show full content, otherwise show minimal content
+        if st.session_state.middle_column_expanded:
             # --- Query Input ---
             query = st.text_area(
                 "Type your question here...",
@@ -625,7 +666,7 @@ def main():
             # Force new analysis checkbox
             force_new = st.checkbox("Force new analysis (ignore cache)", value=False)
 
-            # Submit button (not in a form)
+            # Submit button
             disabled = not (st.session_state.backend_healthy and 
                         st.session_state.selected_drawings and 
                         query.strip())
@@ -652,10 +693,6 @@ def main():
                             st.session_state.raw_job_result = None
                             # Reset logs for new job
                             st.session_state.all_job_logs = []
-                            # Reset force show results flag
-                            st.session_state.force_show_results = False
-                            # Reset technical logs visibility
-                            st.session_state.show_technical_logs = False
                             logger.info(f"Started analysis job: {st.session_state.current_job_id}")
                             st.rerun()
                         else:
@@ -672,7 +709,7 @@ def main():
                     st.info("Analysis stopped.")
                     st.rerun()
             
-            # --- Job Status & Progress Display ---
+            # --- Job Status & Technical Logs ---
             if st.session_state.current_job_id:
                 # Get job status AND detailed logs
                 job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
@@ -707,7 +744,7 @@ def main():
                     status = job_status.get("status", "")
                     current_phase = job_status.get("current_phase", "")
                     
-                    # Only show status info if job is not completed
+                    # Display status info
                     with st.container(border=True):
                         # Clean up phase name (remove emojis)
                         if current_phase:
@@ -724,33 +761,22 @@ def main():
                             clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
                             st.caption(f"Latest Update: {clean_message}")
                         
-                        # Technical logs button - just toggles the state
+                        # Technical logs button
                         if st.button("Show Technical Logs", key="show_tech_logs"):
-                            toggle_technical_logs()
+                            toggle_logs_display()
                             st.rerun()
                     
                     # Show technical logs if toggled
-                    if st.session_state.show_technical_logs:
+                    if st.session_state.show_logs:
                         with st.expander("Technical Logs", expanded=True):
-                            # Display collected logs
+                            # Display all collected logs
                             for message in st.session_state.all_job_logs:
                                 st.text(message)
                             
                             # Button to hide logs
                             if st.button("Hide Technical Logs", key="hide_tech_logs"):
-                                toggle_technical_logs()
+                                toggle_logs_display()
                                 st.rerun()
-                    
-                    # --- DEDICATED RESULTS DISPLAY ---
-                    # This section is immediately after the status display
-                    # Force Show Results button - for when users want to see results immediately
-                    cols = st.columns([1, 1])
-                    with cols[0]:
-                        if st.button("Show Analysis Results", key="force_show_results"):
-                            force_show_results()
-                            # Process job results immediately
-                            process_completed_job(job_status)
-                            st.rerun()
                     
                     # Check for job completion
                     job_completed = False
@@ -763,7 +789,7 @@ def main():
                     if not job_completed:
                         job_completed = check_for_completion(st.session_state.all_job_logs)
                         
-                    # If job is completed or user forces results display, process results
+                    # If job is completed, process results
                     if job_completed:
                         logger.info("Job completion detected - processing results")
                         process_completed_job(job_status)
@@ -779,42 +805,47 @@ def main():
                     st.warning("Unable to retrieve job status. Retrying...")
                     time.sleep(0.5)
                     st.rerun()
-            
-            # --- DEDICATED ANALYSIS RESULTS SECTION ---
-            # Always show the Analysis Results header, even if there are no results yet
-            st.header("Analysis Results")
-            
-            # Display results if available or if forced by user
-            if st.session_state.analysis_results or st.session_state.force_show_results:
-                # Create a visual separation for the results area
-                with st.container(border=True):
-                    # Display results using the results_pane component
-                    if st.session_state.analysis_results:
-                        if isinstance(st.session_state.analysis_results, dict):
-                            results_text = json.dumps(st.session_state.analysis_results, indent=2)
-                        else:
-                            results_text = str(st.session_state.analysis_results)
-                        
-                        # Use the results_pane component to display the results
-                        results_pane(results_text)
-                        
-                        # Copy results button
-                        if st.button("Copy Results", key="copy_results"):
-                            st.success("Results copied to clipboard!")
-                    else:
-                        # If no results but forced display, show a message
-                        st.info("Waiting for analysis results to be available...")
+        else:
+            # Show minimal view when collapsed
+            if st.session_state.current_job_id:
+                st.info("Analysis in progress...")
+            elif st.session_state.analysis_results:
+                st.info("Analysis complete")
+            else:
+                st.info("Ready for query")
+    
+    # --- Right Column: Analysis Results (Always Expanded) ---
+    with col3:
+        st.subheader("Analysis Results")
+        
+        # Create a scrollable container for the results
+        results_container = st.container(border=True, height=600)
+        
+        with results_container:
+            # Display results if available
+            if st.session_state.analysis_results:
+                # Format the results for display
+                if isinstance(st.session_state.analysis_results, dict):
+                    results_text = json.dumps(st.session_state.analysis_results, indent=2)
+                else:
+                    results_text = str(st.session_state.analysis_results)
                 
-                # Clear results button
-                if st.session_state.analysis_results and st.button("Clear Results", key="clear_results"):
-                    st.session_state.analysis_results = None
-                    st.session_state.raw_job_result = None
-                    st.session_state.force_show_results = False
-                    st.rerun()
+                # Use the results_pane component
+                results_pane(results_text)
                 
-    except Exception as e:
-        st.error(f"An error occurred in the UI: {e}")
-        logger.error(f"Unhandled UI exception: {e}", exc_info=True)
+                # Add a copy button
+                if st.button("Copy Results", key="copy_results", help="Copy results to clipboard"):
+                    st.success("Results copied to clipboard!")
+            else:
+                # Show placeholder when no results are available
+                st.info("Results will appear here after analysis is complete.")
+        
+        # Clear results button
+        if st.session_state.analysis_results:
+            if st.button("Clear Results", key="clear_results"):
+                st.session_state.analysis_results = None
+                st.session_state.raw_job_result = None
+                st.rerun()
 
 
 # --- Run the App ---
