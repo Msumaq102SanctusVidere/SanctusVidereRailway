@@ -247,7 +247,7 @@ def extract_api_status(logs: List[Dict[str, Any]]) -> Dict[str, Any]:
         logger.error(f"Error extracting API status: {e}", exc_info=True)
         return api_status
 
-# --- Helper function to detect job completion in logs ---
+# --- Helper function to check for completion in logs ---
 def check_for_completion(logs):
     """Check logs for completion indicators"""
     completion_indicators = [
@@ -394,9 +394,6 @@ def process_completed_job(job_status):
         # Get the result object
         result = job_status.get("result", {})
         
-        # Store the complete result object for potential debugging
-        st.session_state.raw_job_result = result
-        
         # If result is a string, try to parse it
         if isinstance(result, str):
             try:
@@ -458,8 +455,8 @@ def initialize_session_state():
         st.session_state.drawing_to_delete = None
     if "upload_job_id" not in st.session_state:
         st.session_state.upload_job_id = None
-    if "show_advanced_logs" not in st.session_state:
-        st.session_state.show_advanced_logs = False
+    if "show_technical_logs" not in st.session_state:
+        st.session_state.show_technical_logs = False
     if "log_level_filter" not in st.session_state:
         st.session_state.log_level_filter = "INFO"
     if "upload_success" not in st.session_state:
@@ -468,19 +465,26 @@ def initialize_session_state():
         st.session_state.last_poll_time = 0
     if "all_job_logs" not in st.session_state:
         st.session_state.all_job_logs = []
+    if "force_show_results" not in st.session_state:
+        st.session_state.force_show_results = False
     logger.info("Session state initialized")
 
 initialize_session_state()
 
-# --- Toggle Advanced Logs ---
-def toggle_advanced_logs():
-    st.session_state.show_advanced_logs = not st.session_state.show_advanced_logs
-    logger.info(f"Advanced logs toggled to: {st.session_state.show_advanced_logs}")
+# --- Toggle Technical Logs ---
+def toggle_technical_logs():
+    st.session_state.show_technical_logs = not st.session_state.show_technical_logs
+    logger.info(f"Technical logs toggled to: {st.session_state.show_technical_logs}")
 
 # --- Set Log Level Filter ---
 def set_log_level_filter(level):
     st.session_state.log_level_filter = level
     logger.info(f"Log level filter set to: {level}")
+
+# --- Force Show Results ---
+def force_show_results():
+    st.session_state.force_show_results = True
+    logger.info("Results display forced by user")
 
 # --- Main Application Logic ---
 def main():
@@ -648,6 +652,10 @@ def main():
                             st.session_state.raw_job_result = None
                             # Reset logs for new job
                             st.session_state.all_job_logs = []
+                            # Reset force show results flag
+                            st.session_state.force_show_results = False
+                            # Reset technical logs visibility
+                            st.session_state.show_technical_logs = False
                             logger.info(f"Started analysis job: {st.session_state.current_job_id}")
                             st.rerun()
                         else:
@@ -664,8 +672,7 @@ def main():
                     st.info("Analysis stopped.")
                     st.rerun()
             
-            # --- Progress Display ---
-            # --- Job Status Section ---
+            # --- Job Status & Progress Display ---
             if st.session_state.current_job_id:
                 # Get job status AND detailed logs
                 job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
@@ -696,12 +703,12 @@ def main():
                     st.session_state.all_job_logs = all_logs
                 
                 if job_status:
-                    # Only show minimal status info
+                    # Get status information
+                    status = job_status.get("status", "")
+                    current_phase = job_status.get("current_phase", "")
+                    
+                    # Only show status info if job is not completed
                     with st.container(border=True):
-                        # Get status information
-                        status = job_status.get("status", "")
-                        current_phase = job_status.get("current_phase", "")
-                        
                         # Clean up phase name (remove emojis)
                         if current_phase:
                             clean_phase = re.sub(r'[^\w\s]', '', current_phase).strip()
@@ -717,16 +724,33 @@ def main():
                             clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
                             st.caption(f"Latest Update: {clean_message}")
                         
-                        # Technical logs button with expanded logs
+                        # Technical logs button - just toggles the state
                         if st.button("Show Technical Logs", key="show_tech_logs"):
-                            st.session_state.show_advanced_logs = True
+                            toggle_technical_logs()
+                            st.rerun()
                     
-                    # Show technical logs if requested
-                    if st.session_state.show_advanced_logs:
+                    # Show technical logs if toggled
+                    if st.session_state.show_technical_logs:
                         with st.expander("Technical Logs", expanded=True):
-                            # Display all collected logs
+                            # Display collected logs
                             for message in st.session_state.all_job_logs:
                                 st.text(message)
+                            
+                            # Button to hide logs
+                            if st.button("Hide Technical Logs", key="hide_tech_logs"):
+                                toggle_technical_logs()
+                                st.rerun()
+                    
+                    # --- DEDICATED RESULTS DISPLAY ---
+                    # This section is immediately after the status display
+                    # Force Show Results button - for when users want to see results immediately
+                    cols = st.columns([1, 1])
+                    with cols[0]:
+                        if st.button("Show Analysis Results", key="force_show_results"):
+                            force_show_results()
+                            # Process job results immediately
+                            process_completed_job(job_status)
+                            st.rerun()
                     
                     # Check for job completion
                     job_completed = False
@@ -735,11 +759,11 @@ def main():
                     if status == "completed":
                         job_completed = True
                     
-                    # Check logs for completion indicators if status doesn't show completion
+                    # Check logs for completion indicators
                     if not job_completed:
                         job_completed = check_for_completion(st.session_state.all_job_logs)
-                    
-                    # If job is completed, process results and display them
+                        
+                    # If job is completed or user forces results display, process results
                     if job_completed:
                         logger.info("Job completion detected - processing results")
                         process_completed_job(job_status)
@@ -756,33 +780,37 @@ def main():
                     time.sleep(0.5)
                     st.rerun()
             
-            # --- Results Display ---
-            if st.session_state.analysis_results:
-                st.header("Analysis Results")
-                
-                # Display results using the results_pane component
-                if isinstance(st.session_state.analysis_results, dict):
-                    results_text = json.dumps(st.session_state.analysis_results, indent=2)
-                else:
-                    results_text = str(st.session_state.analysis_results)
-                
-                # Use the results_pane component
-                results_pane(results_text)
+            # --- DEDICATED ANALYSIS RESULTS SECTION ---
+            # Always show the Analysis Results header, even if there are no results yet
+            st.header("Analysis Results")
+            
+            # Display results if available or if forced by user
+            if st.session_state.analysis_results or st.session_state.force_show_results:
+                # Create a visual separation for the results area
+                with st.container(border=True):
+                    # Display results using the results_pane component
+                    if st.session_state.analysis_results:
+                        if isinstance(st.session_state.analysis_results, dict):
+                            results_text = json.dumps(st.session_state.analysis_results, indent=2)
+                        else:
+                            results_text = str(st.session_state.analysis_results)
+                        
+                        # Use the results_pane component to display the results
+                        results_pane(results_text)
+                        
+                        # Copy results button
+                        if st.button("Copy Results", key="copy_results"):
+                            st.success("Results copied to clipboard!")
+                    else:
+                        # If no results but forced display, show a message
+                        st.info("Waiting for analysis results to be available...")
                 
                 # Clear results button
-                if st.button("Clear Results", key="clear_results"):
+                if st.session_state.analysis_results and st.button("Clear Results", key="clear_results"):
                     st.session_state.analysis_results = None
                     st.session_state.raw_job_result = None
+                    st.session_state.force_show_results = False
                     st.rerun()
-            
-            # --- Technical Information (Expandable) ---
-            if st.session_state.raw_job_result:
-                with st.expander("Technical Information", expanded=False):
-                    st.json(st.session_state.raw_job_result)
-                    
-                    if st.button("Clear Technical Data", key="clear_tech_data"):
-                        st.session_state.raw_job_result = None
-                        st.rerun()
                 
     except Exception as e:
         st.error(f"An error occurred in the UI: {e}")
