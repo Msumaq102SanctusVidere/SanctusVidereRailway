@@ -1,4 +1,4 @@
-# --- Filename: api.py (Backend Flask Application - Syntax Corrected FINAL v2) ---
+# --- Filename: api.py (Backend Flask Application - Enhanced with DB Persistence) ---
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -11,6 +11,7 @@ import random
 import uuid
 import threading
 import datetime
+import sqlite3
 from pathlib import Path
 import werkzeug.utils
 from PIL import Image
@@ -91,10 +92,12 @@ UPLOAD_FOLDER_DEFAULT = fallback_dir_default / 'uploads'
 TEMP_UPLOAD_FOLDER_DEFAULT = UPLOAD_FOLDER_DEFAULT / 'temp_uploads'
 DRAWINGS_OUTPUT_DIR_DEFAULT = fallback_dir_default / 'processed_drawings'
 MEMORY_STORE_DIR_DEFAULT = fallback_dir_default / 'memory_store'
+DATABASE_DIR_DEFAULT = fallback_dir_default / 'database'
 UPLOAD_FOLDER = UPLOAD_FOLDER_DEFAULT
 TEMP_UPLOAD_FOLDER = TEMP_UPLOAD_FOLDER_DEFAULT
 DRAWINGS_OUTPUT_DIR = DRAWINGS_OUTPUT_DIR_DEFAULT
 MEMORY_STORE_DIR = MEMORY_STORE_DIR_DEFAULT
+DATABASE_DIR = DATABASE_DIR_DEFAULT
 
 try:
     base_dir = os.environ.get('APP_BASE_DIR', '/app')
@@ -105,6 +108,7 @@ try:
         TEMP_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, 'temp_uploads')
         DRAWINGS_OUTPUT_DIR = Path(Config.DRAWINGS_DIR).resolve()
         MEMORY_STORE_DIR = Path(Config.MEMORY_STORE).resolve()
+        DATABASE_DIR = Path(os.path.join(Config.BASE_DIR, 'database')).resolve()
     else:
         logger.error("Config class not available from import, using fallback paths.")
         logger.warning(f"Using fallback directories based on: {fallback_dir_default}")
@@ -114,12 +118,14 @@ except Exception as e:
     TEMP_UPLOAD_FOLDER = TEMP_UPLOAD_FOLDER_DEFAULT
     DRAWINGS_OUTPUT_DIR = DRAWINGS_OUTPUT_DIR_DEFAULT
     MEMORY_STORE_DIR = MEMORY_STORE_DIR_DEFAULT
+    DATABASE_DIR = DATABASE_DIR_DEFAULT
     logger.warning(f"Using fallback directories due to error, based on: {fallback_dir_default}")
 
 logger.info(f"Final Uploads directory: {UPLOAD_FOLDER}")
 logger.info(f"Final Temporary uploads directory: {TEMP_UPLOAD_FOLDER}")
 logger.info(f"Final Processed drawings directory: {DRAWINGS_OUTPUT_DIR}")
 logger.info(f"Final Memory store directory: {MEMORY_STORE_DIR}")
+logger.info(f"Final Database directory: {DATABASE_DIR}")
 
 # Flask App Config
 ALLOWED_EXTENSIONS = {'pdf'}
@@ -131,10 +137,6 @@ logger.info(f"Max upload size: {app.config['MAX_CONTENT_LENGTH'] / 1024 / 1024} 
 MAX_RETRIES = int(os.environ.get('API_MAX_RETRIES', 5))
 MAX_BACKOFF = int(os.environ.get('API_MAX_BACKOFF_SECONDS', 120))
 ANALYSIS_BATCH_SIZE = int(os.environ.get('ANALYSIS_BATCH_SIZE', 3))
-
-# Job Tracking
-jobs = {}
-job_lock = threading.Lock()
 
 # --- Process phases (Corrected Syntax) ---
 PROCESS_PHASES = {
@@ -158,6 +160,7 @@ try:
     if MEMORY_STORE_DIR: os.makedirs(MEMORY_STORE_DIR, exist_ok=True)
     if UPLOAD_FOLDER: os.makedirs(Path(UPLOAD_FOLDER), exist_ok=True)
     if TEMP_UPLOAD_FOLDER: os.makedirs(Path(TEMP_UPLOAD_FOLDER), exist_ok=True)
+    if DATABASE_DIR: os.makedirs(Path(DATABASE_DIR), exist_ok=True)
     logger.info(f"Ensured directories exist.")
 except Exception as e:
     logger.error(f"Error creating required directories: {e}", exc_info=True)
@@ -190,6 +193,293 @@ try:
     else: logger.info("Intent classifier (transformer) is disabled.")
 except Exception as e: logger.warning(f"Failed to load transformer: {e}. Intent filtering disabled.")
 
+# --- Database Setup for Job Persistence ---
+DB_PATH = os.path.join(DATABASE_DIR, 'jobs.db')
+DB_SCHEMA = '''
+CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    progress INTEGER DEFAULT 0,
+    total_batches INTEGER DEFAULT 0,
+    completed_batches INTEGER DEFAULT 0,
+    current_phase TEXT,
+    result TEXT,
+    error TEXT,
+    details TEXT
+);
+
+CREATE TABLE IF NOT EXISTS job_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    message TEXT NOT NULL,
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+);
+'''
+
+def init_database():
+    """Initialize the SQLite database for job persistence."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.executescript(DB_SCHEMA)
+        conn.commit()
+        conn.close()
+        logger.info(f"Database initialized at {DB_PATH}")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}", exc_info=True)
+
+# Initialize database on startup
+init_database()
+
+# --- Database Access Functions ---
+def get_db_connection():
+    """Get a database connection with row factory enabled."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def json_serializable(value):
+    """Make a value JSON serializable."""
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    elif isinstance(value, (list, tuple)):
+        return [json_serializable(x) for x in value]
+    elif isinstance(value, dict):
+        return {str(k): json_serializable(v) for k, v in value.items()}
+    else:
+        return str(value)
+
+def create_job(job_data):
+    """Create a new job in the database."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Prepare data for the jobs table
+        job_id = job_data.get('id', str(uuid.uuid4()))
+        details = {k: v for k, v in job_data.items() 
+                if k not in ('id', 'type', 'status', 'created_at', 'updated_at', 
+                            'progress', 'total_batches', 'completed_batches', 
+                            'current_phase', 'result', 'error', 'progress_messages')}
+        
+        # Insert into jobs table
+        cursor.execute('''
+        INSERT INTO jobs (
+            id, type, status, created_at, updated_at, 
+            progress, total_batches, completed_batches, 
+            current_phase, result, error, details
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            job_id,
+            job_data.get('type', 'unknown'),
+            job_data.get('status', 'created'),
+            job_data.get('created_at', datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z'),
+            job_data.get('updated_at', datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z'),
+            job_data.get('progress', 0),
+            job_data.get('total_batches', 0),
+            job_data.get('completed_batches', 0),
+            job_data.get('current_phase', PROCESS_PHASES.get('INIT')),
+            json.dumps(json_serializable(job_data.get('result', None))) if job_data.get('result') else None,
+            job_data.get('error', None),
+            json.dumps(details) if details else None
+        ))
+        
+        # Insert initial progress message if provided
+        if 'progress_messages' in job_data and isinstance(job_data['progress_messages'], list):
+            for message in job_data['progress_messages']:
+                timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+                cursor.execute('''
+                INSERT INTO job_messages (job_id, timestamp, message)
+                VALUES (?, ?, ?)
+                ''', (job_id, timestamp, message))
+        
+        conn.commit()
+        logger.info(f"Created job {job_id} in database")
+        return job_id
+    except Exception as e:
+        logger.error(f"Error creating job in database: {e}", exc_info=True)
+        raise
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+def update_job(job_id, **kwargs):
+    """Update a job in the database."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Prepare update fields
+        update_fields = []
+        update_values = []
+        
+        # Process regular fields
+        for key in ('status', 'progress', 'completed_batches', 'current_phase', 'error'):
+            if key in kwargs:
+                update_fields.append(f"{key} = ?")
+                update_values.append(kwargs[key])
+        
+        # Process JSON fields
+        if 'result' in kwargs:
+            update_fields.append("result = ?")
+            update_values.append(json.dumps(json_serializable(kwargs['result'])))
+        
+        # Process details - we'll merge with existing details
+        if any(k for k in kwargs.keys() if k not in ('status', 'progress', 'completed_batches', 
+                                                   'current_phase', 'error', 'result', 
+                                                   'progress_message', 'updated_at')):
+            # Get existing details
+            cursor.execute("SELECT details FROM jobs WHERE id = ?", (job_id,))
+            row = cursor.fetchone()
+            if row and row['details']:
+                existing_details = json.loads(row['details'])
+            else:
+                existing_details = {}
+            
+            # Merge with new details
+            new_details = {k: v for k, v in kwargs.items() 
+                         if k not in ('status', 'progress', 'completed_batches', 
+                                     'current_phase', 'error', 'result', 
+                                     'progress_message', 'updated_at')}
+            existing_details.update(new_details)
+            
+            # Update details field
+            update_fields.append("details = ?")
+            update_values.append(json.dumps(existing_details))
+        
+        # Always update the updated_at timestamp
+        update_fields.append("updated_at = ?")
+        update_values.append(datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z')
+        
+        # Execute update if we have fields to update
+        if update_fields:
+            query = f"UPDATE jobs SET {', '.join(update_fields)} WHERE id = ?"
+            update_values.append(job_id)
+            cursor.execute(query, update_values)
+        
+        # Add progress message if provided
+        if 'progress_message' in kwargs and kwargs['progress_message']:
+            timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+            cursor.execute('''
+            INSERT INTO job_messages (job_id, timestamp, message)
+            VALUES (?, ?, ?)
+            ''', (job_id, timestamp, kwargs['progress_message']))
+        
+        conn.commit()
+        logger.debug(f"Updated job {job_id} in database")
+    except Exception as e:
+        logger.error(f"Error updating job in database: {e}", exc_info=True)
+        raise
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+def get_job(job_id, include_messages=True):
+    """Get a job from the database with its messages."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get job data
+        cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+        job_row = cursor.fetchone()
+        
+        if not job_row:
+            return None
+        
+        # Convert row to dict
+        job_data = dict(job_row)
+        
+        # Parse JSON fields
+        if job_data.get('result'):
+            try:
+                job_data['result'] = json.loads(job_data['result'])
+            except:
+                job_data['result'] = None
+        
+        if job_data.get('details'):
+            try:
+                details = json.loads(job_data['details'])
+                # Merge details into job data
+                for k, v in details.items():
+                    if k not in job_data:
+                        job_data[k] = v
+            except:
+                pass
+            
+        # Remove details field from output
+        if 'details' in job_data:
+            del job_data['details']
+        
+        # Get progress messages if requested
+        if include_messages:
+            cursor.execute("SELECT timestamp, message FROM job_messages WHERE job_id = ? ORDER BY id", (job_id,))
+            messages = [f"{row['timestamp']} - {row['message']}" for row in cursor.fetchall()]
+            job_data['progress_messages'] = messages
+        
+        return job_data
+    except Exception as e:
+        logger.error(f"Error getting job from database: {e}", exc_info=True)
+        return None
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+def list_active_jobs():
+    """List active jobs (queued or processing)."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT id FROM jobs WHERE status IN ('queued', 'processing')")
+        job_ids = [row['id'] for row in cursor.fetchall()]
+        
+        active_jobs = {}
+        for job_id in job_ids:
+            job_data = get_job(job_id, include_messages=False)
+            if job_data:
+                active_jobs[job_id] = job_data
+        
+        return active_jobs
+    except Exception as e:
+        logger.error(f"Error listing active jobs: {e}", exc_info=True)
+        return {}
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+def cleanup_old_jobs(hours=24):
+    """Clean up completed/failed jobs older than the specified hours."""
+    try:
+        conn = get_db_connection()
+        cutoff_time = (datetime.datetime.now(datetime.timezone.utc) - 
+                     datetime.timedelta(hours=hours)).isoformat(timespec='milliseconds') + 'Z'
+        
+        # Delete old jobs
+        cursor = conn.cursor()
+        cursor.execute("""
+        DELETE FROM jobs 
+        WHERE status IN ('completed', 'failed') 
+        AND updated_at < ?
+        """, (cutoff_time,))
+        
+        deleted_count = cursor.rowcount
+        conn.commit()
+        
+        if deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} old jobs")
+        
+        return deleted_count
+    except Exception as e:
+        logger.error(f"Error cleaning up old jobs: {e}", exc_info=True)
+        return 0
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
 # --- Utility Functions ---
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -216,39 +506,54 @@ def verify_drawing_files(drawing_name):
 
 # --- Job Management Functions ---
 def update_job_status(job_id, **kwargs):
-    # (Full implementation)
-    with job_lock:
-        if job_id in jobs:
-            job = jobs[job_id]
-            if "progress_messages" not in job or not isinstance(job.get("progress_messages"), list): job["progress_messages"] = []
-            new_message = kwargs.pop("progress_message", None)
-            if new_message:
-                 log_msg = f"{datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds')}Z - {new_message}"
-                 job["progress_messages"].append(log_msg)
-                 MAX_MESSAGES = 50
-                 if len(job["progress_messages"]) > MAX_MESSAGES: job["progress_messages"] = [job["progress_messages"][0]] + job["progress_messages"][- (MAX_MESSAGES - 1):]
-            job.update(kwargs)
-            job["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z'
-            log_update = {k:v for k,v in kwargs.items() if k not in ['result', 'progress_messages']}
+    """Update job status and add progress message if provided."""
+    try:
+        # Update the job in the database
+        update_job(job_id, **kwargs)
+        
+        # Log the update (but not the full result)
+        log_update = {k:v for k,v in kwargs.items() if k not in ['result', 'progress_messages']}
+        job = get_job(job_id, include_messages=False)
+        if job:
             logger.info(f"Job {job_id} updated: Status='{job.get('status')}', Progress={job.get('progress', 0)}%, Details={log_update}")
-        else: logger.warning(f"Attempted to update status for unknown job_id: {job_id}")
+        else:
+            logger.warning(f"Attempted to update status for unknown job_id: {job_id}")
+    except Exception as e:
+        logger.error(f"Error updating job status: {e}", exc_info=True)
 
 def create_analysis_job(query, drawings, use_cache):
-    # (Full implementation)
-     job_id = str(uuid.uuid4())
-     total_batches = (len(drawings) + ANALYSIS_BATCH_SIZE - 1) // ANALYSIS_BATCH_SIZE if drawings else 0
-     with job_lock:
-         jobs[job_id] = {
-            "id": job_id, "type": "analysis", "query": query, "drawings": drawings, "use_cache": use_cache, "status": "queued",
+    """Create a new analysis job."""
+    try:
+        total_batches = (len(drawings) + ANALYSIS_BATCH_SIZE - 1) // ANALYSIS_BATCH_SIZE if drawings else 0
+        
+        # Create job data
+        job_data = {
+            "id": str(uuid.uuid4()),
+            "type": "analysis",
+            "query": query,
+            "drawings": drawings,
+            "use_cache": use_cache,
+            "status": "queued",
             "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
             "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
-            "progress": 0, "total_batches": total_batches, "completed_batches": 0, "current_batch": None,
+            "progress": 0,
+            "total_batches": total_batches,
+            "completed_batches": 0,
+            "current_batch": None,
             "current_phase": PROCESS_PHASES["QUEUED"],
             "progress_messages": [f"{datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds')}Z - {PROCESS_PHASES['QUEUED']}: Analyze {len(drawings)} drawing(s)"],
-            "result": None, "error": None
-         }
-     logger.info(f"Created analysis job {job_id} for query: {query[:50]}...")
-     return job_id
+            "result": None,
+            "error": None
+        }
+        
+        # Create the job in the database
+        job_id = create_job(job_data)
+        logger.info(f"Created analysis job {job_id} for query: {query[:50]}...")
+        
+        return job_id
+    except Exception as e:
+        logger.error(f"Error creating analysis job: {e}", exc_info=True)
+        raise
 
 # --- PDF Processing (Now runs in background) ---
 def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_size=2048, overlap_ratio=0.35):
@@ -364,6 +669,7 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
         if os.path.exists(temp_file_path):
              try: os.remove(temp_file_path); logger.info(f"[Job {job_id}] Cleaned up temporary upload file.")
              except Exception as clean_e: logger.warning(f"[Job {job_id}] Failed to clean up temp file: {clean_e}")
+
 # --- Flask Routes ---
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -381,7 +687,8 @@ def health_check():
         "instances": {
             "analyzer": analyzer is not None,
             "drawing_manager": drawing_manager is not None
-        }
+        },
+        "database": os.path.exists(DB_PATH)
     }
     return jsonify(status)
 
@@ -429,7 +736,11 @@ def analyze_drawings():
         if not drawings:
             return jsonify({"error": "At least one drawing must be specified"}), 400
         use_cache = data.get('use_cache', True)
+        
+        # Create the job in the database
         job_id = create_analysis_job(query, drawings, use_cache)
+        
+        # Start processing in background
         analysis_thread = threading.Thread(
             target=process_analysis_job,
             args=(job_id,),
@@ -437,6 +748,8 @@ def analyze_drawings():
         )
         analysis_thread.daemon = True
         analysis_thread.start()
+        
+        # Return immediately with job ID
         return jsonify({"job_id": job_id})
     except Exception as e:
         logger.error(f"Error starting analysis: {str(e)}", exc_info=True)
@@ -444,17 +757,59 @@ def analyze_drawings():
 
 @app.route('/job-status/<job_id>', methods=['GET'])
 def get_job_status(job_id):
-    with job_lock:
-        if job_id in jobs:
-            return jsonify(jobs[job_id])
+    try:
+        job = get_job(job_id)
+        if job:
+            return jsonify(job)
         else:
             return jsonify({"error": f"Job {job_id} not found"}), 404
+    except Exception as e:
+        logger.error(f"Error getting job status: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to get job status: {str(e)}"}), 500
+
+@app.route('/job-logs/<job_id>', methods=['GET'])
+def get_job_logs(job_id):
+    """Get detailed logs for a job."""
+    try:
+        limit = int(request.args.get('limit', 100))
+        since_id = request.args.get('since_id', None)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if since_id:
+            cursor.execute("""
+            SELECT id, timestamp, message FROM job_messages 
+            WHERE job_id = ? AND id > ? 
+            ORDER BY id DESC LIMIT ?
+            """, (job_id, since_id, limit))
+        else:
+            cursor.execute("""
+            SELECT id, timestamp, message FROM job_messages 
+            WHERE job_id = ? 
+            ORDER BY id DESC LIMIT ?
+            """, (job_id, limit))
+        
+        logs = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        return jsonify({
+            "job_id": job_id,
+            "logs": logs,
+            "count": len(logs)
+        })
+    except Exception as e:
+        logger.error(f"Error getting job logs: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to get job logs: {str(e)}"}), 500
 
 @app.route('/jobs', methods=['GET'])
 def list_jobs():
-    with job_lock:
-        active_jobs = {job_id: job for job_id, job in jobs.items() if job.get('status') in ['queued', 'processing']}
+    try:
+        active_jobs = list_active_jobs()
         return jsonify({"active_jobs": active_jobs})
+    except Exception as e:
+        logger.error(f"Error listing jobs: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to list jobs: {str(e)}"}), 500
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -470,22 +825,24 @@ def upload_file():
         os.makedirs(TEMP_UPLOAD_FOLDER, exist_ok=True)
         temp_file_path = os.path.join(TEMP_UPLOAD_FOLDER, f"upload_{uuid.uuid4()}_{filename}")
         file.save(temp_file_path)
-        job_id = str(uuid.uuid4())
-        with job_lock:
-            jobs[job_id] = {
-                "id": job_id,
-                "type": "conversion",
-                "filename": file.filename,
-                "status": "queued",
-                "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
-                "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
-                "progress": 0,
-                "current_phase": PROCESS_PHASES["QUEUED"],
-                "progress_messages": [f"{datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds')}Z - Job created for {file.filename}"],
-                "result": None,
-                "error": None
-            }
+        
+        # Create job in database
+        job_data = {
+            "id": str(uuid.uuid4()),
+            "type": "conversion",
+            "filename": file.filename,
+            "status": "queued",
+            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
+            "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds') + 'Z',
+            "progress": 0,
+            "current_phase": PROCESS_PHASES["QUEUED"],
+            "progress_messages": [f"{datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds')}Z - Job created for {file.filename}"],
+            "result": None,
+            "error": None
+        }
+        job_id = create_job(job_data)
         logger.info(f"Created job {job_id} for file {file.filename}")
+        
         # Start processing in background
         thread = threading.Thread(
             target=process_pdf_job,
@@ -494,6 +851,8 @@ def upload_file():
         )
         thread.daemon = True
         thread.start()
+        
+        # Return immediately with job ID
         return jsonify({"job_id": job_id})
     except Exception as e:
         logger.error(f"Error during upload: {str(e)}", exc_info=True)
@@ -501,19 +860,20 @@ def upload_file():
 
 # --- Background Job Processors ---
 def process_analysis_job(job_id):
-    with job_lock:
-        if job_id not in jobs:
+    try:
+        # Get job from database
+        job = get_job(job_id)
+        if not job:
             logger.error(f"Job {job_id} not found for processing")
             return
-        job = jobs[job_id]
+        
         query = job.get("query", "")
         drawings = job.get("drawings", [])
         use_cache = job.get("use_cache", True)
-    
-    logger.info(f"Starting analysis job {job_id} for query: '{query[:50]}...', drawings: {len(drawings)}")
-    update_job_status(job_id, status="processing", progress=5, progress_message=f"🚀 Starting analysis of {len(drawings)} drawing(s)")
-    
-    try:
+        
+        logger.info(f"Starting analysis job {job_id} for query: '{query[:50]}...', drawings: {len(drawings)}")
+        update_job_status(job_id, status="processing", progress=5, progress_message=f"🚀 Starting analysis of {len(drawings)} drawing(s)")
+        
         total_batches = job.get("total_batches", 1)
         batch_size = ANALYSIS_BATCH_SIZE
         
@@ -530,7 +890,7 @@ def process_analysis_job(job_id):
             )
             
             # Process this batch with retries
-            batch_result = process_batch_with_retry(job_id, query, use_cache, batch_num+1, total_batches)
+            batch_result = process_batch_with_retry(job_id, query, current_batch, use_cache, batch_num+1, total_batches)
             
             update_job_status(
                 job_id,
@@ -561,55 +921,79 @@ def process_analysis_job(job_id):
             progress_message=f"❌ Analysis failed: {str(e)}"
         )
 
-def process_batch_with_retry(job_id, query, use_cache, batch_number, total_batches):
-    # Implementation of batch processing with retries
-    # This would normally call into your analysis functions
-    # For now we'll just simulate success
-    time.sleep(2)  # Simulate processing time
-    return {"success": True, "batch_number": batch_number}
+def process_batch_with_retry(job_id, query, batch_drawings, use_cache, batch_number, total_batches):
+    """Process a batch of drawings with retry logic."""
+    retry_count = 0
+    max_retries = MAX_RETRIES
+    
+    while retry_count < max_retries:
+        try:
+            # Implementation would call into analyzer
+            if not analyzer:
+                raise Exception("Analyzer not available")
+            
+            # Implement core analysis logic here - kept the same as your original code
+            # This is a placeholder - your actual implementation would use your analyzer
+            logger.info(f"[Job {job_id}] Processing batch {batch_number}/{total_batches} with {len(batch_drawings)} drawing(s)")
+            
+            for i, drawing_name in enumerate(batch_drawings):
+                progress = 5 + int(90 * (batch_number - 1) / total_batches) + int(90 / total_batches * (i / len(batch_drawings)))
+                update_job_status(
+                    job_id,
+                    progress=progress,
+                    progress_message=f"🔍 Analyzing drawing {drawing_name} ({i+1}/{len(batch_drawings)} in batch {batch_number})"
+                )
+                
+                # Your actual analysis would happen here
+                # We're simulating it with a delay
+                time.sleep(2)
+                
+                # Update progress after each drawing
+                update_job_status(
+                    job_id,
+                    progress_message=f"✅ Completed analysis of {drawing_name}"
+                )
+            
+            # Batch completed successfully
+            return {"success": True, "batch_number": batch_number}
+            
+        except (RateLimitError, APIStatusError, APITimeoutError, APIConnectionError) as api_err:
+            retry_count += 1
+            backoff_time = min(2 ** retry_count + random.uniform(0, 1), MAX_BACKOFF)
+            logger.warning(f"[Job {job_id}] API error during batch {batch_number} (attempt {retry_count}/{max_retries}): {str(api_err)}. Retrying in {backoff_time:.1f}s")
+            update_job_status(
+                job_id,
+                progress_message=f"⚠️ API error in batch {batch_number}: {str(api_err)}. Retrying in {backoff_time:.1f}s ({retry_count}/{max_retries})"
+            )
+            time.sleep(backoff_time)
+            
+        except Exception as e:
+            retry_count += 1
+            backoff_time = min(2 ** retry_count + random.uniform(0, 1), MAX_BACKOFF)
+            logger.error(f"[Job {job_id}] Error during batch {batch_number} (attempt {retry_count}/{max_retries}): {str(e)}", exc_info=True)
+            update_job_status(
+                job_id,
+                progress_message=f"❌ Error in batch {batch_number}: {str(e)}. Retrying in {backoff_time:.1f}s ({retry_count}/{max_retries})"
+            )
+            time.sleep(backoff_time)
+    
+    # If we get here, all retries failed
+    raise Exception(f"Failed to process batch {batch_number} after {max_retries} attempts")
 
 # --- Cleanup Thread ---
-def cleanup_old_jobs():
+def cleanup_old_jobs_thread():
     while True:
         try:
             time.sleep(3600)  # Check once per hour
-            current_time = datetime.datetime.now(datetime.timezone.utc)
-            with job_lock:
-                to_remove = []
-                for job_id, job in jobs.items():
-                    # Parse the timestamp
-                    updated_at = job.get("updated_at", "")
-                    if not updated_at:
-                        continue
-                    
-                    try:
-                        # Remove Z suffix if present
-                        if updated_at.endswith('Z'):
-                            updated_at = updated_at[:-1]
-                        
-                        job_time = datetime.datetime.fromisoformat(updated_at)
-                        # Make job_time timezone aware if it isn't already
-                        if job_time.tzinfo is None:
-                            job_time = job_time.replace(tzinfo=datetime.timezone.utc)
-                        
-                        # If job is completed/failed and older than 24 hours, mark for removal
-                        age_hours = (current_time - job_time).total_seconds() / 3600
-                        if job.get("status") in ["completed", "failed"] and age_hours > 24:
-                            to_remove.append(job_id)
-                    except Exception as e:
-                        logger.error(f"Error parsing timestamp '{updated_at}': {e}")
-                
-                # Remove the old jobs
-                for job_id in to_remove:
-                    del jobs[job_id]
-                
-                if to_remove:
-                    logger.info(f"Cleaned up {len(to_remove)} old jobs")
-        
+            deleted_count = cleanup_old_jobs(hours=24)
+            if deleted_count > 0:
+                logger.info(f"Cleaned up {deleted_count} old jobs")
         except Exception as e:
             logger.error(f"Error in job cleanup thread: {str(e)}", exc_info=True)
 
-cleanup_thread = threading.Thread(target=cleanup_old_jobs, name="JobCleanupThread"); cleanup_thread.daemon = True; cleanup_thread.start()
+cleanup_thread = threading.Thread(target=cleanup_old_jobs_thread, name="JobCleanupThread")
+cleanup_thread.daemon = True
+cleanup_thread.start()
 
 # --- Server Start ---
 if __name__ == "__main__":
