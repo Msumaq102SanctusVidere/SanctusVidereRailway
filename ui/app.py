@@ -115,8 +115,8 @@ def main():
     with col2:
         st.subheader("Query & Status")
 
-        # Query input
-        st.session_state.query = query_box(st.session_state.query)
+        # Query input - FIX: Don't pass a string, use default disabled=False
+        st.session_state.query = query_box()
         st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
 
         # Analyze button
