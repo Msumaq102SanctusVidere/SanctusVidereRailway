@@ -394,6 +394,8 @@ def initialize_session_state():
         st.session_state.show_advanced_logs = False
     if "log_level_filter" not in st.session_state:
         st.session_state.log_level_filter = "INFO"
+    if "upload_success" not in st.session_state:
+        st.session_state.upload_success = False
     logger.info("Session state initialized")
 
 initialize_session_state()
@@ -438,6 +440,8 @@ def main():
     with st.sidebar:
         upload_success = upload_drawing_component()
         if upload_success:
+            # Mark successful upload for refreshing drawings
+            st.session_state.upload_success = True
             # Refresh drawings if upload was successful
             refresh_drawings()
             st.rerun()
@@ -708,13 +712,29 @@ def main():
                     
                     # Check if job is complete or failed
                     if job_status.get("status") == "completed":
+                        # Store results and clear job ID
                         st.session_state.analysis_results = job_status.get("result", {})
                         st.session_state.current_job_id = None
-                        st.success("Analysis completed successfully!")
+                        
+                        # AUTO-REFRESH THE DRAWINGS LIST when an upload job completes
+                        if job_status.get("type") == "conversion":
+                            with st.spinner("Refreshing drawings list..."):
+                                # Clear any cached drawing data to ensure we get fresh data
+                                if "drawings_last_updated" in st.session_state:
+                                    st.session_state.drawings_last_updated = 0
+                                # Force a refresh of the drawings list
+                                refresh_success = refresh_drawings()
+                                if refresh_success:
+                                    st.success("Processing completed successfully! Drawing list updated.")
+                                else:
+                                    st.success("Processing completed successfully!")
+                                    st.warning("Note: Could not refresh drawing list. Please refresh manually.")
+                        else:
+                            st.success("Analysis completed successfully!")
                         st.rerun()
                     elif job_status.get("status") == "failed":
                         error_msg = job_status.get("error", "Unknown error")
-                        st.error(f"Analysis failed: {error_msg}")
+                        st.error(f"Processing failed: {error_msg}")
                         st.session_state.current_job_id = None
                 else:
                     # Fallback to standard progress indicator if detailed status not available
@@ -739,6 +759,18 @@ def main():
                 if st.button("Clear Results", key="clear_results"):
                     st.session_state.analysis_results = None
                     st.rerun()
+
+            # --- Add Auto-refresh for Upload Success ---
+            # This section checks for upload success indicator from the upload component
+            if "upload_success" in st.session_state and st.session_state.upload_success:
+                # Reset the flag
+                st.session_state.upload_success = False
+                # Force a refresh of drawings list
+                with st.spinner("Refreshing drawings list after upload..."):
+                    st.session_state.drawings_last_updated = 0
+                    refresh_drawings()
+                    st.rerun()
+                    
     except Exception as e:
         st.error(f"An error occurred in the UI: {e}")
         logger.error(f"Unhandled UI exception: {e}", exc_info=True)
