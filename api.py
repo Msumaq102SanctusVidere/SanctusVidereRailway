@@ -956,13 +956,20 @@ def process_batch_with_retry(job_id, query, batch_drawings, use_cache, batch_num
     
     while retry_count < max_retries:
         try:
-            # Implementation would call into analyzer
+            # Check if analyzer is available
             if not analyzer:
                 raise Exception("Analyzer not available")
             
-            # Implement core analysis logic here - kept the same as your original code
-            # This is a placeholder - your actual implementation would use your analyzer
             logger.info(f"[Job {job_id}] Processing batch {batch_number}/{total_batches} with {len(batch_drawings)} drawing(s)")
+            
+            # Call the actual analyze_query method from ConstructionAnalyzer
+            update_job_status(
+                job_id,
+                progress_message=f"🧩 Running analysis using ConstructionAnalyzer for query: {query[:50]}..."
+            )
+            
+            # Store results for all drawings in the batch
+            batch_results = {}
             
             for i, drawing_name in enumerate(batch_drawings):
                 progress = 5 + int(90 * (batch_number - 1) / total_batches) + int(90 / total_batches * (i / len(batch_drawings)))
@@ -971,19 +978,30 @@ def process_batch_with_retry(job_id, query, batch_drawings, use_cache, batch_num
                     progress=progress,
                     progress_message=f"🔍 Analyzing drawing {drawing_name} ({i+1}/{len(batch_drawings)} in batch {batch_number})"
                 )
-                
-                # Your actual analysis would happen here
-                # We're simulating it with a delay
-                time.sleep(2)
-                
-                # Update progress after each drawing
-                update_job_status(
-                    job_id,
-                    progress_message=f"✅ Completed analysis of {drawing_name}"
-                )
             
-            # Batch completed successfully
-            return {"success": True, "batch_number": batch_number}
+            # When finished processing all drawings in the batch, call analyze_query once
+            analysis_start_time = time.time()
+            response_text = analyzer.analyze_query(query, use_cache)
+            analysis_time = time.time() - analysis_start_time
+            
+            logger.info(f"[Job {job_id}] Analysis completed in {analysis_time:.2f}s for query: {query[:50]}...")
+            
+            # Update job with comprehensive analysis result
+            update_job_status(
+                job_id,
+                progress_message=f"✅ Analysis complete in {analysis_time:.2f}s",
+                result={
+                    "message": f"Successfully analyzed {len(batch_drawings)} drawing(s)",
+                    "analysis": response_text
+                }
+            )
+            
+            # Return success result
+            return {
+                "success": True, 
+                "batch_number": batch_number,
+                "analysis": response_text
+            }
             
         except (RateLimitError, APIStatusError, APITimeoutError, APIConnectionError) as api_err:
             retry_count += 1
