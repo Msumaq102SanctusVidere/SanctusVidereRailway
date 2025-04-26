@@ -637,44 +637,22 @@ def main():
                     st.rerun()
             
             # --- Progress Display ---
-            # --- Progress Display ---
+            # --- Job Status Section ---
             if st.session_state.current_job_id:
-                # Force refresh status every 1 second to ensure we get the latest progress
-                current_time = time.time()
+                # Get job status 
                 job_status = get_job_status(st.session_state.current_job_id)
-                st.session_state.last_poll_time = current_time
                 
                 if job_status:
-                    # Update progress container
+                    # Only show minimal status info
                     with st.container(border=True):
-                        # Get progress and status information
-                        progress = job_status.get("progress", 0)
+                        # Get status information
                         status = job_status.get("status", "")
                         current_phase = job_status.get("current_phase", "")
                         
-                        # Progress header with accurate percentage
-                        if status == "completed":
-                            st.success("Processing Complete (100%)")
-                        elif status == "failed":
-                            st.error("Processing Failed")
-                            error_msg = job_status.get("error", "Unknown error")
-                            st.error(f"Error: {error_msg}")
-                        else:
-                            st.subheader(f"Processing Status - {progress}% Complete")
-                        
-                        # Main progress bar
-                        st.progress(progress / 100)
-                        
-                        # Estimated time remaining
-                        if progress > 0 and progress < 100:
-                            time_remaining = estimate_time_remaining(job_status)
-                            st.caption(f"Estimated time remaining: {time_remaining}")
-                        
-                        # Clean and professional phase display
+                        # Clean up phase name (remove emojis)
                         if current_phase:
-                            # Clean up phase name (remove emojis)
                             clean_phase = re.sub(r'[^\w\s]', '', current_phase).strip()
-                            st.info(f"Current Phase: {clean_phase}")
+                            st.info(f"Status: Processing - {clean_phase}")
                         
                         # Latest progress message
                         if "progress_messages" in job_status and job_status["progress_messages"]:
@@ -682,21 +660,14 @@ def main():
                             # Extract just the message part without timestamp
                             if " - " in latest_message:
                                 latest_message = latest_message.split(" - ", 1)[1]
-                            
                             # Remove emojis for cleaner display
                             clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
-                            st.write(f"Latest Update: {clean_message}")
+                            st.caption(f"Latest Update: {clean_message}")
                         
-                        # Technical logs button
-                        if st.button("Show Technical Logs", key="toggle_tech_logs"):
-                            st.session_state.show_advanced_logs = not st.session_state.get("show_advanced_logs", False)
-                            st.rerun()
-                        
-                        # Show technical logs if enabled
-                        if st.session_state.get("show_advanced_logs", False):
-                            # Display log messages
+                        # Simple technical logs button
+                        if st.button("Show Technical Logs", key="show_tech_logs"):
                             if "progress_messages" in job_status:
-                                with st.expander("Detailed Logs", expanded=True):
+                                with st.expander("Technical Logs", expanded=True):
                                     for message in job_status["progress_messages"]:
                                         st.text(message)
                     
@@ -714,7 +685,7 @@ def main():
                 else:
                     # Fallback for when job status cannot be retrieved
                     st.warning("Unable to retrieve job status. Retrying...")
-                    time.sleep(1)
+                    time.sleep(0.5)
                     st.rerun()
             
             # --- Results Display ---
