@@ -247,28 +247,23 @@ def extract_api_status(logs: List[Dict[str, Any]]) -> Dict[str, Any]:
         logger.error(f"Error extracting API status: {e}", exc_info=True)
         return api_status
 
-# --- Check for job completion in logs ---
-def check_completion_in_logs(logs_and_messages: List[str]) -> bool:
-    """
-    Look through logs for indicators that the job is completed.
-    Returns True if completion is detected, False otherwise.
-    """
+# --- Helper function to detect job completion in logs ---
+def check_for_completion(logs):
+    """Check logs for completion indicators"""
     completion_indicators = [
-        "Analysis complete",
         "Analysis completed",
+        "Analysis complete",
         "COMPLETE",
         "Completed batch",
         "completed successfully"
     ]
     
-    # Check for completion indicators in logs
-    if logs_and_messages:
-        for message in logs_and_messages:
+    if logs:
+        for message in logs:
             for indicator in completion_indicators:
                 if indicator in message:
-                    logger.info(f"Job completion detected in logs: '{message}'")
+                    logger.info(f"Job completion detected in logs: {message}")
                     return True
-    
     return False
 
 # --- Job Progress Visualization Functions ---
@@ -471,12 +466,8 @@ def initialize_session_state():
         st.session_state.upload_success = False
     if "last_poll_time" not in st.session_state:
         st.session_state.last_poll_time = 0
-    if "full_logs" not in st.session_state:
-        st.session_state.full_logs = []
-    if "tech_info_expanded" not in st.session_state:
-        st.session_state.tech_info_expanded = False
-    if "completion_detected" not in st.session_state:
-        st.session_state.completion_detected = False
+    if "all_job_logs" not in st.session_state:
+        st.session_state.all_job_logs = []
     logger.info("Session state initialized")
 
 initialize_session_state()
@@ -490,11 +481,6 @@ def toggle_advanced_logs():
 def set_log_level_filter(level):
     st.session_state.log_level_filter = level
     logger.info(f"Log level filter set to: {level}")
-
-# --- Toggle Technical Info Expansion ---
-def toggle_tech_info():
-    st.session_state.tech_info_expanded = not st.session_state.tech_info_expanded
-    logger.info(f"Technical information expanded: {st.session_state.tech_info_expanded}")
 
 # --- Main Application Logic ---
 def main():
@@ -661,11 +647,7 @@ def main():
                             st.session_state.analysis_results = None
                             st.session_state.raw_job_result = None
                             # Reset logs for new job
-                            st.session_state.full_logs = []
-                            # Reset technical info expansion state
-                            st.session_state.tech_info_expanded = False
-                            # Reset completion detection
-                            st.session_state.completion_detected = False
+                            st.session_state.all_job_logs = []
                             logger.info(f"Started analysis job: {st.session_state.current_job_id}")
                             st.rerun()
                         else:
@@ -688,49 +670,33 @@ def main():
                 # Get job status AND detailed logs
                 job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
                 
-                # Store logs in session state if we have them
+                # Extract log messages from job_logs
                 log_messages = []
                 if job_logs:
-                    # Extract messages from log objects
                     for log in job_logs:
                         if isinstance(log, dict) and "message" in log:
                             log_messages.append(log["message"])
-                    
-                    # Update our full logs list with new messages
-                    st.session_state.full_logs = log_messages + st.session_state.full_logs
                 
                 # Add progress messages from job status
                 progress_messages = []
                 if job_status and "progress_messages" in job_status:
                     progress_messages = job_status.get("progress_messages", [])
                 
-                # Combine all logs for completion check
-                all_logs = log_messages + progress_messages
-                
-                # Check for job completion in logs
-                job_completed = False
-                if job_status:
-                    # Check for official completion status
-                    job_completed = job_status.get("status") == "completed"
+                # Update the cumulative logs in session state
+                if log_messages or progress_messages:
+                    # Get existing logs
+                    all_logs = st.session_state.all_job_logs.copy()
                     
-                    # If not marked as completed, check logs for completion indicators
-                    if not job_completed:
-                        job_completed = check_completion_in_logs(all_logs)
-                        
-                        # If completion detected in logs, mark as completed
-                        if job_completed and not st.session_state.completion_detected:
-                            logger.info("Job completion detected in logs but not in status!")
-                            st.session_state.completion_detected = True
+                    # Add new log messages
+                    for message in log_messages + progress_messages:
+                        if message not in all_logs:
+                            all_logs.append(message)
+                    
+                    # Store updated logs
+                    st.session_state.all_job_logs = all_logs
                 
-                if st.session_state.completion_detected or job_completed:
-                    # Process completed job even if status doesn't reflect it
-                    logger.info("Processing completed job (based on completion detection)")
-                    process_completed_job(job_status)
-                    st.session_state.current_job_id = None
-                    st.success("Analysis completed successfully!")
-                    st.rerun()
-                elif job_status:
-                    # Only show status info if job is not completed
+                if job_status:
+                    # Only show minimal status info
                     with st.container(border=True):
                         # Get status information
                         status = job_status.get("status", "")
@@ -751,22 +717,36 @@ def main():
                             clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
                             st.caption(f"Latest Update: {clean_message}")
                         
-                        # Technical logs expandable section
-                        with st.expander("Technical Logs", expanded=False):
-                            # Show all unique logs
-                            unique_logs = []
-                            seen = set()
-                            for message in all_logs:
-                                if message not in seen:
-                                    unique_logs.append(message)
-                                    seen.add(message)
-                            
-                            # Display logs
-                            for message in unique_logs:
+                        # Technical logs button with expanded logs
+                        if st.button("Show Technical Logs", key="show_tech_logs"):
+                            st.session_state.show_advanced_logs = True
+                    
+                    # Show technical logs if requested
+                    if st.session_state.show_advanced_logs:
+                        with st.expander("Technical Logs", expanded=True):
+                            # Display all collected logs
+                            for message in st.session_state.all_job_logs:
                                 st.text(message)
                     
-                    # Check for explicit failed status
-                    if status == "failed":
+                    # Check for job completion
+                    job_completed = False
+                    
+                    # Check official status
+                    if status == "completed":
+                        job_completed = True
+                    
+                    # Check logs for completion indicators if status doesn't show completion
+                    if not job_completed:
+                        job_completed = check_for_completion(st.session_state.all_job_logs)
+                    
+                    # If job is completed, process results and display them
+                    if job_completed:
+                        logger.info("Job completion detected - processing results")
+                        process_completed_job(job_status)
+                        st.session_state.current_job_id = None
+                        st.success("Analysis completed successfully!")
+                        st.rerun()
+                    elif status == "failed":
                         error_msg = job_status.get("error", "Unknown error")
                         st.error(f"Analysis failed: {error_msg}")
                         st.session_state.current_job_id = None
@@ -794,17 +774,15 @@ def main():
                     st.session_state.analysis_results = None
                     st.session_state.raw_job_result = None
                     st.rerun()
-                
-                # --- Technical Information (Single Expandable Section) ---
-                if st.session_state.raw_job_result:
-                    # Use a single Technical Information expander that persists its state
-                    with st.expander("Technical Information", expanded=st.session_state.tech_info_expanded):
-                        st.json(st.session_state.raw_job_result)
-                        
-                        # Add a button to toggle expansion state
-                        if st.button("Close Technical Data", key="toggle_tech_data"):
-                            st.session_state.tech_info_expanded = False
-                            st.rerun()
+            
+            # --- Technical Information (Expandable) ---
+            if st.session_state.raw_job_result:
+                with st.expander("Technical Information", expanded=False):
+                    st.json(st.session_state.raw_job_result)
+                    
+                    if st.button("Clear Technical Data", key="clear_tech_data"):
+                        st.session_state.raw_job_result = None
+                        st.rerun()
                 
     except Exception as e:
         st.error(f"An error occurred in the UI: {e}")
