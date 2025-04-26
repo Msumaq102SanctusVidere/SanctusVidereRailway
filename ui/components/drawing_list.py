@@ -1,87 +1,75 @@
 # --- Filename: components/drawing_list.py ---
 
 import streamlit as st
-import sqlite3
 import os
-import json
 import logging
 from pathlib import Path
+import urllib.parse
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-def get_completed_drawings():
+def is_fully_processed(drawing_name, drawings_dir):
     """
-    Get a list of successfully processed drawing names by checking the job database.
-    This ensures we only show drawings that have been fully processed.
+    Check if a drawing is fully processed by verifying its file structure.
     
+    Args:
+        drawing_name: Name of the drawing to check
+        drawings_dir: Directory containing drawing folders
+        
     Returns:
-        list: List of drawing names that have been successfully processed
+        bool: True if drawing is fully processed, False otherwise
     """
-    processed_drawings = []
-    
     try:
-        # Get the database path from environment or use default
-        db_path = os.environ.get('DATABASE_PATH', '/app/database/jobs.db')
+        # Build path to drawing directory
+        drawing_dir = Path(drawings_dir) / drawing_name
         
-        # Check if database exists
-        if not os.path.exists(db_path):
-            logger.warning(f"Database not found at {db_path}")
-            return []
+        # Check if directory exists
+        if not drawing_dir.is_dir():
+            logger.info(f"Drawing directory not found: {drawing_dir}")
+            return False
         
-        # Connect to the database
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        # Check for essential files
+        required_files = [
+            f"{drawing_name}_tile_metadata.json",
+            f"{drawing_name}_tile_analysis.json",
+            f"{drawing_name}_legend_knowledge.json"
+        ]
         
-        # Query for all completed conversion jobs
-        cursor.execute("""
-            SELECT id, result FROM jobs 
-            WHERE status = 'completed' AND type = 'conversion'
-        """)
+        for req_file in required_files:
+            if not (drawing_dir / req_file).exists():
+                logger.info(f"Missing required file for {drawing_name}: {req_file}")
+                return False
         
-        jobs = cursor.fetchall()
-        
-        # Extract drawing names from results
-        for job in jobs:
-            try:
-                if job['result']:
-                    result = json.loads(job['result']) if isinstance(job['result'], str) else job['result']
-                    if isinstance(result, dict) and 'drawing_name' in result:
-                        processed_drawings.append(result['drawing_name'])
-            except (json.JSONDecodeError, KeyError) as e:
-                logger.warning(f"Error parsing result for job {job['id']}: {e}")
-        
-        conn.close()
-        logger.info(f"Found {len(processed_drawings)} successfully processed drawings from job database")
+        # If all required files exist, consider it fully processed
+        return True
         
     except Exception as e:
-        logger.error(f"Error retrieving completed drawings from database: {e}")
-    
-    return processed_drawings
+        logger.error(f"Error checking if drawing {drawing_name} is processed: {e}")
+        return False
 
 def drawing_list(drawings):
     """
     Render a 'Select All' toggle and a checkbox per drawing.
-    Only displays drawings that have been fully processed according to job database.
+    Only displays fully processed drawings by checking file structure.
     Returns the list of selected drawing names.
     """
     st.subheader("Available Drawings")
     
-    # Get the list of drawings that have been successfully processed
-    processed_drawing_names = get_completed_drawings()
+    # Get the directory where drawing files are stored
+    # Try environment variable first, then fallback to default
+    drawings_dir = os.environ.get('DRAWINGS_DIR', '/app/tiles_output')
     
-    # Filter the input drawings list to show only processed ones
-    # If we can't determine processed drawings, show all of them
-    if processed_drawing_names:
-        filtered_drawings = [d for d in drawings if d in processed_drawing_names]
-    else:
-        # Fallback - show all drawings if we can't determine processed ones
-        logger.warning("Could not determine processed drawings, showing all")
-        filtered_drawings = drawings
+    # Filter out drawings that are not fully processed
+    processed_drawings = []
+    for drawing in drawings:
+        if is_fully_processed(drawing, drawings_dir):
+            processed_drawings.append(drawing)
+        else:
+            logger.info(f"Drawing {drawing} filtered out - not fully processed")
     
     # No drawings after filtering
-    if not filtered_drawings:
+    if not processed_drawings:
         st.info("No processed drawings available. Upload a drawing to get started.")
         return []
     
@@ -91,19 +79,30 @@ def drawing_list(drawings):
     
     if select_all:
         # Show all checked and disabled so user can't uncheck individually
-        for drawing in filtered_drawings:
+        for drawing in processed_drawings:
             st.checkbox(drawing, value=True, key=f"cb_{drawing}", disabled=True)
-        selected = filtered_drawings.copy()
+        selected = processed_drawings.copy()
     else:
-        for drawing in filtered_drawings:
+        for drawing in processed_drawings:
             if st.checkbox(drawing, key=f"cb_{drawing}"):
                 selected.append(drawing)
     
     # Display count of available drawings
-    st.caption(f"Showing {len(filtered_drawings)} processed drawing(s)")
+    st.caption(f"Showing {len(processed_drawings)} processed drawing(s)")
     
-    # Instructions if needed
-    if not selected:
+    # Add delete buttons for each selected drawing
+    if selected:
+        st.divider()
+        for drawing in selected:
+            # URL encode the drawing name to handle special characters
+            # This fixes the 404 error when deleting drawings with special characters
+            encoded_drawing = urllib.parse.quote(drawing)
+            
+            if st.button(f"🗑️ Delete '{drawing}'", key=f"delete_{drawing}"):
+                # Store the encoded version in session state for the delete operation
+                st.session_state.drawing_to_delete = drawing
+                st.rerun()
+    else:
         st.caption("Select drawings to analyze or delete")
     
     return selected
