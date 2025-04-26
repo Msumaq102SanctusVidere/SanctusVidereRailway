@@ -411,7 +411,6 @@ def process_completed_job(job_status):
     except Exception as e:
         logger.error(f"Error processing completed job: {e}", exc_info=True)
         st.session_state.analysis_results = f"Error processing results: {str(e)}"
-
 # --- Initialize Session State ---
 def initialize_session_state():
     if "backend_healthy" not in st.session_state:
@@ -641,13 +640,10 @@ def main():
             # --- Progress Display ---
             # --- Job Status Section ---
             if st.session_state.current_job_id:
-                # Get detailed job status with logs
-                job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
+                # Get job status 
+                job_status = get_job_status(st.session_state.current_job_id)
                 
                 if job_status:
-                    # Store current job status in session state
-                    st.session_state.job_status = job_status
-                    
                     # Only show minimal status info
                     with st.container(border=True):
                         # Get status information
@@ -669,24 +665,19 @@ def main():
                             clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
                             st.caption(f"Latest Update: {clean_message}")
                         
-                        # Technical logs expandable section
+                        # Simple technical logs button
                         if st.button("Show Technical Logs", key="show_tech_logs"):
-                            st.session_state.show_advanced_logs = True
-                    
-                    # Display technical logs if requested
-                    if st.session_state.show_advanced_logs:
-                        with st.expander("Technical Logs", expanded=True):
                             if "progress_messages" in job_status:
-                                for message in job_status["progress_messages"]:
-                                    st.text(message)
+                                with st.expander("Technical Logs", expanded=True):
+                                    for message in job_status["progress_messages"]:
+                                        st.text(message)
                     
                     # Check if job is complete or failed
                     if status == "completed":
                         # Process completed job
                         process_completed_job(job_status)
-                        st.success("Analysis completed successfully!")
-                        # Clear the job ID after completion
                         st.session_state.current_job_id = None
+                        st.success("Analysis completed successfully!")
                         st.rerun()
                     elif status == "failed":
                         error_msg = job_status.get("error", "Unknown error")
@@ -704,21 +695,8 @@ def main():
                 
                 # Display results using the results_pane component
                 if isinstance(st.session_state.analysis_results, dict):
-                    # Get the analysis text in proper format for the results_pane
-                    results_text = ""
-                    
-                    # Try to extract analysis from various possible structures
-                    if "analysis" in st.session_state.analysis_results:
-                        # Direct analysis field
-                        results_text = json.dumps(st.session_state.analysis_results)
-                    elif "batches" in st.session_state.analysis_results:
-                        # Batch structure
-                        results_text = json.dumps(st.session_state.analysis_results)
-                    else:
-                        # Full result object
-                        results_text = json.dumps(st.session_state.analysis_results)
+                    results_text = json.dumps(st.session_state.analysis_results, indent=2)
                 else:
-                    # String result
                     results_text = str(st.session_state.analysis_results)
                 
                 # Use the results_pane component
