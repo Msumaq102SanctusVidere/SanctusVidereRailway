@@ -637,46 +637,44 @@ def main():
                     st.rerun()
             
             # --- Progress Display ---
+            # --- Progress Display ---
             if st.session_state.current_job_id:
-                # Get detailed job status and logs
-                job_status, job_logs = get_detailed_job_status(st.session_state.current_job_id)
+                # Force refresh status every 1 second to ensure we get the latest progress
+                current_time = time.time()
+                job_status = get_job_status(st.session_state.current_job_id)
+                st.session_state.last_poll_time = current_time
                 
                 if job_status:
-                    # Store job status in session
-                    st.session_state.job_status = job_status
-                    
-                    # Progress container with phases
+                    # Update progress container
                     with st.container(border=True):
-                        # Get phase status for visualization
-                        phase_status = get_phase_status(job_status)
+                        # Get progress and status information
+                        progress = job_status.get("progress", 0)
+                        status = job_status.get("status", "")
+                        current_phase = job_status.get("current_phase", "")
                         
-                        # Header with time estimation
-                        st.subheader(f"Processing Status - {job_status.get('progress', 0)}% Complete")
-                        
-                        # Time estimation
-                        time_remaining = estimate_time_remaining(job_status)
-                        st.write(f"⏱️ Estimated time remaining: {time_remaining}")
+                        # Progress header with accurate percentage
+                        if status == "completed":
+                            st.success("Processing Complete (100%)")
+                        elif status == "failed":
+                            st.error("Processing Failed")
+                            error_msg = job_status.get("error", "Unknown error")
+                            st.error(f"Error: {error_msg}")
+                        else:
+                            st.subheader(f"Processing Status - {progress}% Complete")
                         
                         # Main progress bar
-                        st.progress(job_status.get("progress", 0) / 100)
+                        st.progress(progress / 100)
                         
-                        # Phase visualization
-                        phase_cols = st.columns(len(phase_status["phases"]))
-                        for i, phase in enumerate(phase_status["phases"]):
-                            with phase_cols[i]:
-                                if phase["status"] == "complete":
-                                    st.markdown(f"### {phase['emoji']} ✓")
-                                elif phase["status"] == "active":
-                                    st.markdown(f"### {phase['emoji']} ⟳")
-                                elif phase["status"] == "failed":
-                                    st.markdown(f"### {phase['emoji']} ❌")
-                                else:
-                                    st.markdown(f"### {phase['emoji']} ○")
-                                st.caption(phase["name"])
+                        # Estimated time remaining
+                        if progress > 0 and progress < 100:
+                            time_remaining = estimate_time_remaining(job_status)
+                            st.caption(f"Estimated time remaining: {time_remaining}")
                         
-                        # Current phase description
-                        current_phase = job_status.get("current_phase", "")
-                        st.write(f"**Current Phase:** {current_phase}")
+                        # Clean and professional phase display
+                        if current_phase:
+                            # Clean up phase name (remove emojis)
+                            clean_phase = re.sub(r'[^\w\s]', '', current_phase).strip()
+                            st.info(f"Current Phase: {clean_phase}")
                         
                         # Latest progress message
                         if "progress_messages" in job_status and job_status["progress_messages"]:
@@ -684,78 +682,40 @@ def main():
                             # Extract just the message part without timestamp
                             if " - " in latest_message:
                                 latest_message = latest_message.split(" - ", 1)[1]
-                            st.write(f"**Latest Update:** {latest_message}")
+                            
+                            # Remove emojis for cleaner display
+                            clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
+                            st.write(f"Latest Update: {clean_message}")
                         
-                        # Controls for advanced logs
-                        col1, col2, col3 = st.columns([2, 1, 1])
-                        with col1:
-                            if st.button(
-                                "🔍 " + ("Hide" if st.session_state.show_advanced_logs else "Show") + " Technical Logs", 
-                                key="toggle_logs_button"
-                            ):
-                                toggle_advanced_logs()
-                                st.rerun()
+                        # Technical logs button
+                        if st.button("Show Technical Logs", key="toggle_tech_logs"):
+                            st.session_state.show_advanced_logs = not st.session_state.get("show_advanced_logs", False)
+                            st.rerun()
                         
-                        with col2:
-                            if st.session_state.show_advanced_logs:
-                                log_level = st.selectbox(
-                                    "Log Level",
-                                    options=["ALL", "INFO", "WARNING", "ERROR"],
-                                    index=["ALL", "INFO", "WARNING", "ERROR"].index(st.session_state.log_level_filter),
-                                    key="log_level_selector"
-                                )
-                                if log_level != st.session_state.log_level_filter:
-                                    set_log_level_filter(log_level)
-                                    st.rerun()
-                        
-                        # Advanced logs display
-                        if st.session_state.show_advanced_logs:
-                            # Display progress messages as a log console
-                            messages = []
+                        # Show technical logs if enabled
+                        if st.session_state.get("show_advanced_logs", False):
+                            # Display log messages
                             if "progress_messages" in job_status:
-                                messages = job_status["progress_messages"]
-                            
-                            # Filter messages by log level if needed
-                            if st.session_state.log_level_filter != "ALL":
-                                filtered_messages = []
-                                for msg in messages:
-                                    if st.session_state.log_level_filter == "ERROR" and ("❌" in msg or "error" in msg.lower() or "failed" in msg.lower()):
-                                        filtered_messages.append(msg)
-                                    elif st.session_state.log_level_filter == "WARNING" and ("⚠️" in msg or "warning" in msg.lower() or "❌" in msg or "error" in msg.lower() or "failed" in msg.lower()):
-                                        filtered_messages.append(msg)
-                                    elif st.session_state.log_level_filter == "INFO":
-                                        filtered_messages.append(msg)
-                                messages = filtered_messages
-                            
-                            # Use the log console component
-                            log_console(messages, max_height=300)
+                                with st.expander("Detailed Logs", expanded=True):
+                                    for message in job_status["progress_messages"]:
+                                        st.text(message)
                     
                     # Check if job is complete or failed
-                    if job_status.get("status") == "completed":
+                    if status == "completed":
                         # Process completed job
                         process_completed_job(job_status)
                         st.session_state.current_job_id = None
                         st.success("Analysis completed successfully!")
                         st.rerun()
-                    elif job_status.get("status") == "failed":
+                    elif status == "failed":
                         error_msg = job_status.get("error", "Unknown error")
                         st.error(f"Analysis failed: {error_msg}")
                         st.session_state.current_job_id = None
                 else:
-                    # Fallback to standard progress indicator if detailed status not available
-                    result = progress_indicator(st.session_state.current_job_id)
-                    
-                    if result and result.get("status") in ["completed", "failed"]:
-                        if result.get("status") == "completed":
-                            # Process completed job
-                            process_completed_job(result)
-                            st.session_state.current_job_id = None
-                            st.success("Analysis completed successfully!")
-                            st.rerun()
-                        else:
-                            error_msg = result.get("error", "Unknown error")
-                            st.error(f"Analysis failed: {error_msg}")
-                            st.session_state.current_job_id = None
+                    # Fallback for when job status cannot be retrieved
+                    st.warning("Unable to retrieve job status. Retrying...")
+                    time.sleep(1)
+                    st.rerun()
             
             # --- Results Display ---
             if st.session_state.analysis_results:
