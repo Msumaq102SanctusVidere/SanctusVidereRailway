@@ -369,13 +369,13 @@ def estimate_time_remaining(job_status: Dict[str, Any]) -> str:
         return "Calculating..."
 
 # --- Process Completed Job ---
-def process_completed_job(job_status: Dict[str, Any]) -> None:
-    """Process a completed job and extract results."""
+def process_completed_job(job_status):
+    """Process a completed job and extract results for display."""
     try:
         # Get the result object
         result = job_status.get("result", {})
         
-        # Store the complete result object for debugging
+        # Store the complete result object for potential debugging
         st.session_state.raw_job_result = result
         
         # If result is a string, try to parse it
@@ -391,7 +391,7 @@ def process_completed_job(job_status: Dict[str, Any]) -> None:
         if isinstance(result, dict):
             # Direct analysis field
             if "analysis" in result:
-                st.session_state.analysis_results = result["analysis"]
+                st.session_state.analysis_results = result
                 return
                 
             # Check for batch structure
@@ -400,16 +400,17 @@ def process_completed_job(job_status: Dict[str, Any]) -> None:
                     if isinstance(batch, dict) and "result" in batch:
                         batch_result = batch["result"]
                         if isinstance(batch_result, dict) and "analysis" in batch_result:
-                            st.session_state.analysis_results = batch_result["analysis"]
+                            # Store the entire result structure for access to both 
+                            # analysis text and technical details
+                            st.session_state.analysis_results = result
                             return
         
         # Fallback: store the whole result
-        st.session_state.analysis_results = json.dumps(result, indent=2)
+        st.session_state.analysis_results = result
         
     except Exception as e:
         logger.error(f"Error processing completed job: {e}", exc_info=True)
         st.session_state.analysis_results = f"Error processing results: {str(e)}"
-
 # --- Initialize Session State ---
 def initialize_session_state():
     if "backend_healthy" not in st.session_state:
