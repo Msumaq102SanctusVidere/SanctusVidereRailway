@@ -368,6 +368,25 @@ def estimate_time_remaining(job_status: Dict[str, Any]) -> str:
         logger.error(f"Error estimating time: {e}")
         return "Calculating..."
 
+# --- Check for Completion in Logs ---
+def check_for_completion(logs):
+    """Check logs for completion indicators"""
+    completion_indicators = [
+        "Analysis completed",
+        "Analysis complete",
+        "COMPLETE", 
+        "completed successfully",
+        "Completed batch"
+    ]
+    
+    if logs:
+        for message in logs:
+            for indicator in completion_indicators:
+                if indicator in message:
+                    logger.info(f"Job completion detected in logs: {message}")
+                    return True
+    return False
+
 # --- Process Completed Job ---
 def process_completed_job(job_status):
     """Process a completed job and extract results for display."""
@@ -385,6 +404,7 @@ def process_completed_job(job_status):
             except json.JSONDecodeError:
                 # If not valid JSON, store as-is
                 st.session_state.analysis_results = result
+                logger.info(f"Stored string results: {result[:100]}...")
                 return
         
         # Extract analysis text from result structure
@@ -392,6 +412,7 @@ def process_completed_job(job_status):
             # Direct analysis field
             if "analysis" in result:
                 st.session_state.analysis_results = result
+                logger.info(f"Stored results with direct analysis field")
                 return
                 
             # Check for batch structure
@@ -403,10 +424,12 @@ def process_completed_job(job_status):
                             # Store the entire result structure for access to both 
                             # analysis text and technical details
                             st.session_state.analysis_results = result
+                            logger.info(f"Stored results with batch structure")
                             return
         
         # Fallback: store the whole result
         st.session_state.analysis_results = result
+        logger.info(f"Stored raw result object: {type(result)}")
         
     except Exception as e:
         logger.error(f"Error processing completed job: {e}", exc_info=True)
@@ -450,6 +473,8 @@ def initialize_session_state():
         st.session_state.middle_column_expanded = True
     if "all_job_logs" not in st.session_state:
         st.session_state.all_job_logs = []
+    if "job_completed" not in st.session_state:
+        st.session_state.job_completed = False
     logger.info("Session state initialized")
 
 initialize_session_state()
@@ -473,25 +498,6 @@ def toggle_middle_column():
 def set_log_level_filter(level):
     st.session_state.log_level_filter = level
     logger.info(f"Log level filter set to: {level}")
-
-# --- Check for Completion in Logs ---
-def check_for_completion(logs):
-    """Check logs for completion indicators"""
-    completion_indicators = [
-        "Analysis completed",
-        "Analysis complete",
-        "COMPLETE",
-        "Completed batch",
-        "completed successfully"
-    ]
-    
-    if logs:
-        for message in logs:
-            for indicator in completion_indicators:
-                if indicator in message:
-                    logger.info(f"Job completion detected in logs: {message}")
-                    return True
-    return False
 
 # --- Main Application Logic ---
 def main():
@@ -691,6 +697,7 @@ def main():
                             st.session_state.job_status = None
                             st.session_state.analysis_results = None
                             st.session_state.raw_job_result = None
+                            st.session_state.job_completed = False
                             # Reset logs for new job
                             st.session_state.all_job_logs = []
                             logger.info(f"Started analysis job: {st.session_state.current_job_id}")
@@ -785,13 +792,14 @@ def main():
                     if status == "completed":
                         job_completed = True
                     
-                    # Check logs for completion indicators
-                    if not job_completed:
+                    # Check logs for completion indicators if not already marked as completed
+                    if not job_completed and not st.session_state.job_completed:
                         job_completed = check_for_completion(st.session_state.all_job_logs)
                         
                     # If job is completed, process results
-                    if job_completed:
+                    if job_completed and not st.session_state.job_completed:
                         logger.info("Job completion detected - processing results")
+                        st.session_state.job_completed = True  # Mark as completed to avoid reprocessing
                         process_completed_job(job_status)
                         st.session_state.current_job_id = None
                         st.success("Analysis completed successfully!")
@@ -833,8 +841,8 @@ def main():
                 # Use the results_pane component
                 results_pane(results_text)
                 
-                # Add a copy button
-                if st.button("Copy Results", key="copy_results", help="Copy results to clipboard"):
+                # Add a copy button with a UNIQUE key
+                if st.button("Copy Results", key="right_column_copy_results", help="Copy results to clipboard"):
                     st.success("Results copied to clipboard!")
             else:
                 # Show placeholder when no results are available
@@ -845,6 +853,7 @@ def main():
             if st.button("Clear Results", key="clear_results"):
                 st.session_state.analysis_results = None
                 st.session_state.raw_job_result = None
+                st.session_state.job_completed = False
                 st.rerun()
 
 
