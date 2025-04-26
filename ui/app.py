@@ -115,6 +115,11 @@ def get_detailed_job_status(job_id: str) -> Tuple[Dict[str, Any], List[Dict[str,
         api_status = extract_api_status(logs)
         job_status["api_status"] = api_status
         
+        # IMPORTANT FIX: Override status if completion is detected in logs
+        if check_for_completion(logs):
+            job_status["status"] = "completed"
+            job_status["current_phase"] = "✨ COMPLETE"
+        
         return job_status, logs
     except Exception as e:
         logger.error(f"Error getting detailed job status: {e}", exc_info=True)
@@ -381,10 +386,22 @@ def check_for_completion(logs):
         "Analysis complete for all"
     ]
     
-    if logs:
-        for message in logs:
+    # Convert logs to a list of strings if needed
+    log_messages = []
+    if isinstance(logs, list):
+        for log in logs:
+            if isinstance(log, dict) and "message" in log:
+                log_messages.append(log["message"])
+            elif isinstance(log, str):
+                log_messages.append(log)
+    else:
+        log_messages = logs
+    
+    # Check for completion indicators
+    if log_messages:
+        for message in log_messages:
             for indicator in completion_indicators:
-                if indicator in message:
+                if indicator in str(message):
                     logger.info(f"Job completion detected in logs: {message}")
                     return True
     return False
@@ -533,7 +550,7 @@ def main():
             <style>
             @keyframes pulse {
                 0% { background-color: rgba(49, 51, 63, 0.8); }
-                50% { background-color: rgba(255, 75, 75, 0.8); }
+                50% { background-color: rgba(75, 75, 255, 0.8); }
                 100% { background-color: rgba(49, 51, 63, 0.8); }
             }
             .indicator-bar {
@@ -867,29 +884,55 @@ def main():
                     # Get status information
                     status = job_status.get("status", "")
                     current_phase = job_status.get("current_phase", "")
+                    progress = job_status.get("progress", 0)
                     
-                    # Display status info
+                    # Display status info similar to upload drawing component
                     with st.container(border=True):
-                        # Clean up phase name (remove emojis)
-                        if current_phase:
-                            clean_phase = re.sub(r'[^\w\s]', '', current_phase).strip()
+                        # Status line with emoji
+                        clean_phase = re.sub(r'[^\w\s]', '', current_phase).strip() if current_phase else "Processing"
+                        
+                        # Use appropriate emoji based on phase
+                        if "COMPLETE" in current_phase:
+                            st.info(f"Status: ✅ COMPLETE")
+                        elif "ANALYZING" in current_phase:
+                            st.info(f"Status: 🔍 {clean_phase}")
+                        elif "QUEUED" in current_phase:
+                            st.info(f"Status: ⏳ {clean_phase}")
+                        elif "TILING" in current_phase:
+                            st.info(f"Status: 🖼️ {clean_phase}")
+                        else:
                             st.info(f"Status: Processing - {clean_phase}")
                         
-                        # Latest progress message
-                        if progress_messages:
-                            latest_message = progress_messages[-1]
-                            # Extract just the message part without timestamp
-                            if " - " in latest_message:
-                                latest_message = latest_message.split(" - ", 1)[1]
-                            # Remove emojis for cleaner display
-                            clean_message = re.sub(r'[^\w\s,.\-;:()/]', '', latest_message).strip()
-                            st.caption(f"Latest Update: {clean_message}")
+                        # Format and display latest update message
+                        if st.session_state.all_job_logs:
+                            latest_message = st.session_state.all_job_logs[-1]
+                            # Format message for display (remove timestamps, etc.)
+                            if isinstance(latest_message, str):
+                                if " - " in latest_message:
+                                    _, message = latest_message.split(" - ", 1)
+                                else:
+                                    message = latest_message
+                                
+                                # Clean up message and display
+                                st.caption(f"Latest Update: {message}")
                         
-                        # Show Results button (renamed from Technical Logs)
+                        # Get drawing name from selection
+                        if st.session_state.selected_drawings:
+                            drawing_name = st.session_state.selected_drawings[0]
+                            
+                            # Show batch progress if applicable
+                            if "tile_info" in job_status:
+                                tile_info = job_status["tile_info"]
+                                total = tile_info.get("total_tiles", 0)
+                                processed = tile_info.get("processed_tiles", 0)
+                                
+                                if total > 0:
+                                    st.caption(f"Analyzing drawing {drawing_name}")
+                                    st.caption(f"({processed}/{total} in batch {1})")
+                        
+                        # Show Results button
                         if st.button("Show Results", key="show_results"):
-                            # Process results when button is clicked
                             process_results()
-                            toggle_logs_display()
                             st.rerun()
                     
                     # Show technical logs if toggled
@@ -905,15 +948,7 @@ def main():
                                 st.rerun()
                     
                     # Check for job completion
-                    job_completed = False
-                    
-                    # Check official status
-                    if status == "completed":
-                        job_completed = True
-                    
-                    # Check logs for completion indicators if not already marked as completed
-                    if not job_completed and not st.session_state.job_completed:
-                        job_completed = check_for_completion(st.session_state.all_job_logs)
+                    job_completed = status == "completed" or check_for_completion(st.session_state.all_job_logs)
                         
                     # If job is completed, process results
                     if job_completed and not st.session_state.job_completed:
@@ -953,14 +988,17 @@ def main():
         with results_container:
             # Display results if available
             if st.session_state.analysis_results:
-                # Format the results for display
+                # Parse results for display
                 if isinstance(st.session_state.analysis_results, dict):
-                    results_text = json.dumps(st.session_state.analysis_results, indent=2)
+                    # If the results contain an "analysis" field, display it directly
+                    if "analysis" in st.session_state.analysis_results:
+                        st.markdown(st.session_state.analysis_results["analysis"])
+                    else:
+                        # Otherwise, format as JSON
+                        st.json(st.session_state.analysis_results)
                 else:
-                    results_text = str(st.session_state.analysis_results)
-                
-                # Use the results_pane component
-                results_pane(results_text)
+                    # If not a dict, display as text
+                    st.text(st.session_state.analysis_results)
                 
                 # Add a copy button with a UNIQUE key
                 if st.button("Copy Results", key="right_column_copy_results", help="Copy results to clipboard"):
