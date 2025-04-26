@@ -2,7 +2,7 @@
 import streamlit as st
 def query_box(disabled=False):
     """
-    Render a text area for entering a query with automatic submission.
+    Render a professional query input box that doesn't require Control+Enter.
     
     Parameters:
         disabled (bool): Whether the text area should be disabled
@@ -10,27 +10,36 @@ def query_box(disabled=False):
     Returns:
         str: The query text
     """
-    # Use a form to make submission easier
-    with st.form(key="query_form"):
-        query = st.text_area(
-            "Type your question here...",
-            value=st.session_state.get("query", ""),
-            height=120,
-            disabled=disabled,
-            placeholder="Example: What are the finishes specified for the private offices?"
-        )
-        
-        # Add a submit button inside the form
-        submit_button = st.form_submit_button(
-            "Submit Query", 
-            type="primary",
-            use_container_width=True,
-            disabled=disabled
-        )
-    
-    # Update session state
-    if query != st.session_state.get("query", ""):
-        st.session_state.query = query
-    
-    return query
-
+    # Use a container for styling
+    with st.container():
+        # Form for query submission
+        with st.form(key="query_form", clear_on_submit=False):
+            # Get existing query from session state
+            current_query = st.session_state.get("query", "")
+            
+            # Text area for query
+            query = st.text_area(
+                "Type your question here...",
+                value=current_query,
+                height=120,
+                disabled=disabled,
+                placeholder="Example: What are the finishes specified for the private offices?",
+                key="query_input"
+            )
+            
+            # Submit button
+            submit = st.form_submit_button(
+                "Analyze Drawings", 
+                type="primary",
+                use_container_width=True,
+                disabled=disabled
+            )
+            
+            # Store in session state regardless of submission
+            st.session_state.query = query
+            
+            # Return query if submitted, otherwise return existing query
+            if submit:
+                return query
+            else:
+                return current_query
