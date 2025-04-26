@@ -1,137 +1,287 @@
-# --- Filename: components/progress_bar.py ---
+# --- Filename: ui/components/progress_bar.py (Enhanced Progress Indicator) ---
 
 import streamlit as st
 import time
-import logging # Add logging
+import logging
+import re
+from typing import Dict, Any, List, Optional, Tuple
 
-# Assuming api_client is accessible (adjust path if needed)
-try:
-    import sys
-    import os
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(current_dir)
-    grandparent_dir = os.path.dirname(parent_dir)
-    if grandparent_dir not in sys.path:
-        sys.path.append(grandparent_dir)
-    from api_client import get_job_status
-    logger = logging.getLogger(__name__)
-    # Check if logger has handlers to avoid duplicate messages
-    if not logger.hasHandlers():
-         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    logger.info("Successfully imported api_client in progress_bar.")
-except ImportError as e:
-    st.error(f"Failed to import api_client in progress component: {e}")
-    # Define a dummy function if import fails
-    def progress_indicator(job_id):
-        st.error("Progress component disabled due to import error.")
-        return {"status": "failed", "error": "Component import failed"}
-    raise ImportError(f"Stopping due to failed api_client import in progress_bar.py: {e}")
+# Set up logging
+logger = logging.getLogger(__name__)
 
-
-# --- Constants for Polling ---
-POLLING_INTERVAL_SECONDS = 3 # Check status every 3 seconds for analysis
-MAX_POLLING_TIME_SECONDS = 1800 # Stop polling after 30 minutes
-
-
-def progress_indicator(job_id):
+def extract_tile_info(progress_messages: List[str]) -> Dict[str, Any]:
     """
-    Polls the /job-status endpoint for an ANALYSIS job, updates a status
-    container with progress bar and messages, includes error handling and timeout,
-    and returns the final job dict when done.
+    Extract information about tile processing from progress messages.
+    
+    Returns a dict with:
+    - total_tiles: Total number of tiles detected
+    - processed_tiles: Number of tiles processed so far
+    - current_tile: Name of the current tile being processed
+    """
+    tile_info = {
+        "total_tiles": 0,
+        "processed_tiles": 0,
+        "current_tile": ""
+    }
+    
+    try:
+        if not progress_messages:
+            return tile_info
+        
+        # Try to find total tile count
+        for message in progress_messages:
+            if "Generated" in message and "tiles" in message:
+                match = re.search(r"Generated (\d+) tiles", message)
+                if match:
+                    tile_info["total_tiles"] = int(match.group(1))
+                    break
+        
+        # Process messages to find current tile and count processed tiles
+        processed_tiles_set = set()
+        current_tile = ""
+        
+        for message in progress_messages:
+            # Look for tile processing messages
+            if "Analyzing content tile" in message or "Analyzing legend tile" in message:
+                match = re.search(r"Analyzing (?:content|legend) tile ([^\s]+)", message)
+                if match:
+                    tile_name = match.group(1)
+                    processed_tiles_set.add(tile_name)
+                    current_tile = tile_name
+        
+        # Update tile info
+        tile_info["processed_tiles"] = len(processed_tiles_set)
+        tile_info["current_tile"] = current_tile
+        
+        return tile_info
+    except Exception as e:
+        logger.error(f"Error extracting tile info: {e}")
+        return tile_info
 
+def check_api_status(progress_messages: List[str]) -> Dict[str, Any]:
+    """
+    Check API connection status from progress messages.
+    
+    Returns a dict with:
+    - status: "good", "warning", or "error"
+    - success_count: Number of successful API calls
+    - error_count: Number of API errors
+    """
+    api_status = {
+        "status": "unknown",
+        "success_count": 0,
+        "error_count": 0,
+        "retry_count": 0,
+        "last_response_time": None,
+        "last_error": ""
+    }
+    
+    try:
+        # Process all messages
+        for message in progress_messages:
+            # Count successful API calls
+            if "HTTP/1.1 200 OK" in message:
+                api_status["success_count"] += 1
+            
+            # Count errors and retries
+            if "API error" in message:
+                api_status["error_count"] += 1
+                api_status["last_error"] = message
+            
+            if "Retrying" in message:
+                api_status["retry_count"] += 1
+        
+        # Determine overall status
+        if api_status["error_count"] == 0 and api_status["success_count"] > 0:
+            api_status["status"] = "good"
+        elif api_status["error_count"] > 0 and api_status["success_count"] > 0:
+            api_status["status"] = "warning"
+        elif api_status["error_count"] > 0 and api_status["success_count"] == 0:
+            api_status["status"] = "error"
+        
+        return api_status
+    except Exception as e:
+        logger.error(f"Error checking API status: {e}")
+        return api_status
+
+def get_current_operation(progress_messages: List[str]) -> str:
+    """
+    Determine the current operation from progress messages.
+    Returns a user-friendly description of what's happening now.
+    """
+    if not progress_messages:
+        return "Starting..."
+    
+    # Get the most recent message
+    latest_message = progress_messages[-1]
+    
+    # Remove timestamp if present
+    if " - " in latest_message:
+        latest_message = latest_message.split(" - ", 1)[1]
+    
+    # Look for specific operations
+    if "Converting" in latest_message:
+        return "Converting PDF to image"
+    elif "orientation" in latest_message:
+        return "Adjusting image orientation"
+    elif "Creating tiles" in latest_message:
+        return "Dividing image into tiles"
+    elif "Generated" in latest_message and "tiles" in latest_message:
+        return "Tile generation complete"
+    elif "Analyzing legend" in latest_message:
+        return "Analyzing drawing legends"
+    elif "Analyzing content tile" in latest_message:
+        # Extract tile information
+        match = re.search(r"Analyzing content tile ([^\s]+)", latest_message)
+        if match:
+            return f"Analyzing content in {match.group(1)}"
+    elif "Analysis completed" in latest_message:
+        return "Analysis complete"
+    elif "Processing failed" in latest_message:
+        return "Processing failed"
+    
+    # Default case
+    return latest_message
+
+def progress_indicator(job_id: str, poll_interval: float = 1.0) -> Dict[str, Any]:
+    """Enhanced progress indicator with detailed information.
+    
     Args:
-        job_id (str): The ID of the analysis job to monitor.
-
+        job_id: ID of the job to track
+        poll_interval: How often to poll for updates (seconds)
+        
     Returns:
-        dict or None: The final job status dictionary when the job is completed or failed,
-                      or None if the job is still running. Returns an error dictionary
-                      if polling times out or fails persistently.
+        The job status data from the API
     """
-    if not job_id:
-        logger.warning("progress_indicator called with no job_id.")
-        # Don't display error directly, just return None as if not running
+    from api_client import get_job_status
+    
+    try:
+        # Initial status request
+        job_status = get_job_status(job_id)
+        
+        if not job_status or not isinstance(job_status, dict):
+            st.error(f"Error getting job status: {job_status}")
+            return None
+        
+        # Extract key information
+        status = job_status.get("status", "")
+        progress = job_status.get("progress", 0)
+        current_phase = job_status.get("current_phase", "")
+        progress_messages = job_status.get("progress_messages", [])
+        
+        # Create enhanced progress bar
+        progress_container = st.container(border=True)
+        
+        with progress_container:
+            # Show progress header
+            if status == "completed":
+                st.success(f"✅ Processing Complete (100%)")
+            elif status == "failed":
+                st.error(f"❌ Processing Failed")
+                error_msg = job_status.get("error", "Unknown error")
+                st.error(f"Error: {error_msg}")
+            else:
+                st.subheader(f"Processing: {progress}% Complete")
+            
+            # Show main progress bar
+            st.progress(progress / 100)
+            
+            # Show current phase
+            st.write(f"**Phase:** {current_phase}")
+            
+            # Extract tile information
+            tile_info = extract_tile_info(progress_messages)
+            total_tiles = tile_info.get("total_tiles", 0)
+            processed_tiles = tile_info.get("processed_tiles", 0)
+            current_tile = tile_info.get("current_tile", "")
+            
+            # Show tile information if available
+            if total_tiles > 0:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Show tile progress
+                    st.metric("Tiles Processed", f"{processed_tiles} / {total_tiles}")
+                    
+                    # Show tile progress bar if meaningful
+                    if processed_tiles > 0 and total_tiles > 0:
+                        st.progress(min(processed_tiles / total_tiles, 1.0))
+                
+                with col2:
+                    # Current tile
+                    if current_tile:
+                        st.write(f"**Current Tile:** {current_tile}")
+                    
+                    # Current operation
+                    current_op = get_current_operation(progress_messages)
+                    st.write(f"**Current Operation:** {current_op}")
+            
+            # Check API status
+            api_status = check_api_status(progress_messages)
+            api_status_value = api_status.get("status", "unknown")
+            api_success_count = api_status.get("success_count", 0)
+            api_error_count = api_status.get("error_count", 0)
+            
+            # Show API status if we have meaningful information
+            if api_success_count > 0 or api_error_count > 0:
+                st.write("**Foundation Model Connection:**")
+                status_cols = st.columns([1, 3])
+                
+                with status_cols[0]:
+                    if api_status_value == "good":
+                        st.success("✓ Good")
+                    elif api_status_value == "warning":
+                        st.warning("⚠️ Issues")
+                    elif api_status_value == "error":
+                        st.error("❌ Problems")
+                    else:
+                        st.info("ℹ️ Unknown")
+                
+                with status_cols[1]:
+                    if api_success_count > 0:
+                        st.write(f"✓ {api_success_count} successful API calls")
+                    if api_error_count > 0:
+                        st.write(f"⚠️ {api_error_count} errors (with automatic retry)")
+            
+            # Recent updates section
+            st.write("--- Recent Updates ---")
+            
+            # Display last 5 progress messages (reversed so newest are first)
+            if progress_messages:
+                latest_messages = progress_messages[-5:]
+                latest_messages.reverse()
+                
+                for message in latest_messages:
+                    # Extract message without timestamp
+                    if " - " in message:
+                        timestamp, content = message.split(" - ", 1)
+                    else:
+                        content = message
+                    
+                    # Display with appropriate styling
+                    if "❌" in content or "error" in content.lower() or "failed" in content.lower():
+                        st.error(content)
+                    elif "⚠️" in content or "warning" in content.lower():
+                        st.warning(content)
+                    elif "✅" in content or "Generated" in content or "complete" in content:
+                        st.success(content)
+                    else:
+                        st.info(content)
+        
+        # Return the job status
+        return job_status
+    
+    except Exception as e:
+        logger.error(f"Error in progress_indicator: {e}")
+        st.error(f"Error tracking progress: {e}")
         return None
 
-    logger.info(f"Monitoring analysis progress for job_id: {job_id}")
-
-    # Use st.status for combined progress display
-    # The label can be updated dynamically if needed, but a generic one works
-    with st.status(f"Analyzing Job {job_id[:8]}...", expanded=True) as status_container:
-        start_time = time.time()
-        consecutive_error_count = 0
-        MAX_CONSECUTIVE_ERRORS = 5
-
-        # We don't use an infinite loop here; instead, we rely on Streamlit's rerun
-        # mechanism. We perform ONE poll attempt per rerun if the job is still running.
-        try:
-            elapsed_time = time.time() - start_time # Check timeout first
-            if elapsed_time > MAX_POLLING_TIME_SECONDS:
-                 error_msg = f"Analysis polling timed out after {MAX_POLLING_TIME_SECONDS // 60} minutes."
-                 logger.error(f"Polling timeout for analysis job {job_id}.")
-                 status_container.update(label=f"⌛ {error_msg}", state="error", expanded=True)
-                 # Return a dict indicating failure to the main app
-                 return {"status": "failed", "error": error_msg, "job_id": job_id}
-
-            # --- Get Job Status ---
-            job = get_job_status(job_id)
-
-            # --- Extract Status Info ---
-            percent = job.get("progress", 0)
-            status = job.get("status", "unknown")
-            messages = job.get("progress_messages", [])
-            current_phase = job.get("current_phase", "")
-            error = job.get("error")
-
-            # --- Update UI ---
-            status_container.write(f"**Phase:** {current_phase}")
-            st.progress(int(percent), text=f"Overall Progress: {percent}%")
-            st.write("--- Recent Updates ---")
-            for msg in messages[-5:]: # Show last 5 messages
-                 # Show message part after timestamp, if timestamp exists
-                 msg_parts = msg.split(" - ", 1)
-                 display_msg = msg_parts[-1] if len(msg_parts) > 1 else msg
-                 st.text(f"- {display_msg}")
-
-            # --- Check for Completion or Failure ---
-            if status == "completed":
-                logger.info(f"Analysis job {job_id} completed.")
-                status_container.update(label="✅ Analysis Completed!", state="complete", expanded=False)
-                return job # Return final job data
-
-            elif status == "failed":
-                logger.error(f"Analysis job {job_id} failed. Reported error: {error}")
-                fail_msg = f"❌ Analysis Failed: {error or 'Unknown reason'}"
-                status_container.update(label=fail_msg, state="error", expanded=True)
-                return job # Return final job data (contains error)
-
-            # --- If still running, schedule next check ---
-            # No infinite loop here, rely on Streamlit rerun + time.sleep
-            time.sleep(POLLING_INTERVAL_SECONDS)
-            st.rerun() # Trigger a rerun to poll again
-
-        except Exception as e:
-             # Handle Errors During Polling (only log once per error burst)
-             # Using session state to track polling errors for this job
-             error_key = f"poll_error_count_{job_id}"
-             if error_key not in st.session_state: st.session_state[error_key] = 0
-             st.session_state[error_key] += 1
-             consecutive_error_count = st.session_state[error_key]
-
-             logger.error(f"Error polling analysis job {job_id} (Attempt {consecutive_error_count}): {e}", exc_info=False)
-             status_container.write(f"⚠️ Warning: Could not retrieve job status (Attempt {consecutive_error_count}). Retrying...")
-
-             if consecutive_error_count >= MAX_CONSECUTIVE_ERRORS:
-                 error_msg = f"Polling failed after {MAX_CONSECUTIVE_ERRORS} consecutive errors."
-                 logger.error(f"Stopping polling for analysis job {job_id}. Last error: {e}")
-                 status_container.update(label=f"❌ {error_msg}", state="error", expanded=True)
-                 # Reset error count in state
-                 st.session_state[error_key] = 0
-                 return {"status": "failed", "error": error_msg, "job_id": job_id}
-             else:
-                 # Wait longer after error and rerun
-                 time.sleep(POLLING_INTERVAL_SECONDS * (consecutive_error_count + 1))
-                 st.rerun() # Trigger rerun to try polling again
-
-    # If the code reaches here, it means the status container was exited
-    # normally, likely because the job finished in a previous run. Return None.
-    return None
+# Example usage if run directly
+if __name__ == "__main__":
+    st.title("Progress Indicator Test")
+    
+    # Example job ID
+    job_id = st.text_input("Enter Job ID")
+    
+    if job_id:
+        progress_indicator(job_id)
