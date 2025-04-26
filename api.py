@@ -698,8 +698,36 @@ def get_drawings():
         return jsonify({"error": "Drawing manager not available"}), 500
     try:
         include_details = request.args.get('include_details', 'false').lower() == 'true'
-        drawings = drawing_manager.list_drawings(include_details=include_details)
-        return jsonify({"drawings": drawings})
+        logger.info(f"Getting drawings list with include_details={include_details}")
+        
+        try:
+            # Call the new list_drawings method (instead of the previous approach)
+            drawings = drawing_manager.list_drawings(include_details=include_details)
+            
+            # Check if we got a valid response
+            if drawings is None:
+                logger.error("Drawing manager returned None for list_drawings")
+                drawings = []
+                
+            # Log successful retrieval
+            logger.info(f"Successfully retrieved {len(drawings)} drawings")
+            
+            # Return the drawings list
+            return jsonify({"drawings": drawings})
+            
+        except AttributeError as e:
+            # Fallback to get_available_drawings if list_drawings doesn't exist
+            # (This is for backward compatibility during deployment transition)
+            logger.warning(f"list_drawings method not available, falling back to get_available_drawings: {e}")
+            
+            drawings = drawing_manager.get_available_drawings()
+            logger.info(f"Fallback retrieved {len(drawings)} drawings using get_available_drawings")
+            
+            # If details were requested but we couldn't provide them, log a warning
+            if include_details:
+                logger.warning("Could not provide detailed drawing information as requested")
+                
+            return jsonify({"drawings": drawings})
     except Exception as e:
         logger.error(f"Error listing drawings: {str(e)}", exc_info=True)
         return jsonify({"error": f"Failed to list drawings: {str(e)}"}), 500
