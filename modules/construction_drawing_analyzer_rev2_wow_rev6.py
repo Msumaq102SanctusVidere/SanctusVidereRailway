@@ -174,6 +174,90 @@ class DrawingManager:
     def get_available_drawings(self) -> List[str]:
         return list(self.drawings_metadata.keys())
     
+    # NEW METHOD FOR API COMPATIBILITY
+    def list_drawings(self, include_details=False) -> List[Any]:
+        """
+        List all available drawings with optional details.
+        
+        Args:
+            include_details: If True, returns detailed information about each drawing
+                            If False, returns just a list of drawing names
+        
+        Returns:
+            If include_details is False: List of drawing names as strings
+            If include_details is True: List of dictionaries with drawing details
+        """
+        try:
+            # Get the basic list of drawing names
+            drawing_names = self.get_available_drawings()
+            
+            # If details aren't requested, just return the names
+            if not include_details:
+                logger.info(f"Returning list of {len(drawing_names)} drawings (without details)")
+                return drawing_names
+            
+            # If details are requested, collect metadata for each drawing
+            detailed_drawings = []
+            for drawing_name in drawing_names:
+                try:
+                    drawing_type = self.get_drawing_type(drawing_name)
+                    
+                    # Verify the drawing has necessary files
+                    has_metadata = False
+                    has_analysis = False
+                    
+                    metadata_file = self.drawings_dir / drawing_name / f"{drawing_name}_tile_metadata.json"
+                    analysis_file = self.drawings_dir / drawing_name / f"{drawing_name}_tile_analysis.json"
+                    
+                    # Check specialized analysis files based on drawing type
+                    specialized_file = None
+                    if drawing_type == "elevation":
+                        specialized_file = self.drawings_dir / drawing_name / f"{drawing_name}_elevation_analysis.json"
+                    elif drawing_type == "detail":
+                        specialized_file = self.drawings_dir / drawing_name / f"{drawing_name}_detail_analysis.json"
+                    elif drawing_type == "general_notes":
+                        specialized_file = self.drawings_dir / drawing_name / f"{drawing_name}_general_notes_analysis.json"
+                    
+                    has_metadata = metadata_file.exists()
+                    has_analysis = analysis_file.exists() or (specialized_file and specialized_file.exists())
+                    
+                    # Get tile count from metadata if available
+                    tile_count = 0
+                    if drawing_name in self.drawings_metadata:
+                        tiles = self.drawings_metadata[drawing_name].get("tiles", [])
+                        tile_count = len(tiles)
+                    
+                    # Build detailed info
+                    drawing_details = {
+                        "name": drawing_name,
+                        "type": drawing_type,
+                        "has_metadata": has_metadata,
+                        "has_analysis": has_analysis,
+                        "tile_count": tile_count,
+                        "path": str(self.drawings_dir / drawing_name)
+                    }
+                    
+                    # Add any additional metadata if available
+                    if drawing_name in self.drawings_metadata:
+                        drawing_info = self.drawings_metadata[drawing_name].get("drawing_info", {})
+                        if drawing_info:
+                            drawing_details["title"] = drawing_info.get("title", "")
+                            drawing_details["description"] = drawing_info.get("description", "")
+                    
+                    detailed_drawings.append(drawing_details)
+                except Exception as e:
+                    logger.error(f"Error collecting details for drawing {drawing_name}: {e}")
+                    # Add minimal information even if there's an error
+                    detailed_drawings.append({"name": drawing_name, "error": str(e)})
+            
+            logger.info(f"Returning list of {len(detailed_drawings)} drawings (with details)")
+            return detailed_drawings
+            
+        except Exception as e:
+            logger.error(f"Error in list_drawings: {e}", exc_info=True)
+            # Return empty list in case of error to avoid breaking the API
+            return []
+    
     def get_drawing_type(self, drawing_name: str) -> str:
         # First check if type-specific analysis files exist
         if (self.drawings_dir / drawing_name / f"{drawing_name}_elevation_analysis.json").exists():
