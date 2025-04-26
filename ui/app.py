@@ -6,7 +6,7 @@ import logging
 import sys
 import os
 import re
-from ui.api_client import (
+from api_client import (
     health_check,
     get_drawings,
     delete_drawing,
