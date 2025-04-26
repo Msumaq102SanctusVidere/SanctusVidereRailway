@@ -65,10 +65,24 @@ except Exception as e:
 # --- Helper Function for Refreshing Drawings ---
 def refresh_drawings():
     try:
-        st.session_state.drawings = get_drawings()
-        st.session_state.drawings_last_updated = time.time()
-        logger.info(f"Refreshed drawings list, found {len(st.session_state.drawings)} drawings")
-        return True
+        # Add a short delay to ensure backend has processed any recent changes
+        time.sleep(0.5)
+        
+        # Clear existing drawings to force a fresh fetch
+        st.session_state.drawings = []
+        
+        # Fetch fresh drawing list from backend
+        drawings = get_drawings()
+        
+        if drawings is not None:
+            # Update session state with new drawings
+            st.session_state.drawings = drawings
+            st.session_state.drawings_last_updated = time.time()
+            logger.info(f"Refreshed drawings list, found {len(st.session_state.drawings)} drawings")
+            return True
+        else:
+            logger.warning("Refresh drawings returned None, keeping existing drawings")
+            return False
     except Exception as e:
         logger.error(f"Failed to refresh drawings: {e}", exc_info=True)
         return False
@@ -661,8 +675,16 @@ def main():
             # Mark successful upload for refreshing drawings
             st.session_state.upload_success = True
             st.session_state.api_active = True
-            # Refresh drawings if upload was successful
-            refresh_drawings()
+            
+            # Add delay to ensure backend processing is complete
+            time.sleep(1)
+            
+            # Refresh drawings with visual feedback
+            with st.spinner("Updating drawing list..."):
+                refresh_result = refresh_drawings()
+                if not refresh_result:
+                    st.warning("Drawing uploaded but couldn't refresh the drawing list. Try clicking Refresh Drawings.")
+            
             st.rerun()
     
     # --- Three-column layout ---
@@ -744,10 +766,15 @@ def main():
                 elif not st.session_state.drawings:
                     st.info("No drawings available. Upload a drawing to get started.")
                 else:
-                    # Refresh button
+                    # Refresh button - Enhanced for better feedback
                     if st.button("Refresh Drawings", key="refresh_drawings", use_container_width=True):
                         with st.spinner("Refreshing drawings..."):
-                            refresh_drawings()
+                            success = refresh_drawings()
+                            if success:
+                                st.success("Drawing list refreshed successfully!", icon="✅")
+                            else:
+                                st.error("Failed to refresh drawing list. Please try again.")
+                            time.sleep(0.5)  # Give user time to see the feedback
                             st.rerun()
                     
                     # Use the drawing_list component
@@ -892,7 +919,7 @@ def main():
                         clean_phase = re.sub(r'[^\w\s]', '', current_phase).strip() if current_phase else "Processing"
                         
                         # Use appropriate emoji based on phase
-                        if "COMPLETE" in current_phase:
+                        if "COMPLETE" in current_phase or status == "completed":
                             st.info(f"Status: ✅ COMPLETE")
                         elif "ANALYZING" in current_phase:
                             st.info(f"Status: 🔍 {clean_phase}")
