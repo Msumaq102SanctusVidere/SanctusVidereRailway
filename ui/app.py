@@ -299,7 +299,7 @@ def main():
     
     # Add title with custom styling
     st.markdown('<h1 class="big-title">Sanctus Videre 1.0</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle"><i>Architectural Drawing Analysis Tool</i></p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle"><i>Bridging Human Creativity and Computational Insight</i></p>', unsafe_allow_html=True)
     
     # --- Health Check & Initial Drawings Fetch ---
     try:
