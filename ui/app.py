@@ -209,66 +209,60 @@ def integrated_drawing_list(drawings):
     
     return selected
 
-# --- Integrated Results Pane Component ---
+# --- Integrated Results Pane Component - FIXED VERSION ---
 def integrated_results_pane(result_text):
-    """Simplified results display integrated directly into app.py"""
+    """Improved results display with better formatting and error handling"""
     try:
-        # Handle if result_text is already a dictionary
-        if isinstance(result_text, dict):
-            result_obj = result_text
-        else:
-            # Try to parse as JSON
-            result_obj = json.loads(result_text)
-        
-        # Extract analysis text
-        if isinstance(result_obj, dict):
-            if 'analysis' in result_obj:
-                analysis_text = result_obj['analysis']
-                
-                # Display in a clean, bordered container
-                with st.container(border=True):
-                    st.markdown(analysis_text)
+        # Don't show raw error message for valid results
+        if isinstance(result_text, dict) or (isinstance(result_text, str) and len(result_text.strip()) > 0):
+            # Display in a clean, bordered container
+            with st.container(border=True):
+                # Handle if result_text is already a dictionary
+                if isinstance(result_text, dict):
+                    result_obj = result_text
                     
-                    # Add a copy button
-                    if st.button("Copy Results", key="copy_results_main"):
-                        st.code(analysis_text, language=None)
-                        st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
-                
-                # Technical information in an expandable section
-                with st.expander("Technical Information", expanded=False):
-                    st.json(result_obj)
-                
-                return
-            
-            # Handle other result structures
-            for key in result_obj.keys():
-                if isinstance(result_obj[key], str) and len(result_obj[key]) > 100:
-                    analysis_text = result_obj[key]
-                    
-                    # Display in a bordered container
-                    with st.container(border=True):
+                    # Extract analysis text
+                    if 'analysis' in result_obj:
+                        analysis_text = result_obj['analysis']
+                        
+                        # Display formatted analysis
                         st.markdown(analysis_text)
                         
                         # Add a copy button
-                        if st.button("Copy Results", key="copy_text"):
+                        if st.button("Copy Results", key="copy_results_main"):
                             st.code(analysis_text, language=None)
-                            st.success("Results ready to copy!")
+                            st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
+                        
+                        # Technical information in an expandable section
+                        with st.expander("Technical Information", expanded=False):
+                            st.json(result_obj)
+                        
+                        return
                     
+                    # If no analysis field but it's still a dict, just display content
+                    st.subheader("Analysis Results")
+                    st.json(result_obj)
                     return
-        
-        # Fallback to raw display
-        st.warning("Displaying raw results:")
-        if isinstance(result_text, dict):
-            with st.container(border=True):
-                st.json(result_text)
+                    
+                # If it's a string, try to display as markdown
+                elif isinstance(result_text, str):
+                    try:
+                        # Try to parse as JSON first
+                        result_obj = json.loads(result_text)
+                        if isinstance(result_obj, dict) and 'analysis' in result_obj:
+                            st.markdown(result_obj['analysis'])
+                        else:
+                            st.markdown(result_text)
+                    except:
+                        # If not valid JSON, just show as markdown
+                        st.markdown(result_text)
         else:
-            with st.container(border=True):
-                st.text_area("Raw Results", value=str(result_text), height=400)
-    
+            # Empty or null result
+            st.info("Results will appear here after analysis completes.")
+            
     except Exception as e:
-        st.warning(f"Could not parse results as expected: {str(e)}")
-        with st.container(border=True):
-            st.text_area("Raw Results", value=str(result_text), height=400)
+        # Only show fallback for real exceptions, not empty results
+        st.info("Results will appear here after analysis completes.")
 
 # --- Main Application ---
 def main():
@@ -286,6 +280,19 @@ def main():
         font-size: 1.2rem !important;
         margin-top: -0.5rem !important;
         margin-bottom: 1.5rem !important;
+    }
+    .stButton button {
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+    }
+    /* Make the Analyze button more distinct */
+    [data-testid="stHorizontalBlock"] > div:first-child .stButton button {
+        background-color: #4CAF50;
+        color: white;
+    }
+    /* Style the status container for better appearance */
+    [data-testid="stVerticalBlock"] > div > [data-testid="stContainer"] {
+        padding: 1rem;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -396,11 +403,15 @@ def main():
         # Buttons side by side 
         col2a, col2b = st.columns(2)
         
-        # Analyze button - simple implementation that works
+        # Analyze button - with critical fix to clear results on new analysis
         with col2a:
             analyze_disabled = not st.session_state.query.strip() or not st.session_state.selected_drawings
             if st.button("Analyze Drawings", disabled=analyze_disabled):
                 try:
+                    # CRITICAL FIX: Clear previous results when starting a new analysis
+                    st.session_state.analysis_results = None
+                    
+                    # Start analysis
                     resp = start_analysis(
                         st.session_state.query,
                         st.session_state.selected_drawings,
@@ -408,7 +419,6 @@ def main():
                     )
                     if resp and 'job_id' in resp:
                         st.session_state.current_job_id = resp['job_id']
-                        st.session_state.analysis_results = None
                         st.session_state.job_status = None
                         st.rerun()
                     else:
@@ -439,7 +449,7 @@ def main():
                 st.info("Analysis stopped.")
                 st.rerun()
     
-        # Job status display (simplified from progress_bar component)
+        # Job status display - styled with border for better appearance
         if st.session_state.current_job_id:
             try:
                 # Poll job status
@@ -449,10 +459,11 @@ def main():
                 phase = job.get('current_phase', '')
                 prog = job.get('progress', 0)
                 
-                # Status display in a bordered container
+                # Status display in a bordered container with better spacing
                 with st.container(border=True):
                     # Status indicator
-                    st.markdown(f"**Status:** {phase}")
+                    st.markdown(f"**Status:**")
+                    st.markdown(f"### {phase}")
                     
                     # Progress indicator
                     st.progress(prog / 100, text=f"Progress: {prog}%")
@@ -482,21 +493,16 @@ def main():
     # --- Right Column: Analysis Results ---
     with col3:
         st.subheader("Analysis Results")
-        if st.session_state.analysis_results is not None:
-            try:
-                integrated_results_pane(st.session_state.analysis_results)
-            except Exception as e:
-                st.error(f"Error displaying results: {str(e)}")
-                
-                # Fallback display
-                st.warning("Could not parse results in standard format. Displaying raw data:")
-                if isinstance(st.session_state.analysis_results, dict):
-                    # If it's a dict, display as JSON
-                    st.json(st.session_state.analysis_results)
-                else:
-                    # Otherwise display as text
-                    st.text_area("Raw Results:", value=str(st.session_state.analysis_results), height=400)
+        
+        # Show appropriate content based on analysis state
+        if st.session_state.current_job_id:
+            # Show "analyzing" message while job is running
+            st.info("Analysis in progress. Results will appear here when complete.")
+        elif st.session_state.analysis_results is not None:
+            # Show results using improved display function
+            integrated_results_pane(st.session_state.analysis_results)
         else:
+            # Default state
             st.info("Results will appear here after analysis completes.")
 
 if __name__ == "__main__":
