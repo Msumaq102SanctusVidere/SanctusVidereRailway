@@ -8,9 +8,18 @@ def results_pane(result_text):
     Parameters:
         result_text (str): The JSON-formatted result from the analysis job
     """
+    # Handle None or empty results
+    if result_text is None or result_text == "":
+        st.warning("No results data available. Try clicking 'Show Results' again.")
+        return
+        
     try:
         # Try to parse JSON
         result_obj = json.loads(result_text)
+        
+        # Debug info
+        st.markdown("---")
+        st.markdown("### Analysis Results")
         
         # Extract analysis text
         if isinstance(result_obj, dict):
@@ -23,17 +32,9 @@ def results_pane(result_text):
                     
                     # Add a copy button
                     if st.button("Copy Results", key="copy_results_main"):
-                        # Using JavaScript to try to copy to clipboard
-                        js = f"""
-                        <script>
-                        const text = `{analysis_text.replace('`', '\`')}`;
-                        navigator.clipboard.writeText(text)
-                            .then(() => console.log('Text copied to clipboard'))
-                            .catch(err => console.error('Failed to copy: ', err));
-                        </script>
-                        """
-                        st.components.v1.html(js, height=0)
-                        st.success("Results copied to clipboard!")
+                        # We'll use st.code for better clipboard support
+                        st.code(analysis_text, language=None)
+                        st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
                 
                 # Technical information in an expandable section 
                 # that's collapsed by default
@@ -54,36 +55,32 @@ def results_pane(result_text):
                             
                             # Add a copy button with unique key
                             if st.button("Copy Results", key=f"copy_results_batch_{i}"):
-                                # Using JavaScript to try to copy to clipboard
-                                js = f"""
-                                <script>
-                                const text = `{analysis_text.replace('`', '\`')}`;
-                                navigator.clipboard.writeText(text)
-                                    .then(() => console.log('Text copied to clipboard'))
-                                    .catch(err => console.error('Failed to copy: ', err));
-                                </script>
-                                """
-                                st.components.v1.html(js, height=0)
-                                st.success("Results copied to clipboard!")
+                                # We'll use st.code for better clipboard support
+                                st.code(analysis_text, language=None)
+                                st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
                         
                         # Technical information in a collapsed expandable section
                         with st.expander("Technical Information", expanded=False):
-                            st.json(result_obj)
+                            st.json(batch)
                         
                         return
+                
+                # If we didn't find analysis in batches
+                st.warning("Results format not recognized. Displaying raw data.")
         
         # Fallback to showing the raw result
         st.text_area(
-            label="",
+            label="Raw Results Data",
             value=result_text,
             height=400,
             key="results_text_area"
         )
         
-    except (json.JSONDecodeError, TypeError):
-        # If not valid JSON, just display as-is
+    except (json.JSONDecodeError, TypeError) as e:
+        # If not valid JSON, just display as-is with error
+        st.error(f"Could not parse results as JSON: {str(e)}")
         st.text_area(
-            label="",
+            label="Raw Results Data",
             value=result_text,
             height=400,
             key="results_text_area"
