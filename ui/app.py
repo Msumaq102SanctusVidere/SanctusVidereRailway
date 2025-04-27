@@ -48,6 +48,7 @@ init_state()
 # --- Helper to Refresh Drawings List ---
 def refresh_drawings():
     try:
+        # Force a clean fetch from API (no caching)
         st.session_state.drawings = get_drawings()
         st.session_state.drawings_last_updated = time.time()
         logger.info(f"Refreshed drawings list: {len(st.session_state.drawings)} items")
@@ -136,6 +137,9 @@ def integrated_upload_drawing():
                     
                     # Update status
                     st.session_state.upload_status[file_key]['status'] = 'completed'
+                    
+                    # Critical fix: Force drawings refresh on completion
+                    refresh_drawings()
                     st.session_state["refresh_drawings_needed"] = True
                     
                     # Show completion message
@@ -143,8 +147,6 @@ def integrated_upload_drawing():
                     st.success(f"✅ UPLOAD COMPLETE: {drawing_name} has been successfully processed!")
                     st.info("The drawing is now available for analysis. Click 'Refresh Drawings' to update the list.")
                     
-                    # Refresh drawings list
-                    refresh_drawings()
                     return True
                 
                 elif backend_status == "failed":
@@ -297,8 +299,8 @@ def main():
         status = health_check().get('status')
         if status == 'ok':
             st.session_state.backend_healthy = True
-            if not st.session_state.drawings or time.time() - st.session_state.drawings_last_updated > 30:
-                refresh_drawings()
+            # Critical fix: Always refresh on load for consistent state
+            refresh_drawings()  
         else:
             st.error("⚠️ Backend service unavailable.")
     except Exception as e:
