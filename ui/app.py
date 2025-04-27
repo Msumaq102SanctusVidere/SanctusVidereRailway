@@ -217,7 +217,7 @@ def main():
                 st.markdown(f"**Status:** {phase}")
                 
                 # Progress indicator - keep this
-                progress_indicator(prog)
+                st.progress(prog / 100)
                     
                 # Progress complete indicator - keep this
                 if prog >= 100 or 'complete' in phase.lower():
