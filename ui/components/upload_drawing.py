@@ -34,7 +34,7 @@ except ImportError as e:
 
 # Define polling interval and timeout
 POLLING_INTERVAL_SECONDS = 5 # Check status every 5 seconds
-MAX_POLLING_TIME_SECONDS = 900 # Stop polling after 15 minutes for upload processing
+MAX_POLLING_TIME_SECONDS = 1800 # Stop polling after 15 minutes for upload processing
 
 
 def upload_drawing_component():
