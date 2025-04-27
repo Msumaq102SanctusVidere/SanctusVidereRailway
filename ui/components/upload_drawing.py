@@ -61,8 +61,11 @@ def upload_drawing_component():
         if file_status_info["status"] == "new":
             st.info(f"⏳ Starting upload for {uploaded_file.name}...")
             try:
-                # Send the file directly to the API without creating a temp file
+                # Get file bytes directly from Streamlit's uploaded_file
                 file_bytes = uploaded_file.getbuffer()
+                logger.info(f"Uploading {uploaded_file.name} ({len(file_bytes)} bytes) directly to API")
+                
+                # Pass directly to the API - no temp files!
                 resp = upload_drawing(file_bytes, uploaded_file.name)
                 logger.info(f"Initial response from /upload for {uploaded_file.name}: {resp}")
 
