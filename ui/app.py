@@ -1,22 +1,4 @@
-# Add a separate section for Recent Updates
-        if st.session_state.current_job_id:
-            st.markdown("---")
-            st.markdown("#### Recent Updates")
-            
-            # Display the most recent log message in a more prominent way
-            if st.session_state.job_status and 'progress_messages' in st.session_state.job_status:
-                recent_logs = st.session_state.job_status.get('progress_messages', [])
-                if recent_logs:
-                    # Clean any HTML tags from logs
-                    clean_logs = []
-                    for log in recent_logs:
-                        # Use regex to remove HTML tags if present
-                        clean_log = re.sub(r'<[^>]+>', '', log)
-                        clean_logs.append(clean_log)
-                    
-                    # Display the latest log in a more formatted way
-                    for log in clean_logs[-3:]:  # Show last 3 logs
-                        st.info(log)# --- Filename: ui/app.py (Frontend Streamlit UI - Three-Column Layout) ---
+# --- Filename: ui/app.py (Frontend Streamlit UI - Three-Column Layout) ---
 
 import streamlit as st
 import time
@@ -241,6 +223,26 @@ def main():
                     clean_logs.append(clean_log)
                 
                 log_console(clean_logs)
+        
+        # Add a separate section for Recent Updates
+        if st.session_state.current_job_id:
+            st.markdown("---")
+            st.markdown("#### Recent Updates")
+            
+            # Display the most recent log message in a more prominent way
+            if st.session_state.job_status and 'progress_messages' in st.session_state.job_status:
+                recent_logs = st.session_state.job_status.get('progress_messages', [])
+                if recent_logs:
+                    # Clean any HTML tags from logs
+                    clean_logs = []
+                    for log in recent_logs:
+                        # Use regex to remove HTML tags if present
+                        clean_log = re.sub(r'<[^>]+>', '', log)
+                        clean_logs.append(clean_log)
+                    
+                    # Display the latest log in a more formatted way
+                    for log in clean_logs[-3:]:  # Show last 3 logs
+                        st.info(log)
 
     # --- Right Column: Analysis Results ---
     with col3:
