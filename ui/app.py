@@ -203,6 +203,7 @@ def main():
                 st.rerun()
     
         # Job status display - MODIFIED SECTION
+        # Job status display - FIXED VERSION
         if st.session_state.current_job_id:
             try:
                 # Poll job status
@@ -212,15 +213,17 @@ def main():
                 phase = job.get('current_phase', '')
                 prog = job.get('progress', 0)
                 
-                # Status indicator
+                # Status indicator - only show this line
                 st.markdown(f"**Status:** {phase}")
+                
+                # Progress indicator - keep this
                 progress_indicator(prog)
                     
-                # Progress complete indicator
+                # Progress complete indicator - keep this
                 if prog >= 100 or 'complete' in phase.lower():
                     st.success("✅ Analysis complete! Click 'Show Results' to view.")
         
-                # Show latest log messages
+                # Show ONLY Recent Updates header and logs
                 st.markdown("**Recent Updates:**")
                 logs = job.get('progress_messages', [])
                 if logs:
