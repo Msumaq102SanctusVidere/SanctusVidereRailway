@@ -93,13 +93,11 @@ TILES_OUTPUT_DIR = "/app/tiles_output"  # Primary storage location for all drawi
 
 # Create fallback directories based on current path
 fallback_dir_default = Path(os.path.dirname(os.path.abspath(__file__))).resolve()
-UPLOAD_FOLDER_DEFAULT = fallback_dir_default / 'uploads'
 DRAWINGS_OUTPUT_DIR_DEFAULT = Path(TILES_OUTPUT_DIR).resolve()  # Use the specified path
 MEMORY_STORE_DIR_DEFAULT = fallback_dir_default / 'memory_store'
 DATABASE_DIR_DEFAULT = fallback_dir_default / 'database'
 
 # Initialize with defaults
-UPLOAD_FOLDER = UPLOAD_FOLDER_DEFAULT
 DRAWINGS_OUTPUT_DIR = DRAWINGS_OUTPUT_DIR_DEFAULT
 MEMORY_STORE_DIR = MEMORY_STORE_DIR_DEFAULT
 DATABASE_DIR = DATABASE_DIR_DEFAULT
@@ -113,7 +111,6 @@ try:
         logger.info(f"Configured drawings directory using Config: {Config.DRAWINGS_DIR}")
         
         # Set up other directories
-        UPLOAD_FOLDER = os.path.join(base_dir, 'uploads')
         DRAWINGS_OUTPUT_DIR = Path(Config.DRAWINGS_DIR).resolve()  # Use the specified path from Config
         MEMORY_STORE_DIR = Path(Config.MEMORY_STORE).resolve() if hasattr(Config, 'MEMORY_STORE') else Path(os.path.join(base_dir, 'memory_store')).resolve()
         DATABASE_DIR = Path(os.path.join(base_dir, 'database')).resolve()
@@ -128,14 +125,12 @@ except Exception as e:
     DRAWINGS_OUTPUT_DIR = Path(TILES_OUTPUT_DIR).resolve()
     logger.warning(f"Using fallback directories due to error, with DRAWINGS_OUTPUT_DIR={DRAWINGS_OUTPUT_DIR}")
 
-logger.info(f"Final Uploads directory: {UPLOAD_FOLDER}")
 logger.info(f"Final Processed drawings directory: {DRAWINGS_OUTPUT_DIR}")
 logger.info(f"Final Memory store directory: {MEMORY_STORE_DIR}")
 logger.info(f"Final Database directory: {DATABASE_DIR}")
 
 # Flask App Config
 ALLOWED_EXTENSIONS = {'pdf'}
-app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
 app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_UPLOAD_MB', 100)) * 1024 * 1024
 logger.info(f"Max upload size: {app.config['MAX_CONTENT_LENGTH'] / 1024 / 1024} MB")
 
@@ -164,7 +159,6 @@ PROCESS_PHASES = {
 try:
     if DRAWINGS_OUTPUT_DIR: os.makedirs(DRAWINGS_OUTPUT_DIR, exist_ok=True)
     if MEMORY_STORE_DIR: os.makedirs(MEMORY_STORE_DIR, exist_ok=True)
-    if UPLOAD_FOLDER: os.makedirs(Path(UPLOAD_FOLDER), exist_ok=True)
     if DATABASE_DIR: os.makedirs(Path(DATABASE_DIR), exist_ok=True)
     logger.info(f"Ensured directories exist.")
 except Exception as e:
@@ -560,14 +554,18 @@ def create_analysis_job(query, drawings, use_cache):
         logger.error(f"Error creating analysis job: {e}", exc_info=True)
         raise
 
-# --- PDF Processing (Revised to use proper naming from the start) ---
-def process_pdf_job(file_path, job_id, original_filename, dpi=300, tile_size=2048, overlap_ratio=0.35):
-    """Process a PDF file, using consistent naming conventions"""
+# --- PDF Processing (Direct file saving with no temp files) ---
+def process_pdf_job(pdf_file_path, job_id, original_filename, dpi=300, tile_size=2048, overlap_ratio=0.35):
+    """Process a PDF file with direct processing from final location"""
     global analyze_all_tiles, convert_from_path, ensure_landscape, save_tiles_with_metadata, ensure_dir
     
-    # Create a clean drawing name from the original filename
-    safe_original_filename = werkzeug.utils.secure_filename(original_filename)
-    sheet_name = Path(safe_original_filename).stem.replace(" ", "_").replace("-", "_").replace(".", "_")
+    # Extract sheet name from original filename or PDF path
+    if original_filename:
+        safe_original_filename = werkzeug.utils.secure_filename(original_filename)
+        sheet_name = Path(safe_original_filename).stem.replace(" ", "_").replace("-", "_").replace(".", "_")
+    else:
+        sheet_name = Path(pdf_file_path).stem.replace(" ", "_").replace("-", "_").replace(".", "_")
+    
     sheet_output_dir = DRAWINGS_OUTPUT_DIR / sheet_name
     
     start_time = time.time()
@@ -575,7 +573,7 @@ def process_pdf_job(file_path, job_id, original_filename, dpi=300, tile_size=204
     update_job_status(job_id, status="processing", progress=1, current_phase=PROCESS_PHASES["INIT"], progress_message="🚀 Starting PDF processing")
     
     try:
-        # Create output directory
+        # Ensure output directory exists
         if not ensure_dir: raise ImportError("ensure_dir function not available due to import error.")
         ensure_dir(sheet_output_dir)
         logger.info(f"[Job {job_id}] Output directory ensured: {sheet_output_dir}")
@@ -586,13 +584,13 @@ def process_pdf_job(file_path, job_id, original_filename, dpi=300, tile_size=204
         if not convert_from_path: raise ImportError("convert_from_path function not available due to import error.")
         
         try: # Main conversion
-            file_size = os.path.getsize(file_path)
+            file_size = os.path.getsize(pdf_file_path)
             logger.info(f"[Job {job_id}] PDF file size: {file_size / 1024 / 1024:.2f} MB")
             if file_size == 0: raise Exception("PDF file is empty")
             logger.info(f"[Job {job_id}] Using DPI: {dpi}")
             
             conversion_start_time = time.time()
-            images = convert_from_path(str(file_path), dpi=dpi)
+            images = convert_from_path(str(pdf_file_path), dpi=dpi)
             conversion_time = time.time() - conversion_start_time
             
             if not images: raise Exception("PDF conversion produced no images")
@@ -605,7 +603,7 @@ def process_pdf_job(file_path, job_id, original_filename, dpi=300, tile_size=204
             
             try:
                 conversion_start_time = time.time()
-                images = convert_from_path(str(file_path), dpi=dpi, thread_count=1)
+                images = convert_from_path(str(pdf_file_path), dpi=dpi, thread_count=1)
                 conversion_time = time.time() - conversion_start_time
                 
                 if not images: raise Exception("Alternative PDF conversion produced no images")
@@ -742,15 +740,6 @@ def process_pdf_job(file_path, job_id, original_filename, dpi=300, tile_size=204
         total_time = time.time() - start_time
         logger.error(f"[Job {job_id}] Processing failed for {original_filename} after {total_time:.2f}s: {str(e)}", exc_info=True)
         update_job_status(job_id, status="failed", current_phase=PROCESS_PHASES["FAILED"], progress=100, error=str(e), progress_message=f"❌ Processing failed after {total_time:.2f}s. Error: {str(e)}")
-    
-    finally:
-        # Clean up temporary files
-        if os.path.exists(file_path) and file_path != str(sheet_output_dir / f"{sheet_name}.pdf"):
-             try: 
-                 os.remove(file_path)
-                 logger.info(f"[Job {job_id}] Cleaned up upload file.")
-             except Exception as clean_e: 
-                 logger.warning(f"[Job {job_id}] Failed to clean up file: {clean_e}")
 
 # --- Background Job Processors ---
 def process_analysis_job(job_id):
@@ -932,7 +921,6 @@ def health_check():
         "database": os.path.exists(DB_PATH),
         "paths": {
             "drawings_output_dir": str(DRAWINGS_OUTPUT_DIR),
-            "upload_folder": str(UPLOAD_FOLDER),
             "memory_store_dir": str(MEMORY_STORE_DIR),
             "database_dir": str(DATABASE_DIR)
         }
@@ -1104,9 +1092,8 @@ def upload_file():
         sheet_output_dir = DRAWINGS_OUTPUT_DIR / sheet_name
         os.makedirs(sheet_output_dir, exist_ok=True)
         
-        # Save directly to a properly named file
-        pdf_file_path = os.path.join(UPLOAD_FOLDER, safe_original_filename)
-        os.makedirs(os.path.dirname(pdf_file_path), exist_ok=True)
+        # Save file directly to its final destination
+        pdf_file_path = sheet_output_dir / f"{sheet_name}.pdf"
         file.save(pdf_file_path)
         
         # Create job in database
@@ -1129,7 +1116,7 @@ def upload_file():
         # Start processing in background
         thread = threading.Thread(
             target=process_pdf_job,
-            args=(pdf_file_path, job_id, file.filename),  # Pass the original filename
+            args=(pdf_file_path, job_id, file.filename),
             name=f"Upload-{job_id[:8]}"
         )
         thread.daemon = True
