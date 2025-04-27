@@ -133,20 +133,34 @@ def main():
         if selected is not None:
             st.session_state.selected_drawings = selected
 
-        # Delete buttons for selected
-        for d in st.session_state.selected_drawings:
-            if st.button(f"Delete '{d}'", key=f"del_{d}"):
-                try:
-                    delete_drawing(d)
-                    st.success(f"Deleted drawing '{d}'")
-                    # Update selected drawings list
-                    st.session_state.selected_drawings = [x for x in st.session_state.selected_drawings if x != d]
-                    # Refresh drawings list
-                    refresh_drawings()
-                    # Force complete page refresh
-                    st.experimental_rerun()  # Use experimental_rerun() instead of rerun()
-                except Exception as e:
-                    st.error(f"Failed to delete drawing: {e}")
+        # Replace the individual delete buttons section with this:
+
+        # Single delete button for all selected drawings
+        if st.session_state.selected_drawings:
+            if st.button("Delete Selected Drawings"):
+                delete_count = 0
+                error_count = 0
+                
+                # Process each selected drawing
+                for drawing in list(st.session_state.selected_drawings):
+                    try:
+                        delete_drawing(drawing)
+                        # Update selected drawings list
+                        st.session_state.selected_drawings.remove(drawing)
+                        delete_count += 1
+                    except Exception as e:
+                        st.error(f"Failed to delete {drawing}: {e}")
+                        error_count += 1
+                
+                # Refresh the drawings list
+                refresh_drawings()
+                
+                # Show summary message
+                if delete_count > 0:
+                    st.success(f"Successfully deleted {delete_count} drawings.")
+                
+                # Force UI refresh
+                st.rerun()
 
     # --- Middle Column: Query, Analysis Control & Status ---
     with col2:
