@@ -62,6 +62,10 @@ def refresh_drawings():
 # --- Main Application ---
 def main():
     st.set_page_config(page_title="Sanctus Videre 1.0", layout="wide")
+    
+    # Add main title to the page
+    st.title("Sanctus Videre 1.0")
+    st.markdown("*Architectural Drawing Analysis Tool*")
 
     # --- Health Check & Initial Drawings Fetch ---
     try:
@@ -124,8 +128,8 @@ def main():
     with col2:
         st.subheader("Query & Status")
 
-        # Query input - Don't pass the disabled parameter to query_box
-        st.session_state.query = query_box()
+        # Query input - Modified to pass empty_disabled=True to prevent automatic analyze button
+        st.session_state.query = query_box(empty_disabled=True, remove_analyze_button=True)
         st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
 
         # Analyze and Show Results buttons in a row
