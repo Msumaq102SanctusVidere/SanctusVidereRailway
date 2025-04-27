@@ -145,110 +145,46 @@ def main():
         st.subheader("Query & Status")
     
         # Query input
-        st.session_state.query = st.text_area("Type your question here...", st.session_state.query)
-        st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
-    
+        query_text = st.text_area("Type your question here...", st.session_state.query)
+        st.session_state.query = query_text  # Make sure query value is always updated
+        use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
+        st.session_state.use_cache = use_cache  # Update cache value
+        
         # Buttons side by side 
         col2a, col2b = st.columns(2)
         
-        # Analyze button
+        # Analyze button - Simplify logic to ensure it works
         can_run = (st.session_state.backend_healthy 
-                   and st.session_state.selected_drawings 
-                   and st.session_state.query.strip())
+                   and len(st.session_state.selected_drawings) > 0
+                   and len(st.session_state.query.strip()) > 0)
         
         with col2a:
-            if st.button("Analyze Drawings", disabled=not can_run):
+            if st.button("Analyze Drawings", disabled=not can_run, key="analyze_button"):
+                # Basic logging to debug
+                st.write(f"Selected drawings: {st.session_state.selected_drawings}")
+                st.write(f"Query: {st.session_state.query}")
+                
+                # Simple try/except
                 try:
+                    # Call the API directly
                     resp = start_analysis(
                         st.session_state.query,
                         st.session_state.selected_drawings,
                         st.session_state.use_cache
                     )
-                    jid = resp.get('job_id')
-                    if jid:
+                    
+                    # Check response
+                    if resp and 'job_id' in resp:
+                        jid = resp['job_id']
                         st.session_state.current_job_id = jid
                         st.session_state.analysis_results = None
                         st.session_state.job_status = None
+                        st.success(f"Analysis started! Job ID: {jid}")
                         st.rerun()
                     else:
                         st.error(f"Failed to start analysis: {resp}")
                 except Exception as e:
                     st.error(f"Analysis request failed: {str(e)}")
-        
-        # Show Results button
-        with col2b:
-            if st.button("Show Results"):
-                if st.session_state.current_job_id:
-                    try:
-                        job = get_job_status(st.session_state.current_job_id)
-                        result = job.get('result')
-                        # Store the result
-                        st.session_state.analysis_results = result
-                        # Only clear job ID if we have results
-                        if result is not None:
-                            st.session_state.current_job_id = None
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error retrieving results: {str(e)}")
-                elif st.session_state.job_status and st.session_state.job_status.get('result'):
-                    # If job status already contains result
-                    st.session_state.analysis_results = st.session_state.job_status.get('result')
-                    st.session_state.current_job_id = None
-                    st.rerun()
-    
-        # Stop analysis button
-        if st.session_state.current_job_id:
-            if st.button("Stop Analysis"):  
-                st.session_state.current_job_id = None
-                st.info("Analysis stopped.")
-                st.rerun()
-    
-        # Job status display - Fixed to only show relevant information
-        jid = st.session_state.current_job_id
-        if jid:
-            # Poll job status
-            try:
-                job = get_job_status(jid)
-                st.session_state.job_status = job
-                
-                # Extract proper status information
-                phase = job.get('current_phase', '')
-                prog = job.get('progress', 0)
-                
-                # Status indicator
-                is_complete = prog >= 100 or 'complete' in phase.lower()
-                
-                if is_complete:
-                    st.markdown("**Status:** ⚡ COMPLETE")
-                    st.markdown("**Processing:** 100% Complete")
-                    progress_indicator(100)
-                else:
-                    st.markdown(f"**Status:** {phase}")
-                    st.markdown(f"**Processing:** {prog}% Complete")
-                    progress_indicator(prog)
-                
-                # Progress complete indicator
-                if is_complete:
-                    st.success("✅ Analysis complete! Click 'Show Results' to view.")
-                    # Automatically fetch results if available
-                    if job.get('result') and not st.session_state.analysis_results:
-                        st.session_state.analysis_results = job.get('result')
-                
-                # Show latest log messages
-                st.markdown("**Recent Updates:**")
-                logs = job.get('progress_messages', [])
-                if logs:
-                    for log in logs[-3:]:
-                        # Remove HTML tags if present
-                        clean_log = re.sub(r'<[^>]+>', '', log)
-                        st.info(clean_log)
-                
-                # Auto-refresh while analysis is running but not complete
-                if not is_complete:
-                    time.sleep(2)  # Brief pause to avoid hammering the API
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Error updating job status: {str(e)}")
 
     # --- Right Column: Analysis Results ---
     # --- Right Column: Analysis Results ---
