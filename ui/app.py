@@ -400,17 +400,14 @@ def main():
         )
         st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
     
-        # Buttons side by side 
-        col2a, col2b = st.columns(2)
+        # Buttons side by side with new Clear Results button
+        col2a, col2b, col2c = st.columns(3)
         
-        # Analyze button - with critical fix to clear results on new analysis
+        # Analyze button
         with col2a:
             analyze_disabled = not st.session_state.query.strip() or not st.session_state.selected_drawings
             if st.button("Analyze Drawings", disabled=analyze_disabled):
                 try:
-                    # CRITICAL FIX: Clear previous results when starting a new analysis
-                    st.session_state.analysis_results = None
-                    
                     # Start analysis
                     resp = start_analysis(
                         st.session_state.query,
@@ -441,6 +438,13 @@ def main():
                         st.warning("Results not ready yet. Please wait for analysis to complete.")
                 except Exception as e:
                     st.error(f"Error retrieving results: {str(e)}")
+        
+        # NEW BUTTON: Clear Results
+        with col2c:
+            if st.button("Clear Results"):
+                # Simply clear the results
+                st.session_state.analysis_results = None
+                st.rerun()
     
         # Stop analysis button
         if st.session_state.current_job_id:
