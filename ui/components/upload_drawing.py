@@ -138,18 +138,14 @@ def upload_drawing_component():
                             
                             # Show prominent success message OUTSIDE the status container
                             st.success(f"✅ UPLOAD COMPLETE: {drawing_name} has been successfully processed!")
-                            st.info("The drawing is now available for analysis in the drawing list.")
-                            
-                            # Add a refresh button
-                            if st.button("Refresh Drawings List", key="refresh_after_upload"):
-                                # Set refresh flag in session state
-                                st.session_state["refresh_drawings"] = True
-                                # Signal the main app
-                                return True
+                            st.info("The drawing is now available for analysis. Click the 'Refresh Drawings' button in the main panel to update the list.")
                             
                             # Update session state
                             st.session_state[current_file_key]["status"] = "completed"
                             st.session_state[current_file_key]["drawing_name"] = drawing_name
+                            
+                            # Set a flag that the main app can check
+                            st.session_state["refresh_drawings_needed"] = True
                             
                             # Signal completion to main app
                             return True
