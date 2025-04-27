@@ -140,6 +140,7 @@ def main():
                 st.rerun()
 
     # --- Middle Column: Query, Analysis Control & Status ---
+    # --- Middle Column: Query, Analysis Control & Status ---
     with col2:
         st.subheader("Query & Status")
 
@@ -157,23 +158,30 @@ def main():
         
         with col2a:
             if st.button("Analyze Drawings", disabled=not can_run):
-                resp = start_analysis(
-                    st.session_state.query,
-                    st.session_state.selected_drawings,
-                    st.session_state.use_cache
-                )
-                jid = resp.get('job_id')
-                if jid:
-                    st.session_state.current_job_id = jid
-                    st.session_state.analysis_results = None
-                    st.session_state.job_status = None
-                else:
-                    st.error(f"Failed to start analysis: {resp}")
-                st.rerun()
+                try:
+                    resp = start_analysis(
+                        st.session_state.query,
+                        st.session_state.selected_drawings,
+                        st.session_state.use_cache
+                    )
+                    jid = resp.get('job_id')
+                    if jid:
+                        st.session_state.current_job_id = jid
+                        st.session_state.analysis_results = None
+                        st.session_state.job_status = None
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to start analysis: {resp}")
+                except Exception as e:
+                    st.error(f"Analysis request failed: {str(e)}")
         
         # Show Results button
         with col2b:
-            if st.button("Show Results"):
+            is_complete = (st.session_state.job_status and 
+                         (st.session_state.job_status.get('progress', 0) >= 100 or
+                          'complete' in st.session_state.job_status.get('current_phase', '').lower()))
+            
+            if st.button("Show Results", disabled=not (is_complete or st.session_state.analysis_results is not None)):
                 if st.session_state.current_job_id:
                     job = get_job_status(st.session_state.current_job_id)
                     result = job.get('result')
@@ -214,7 +222,13 @@ def main():
                     # Remove HTML tags if present
                     clean_log = re.sub(r'<[^>]+>', '', log)
                     st.info(clean_log)
+            
+            # Auto-refresh while analysis is running
+            if prog < 100 and 'complete' not in phase.lower():
+                time.sleep(2)  # Brief pause to avoid hammering the API
+                st.rerun()
 
+    # --- Right Column: Analysis Results ---
     # --- Right Column: Analysis Results ---
     with col3:
         st.subheader("Analysis Results")
