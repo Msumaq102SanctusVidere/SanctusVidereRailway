@@ -133,8 +133,6 @@ def main():
         if selected is not None:
             st.session_state.selected_drawings = selected
 
-        # Replace the individual delete buttons section with this:
-
         # Single delete button for all selected drawings
         if st.session_state.selected_drawings:
             if st.button("Delete Selected Drawings"):
@@ -144,11 +142,24 @@ def main():
                 # Process each selected drawing
                 for drawing in list(st.session_state.selected_drawings):
                     try:
-                        delete_drawing(drawing)
-                        # Update selected drawings list
-                        st.session_state.selected_drawings.remove(drawing)
-                        delete_count += 1
+                        # Log before deletion attempt
+                        logger.info(f"Attempting to delete drawing: {drawing}")
+                        
+                        # Call delete API and capture response
+                        response = delete_drawing(drawing)
+                        logger.info(f"Delete API response: {response}")
+                        
+                        # Check if deletion was successful
+                        if response and response.get('success'):
+                            st.session_state.selected_drawings.remove(drawing)
+                            delete_count += 1
+                        else:
+                            error_msg = response.get('error', 'Unknown error')
+                            logger.error(f"API reported error deleting {drawing}: {error_msg}")
+                            st.error(f"Failed to delete {drawing}: {error_msg}")
+                            error_count += 1
                     except Exception as e:
+                        logger.error(f"Exception when deleting {drawing}: {e}")
                         st.error(f"Failed to delete {drawing}: {e}")
                         error_count += 1
                 
