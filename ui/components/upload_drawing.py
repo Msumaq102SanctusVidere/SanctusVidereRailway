@@ -1,13 +1,10 @@
 # --- Filename: components/upload_drawing.py ---
 
 import streamlit as st
-import tempfile
 import os
-import time # Import the time module for sleep
-import logging # Optional: Add logging for debugging
+import time
+import logging
 
-# Import API client functions, including the new one we need
-# Ensure api_client.py is accessible from this component's location
 try:
     import sys
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,26 +13,22 @@ try:
     if grandparent_dir not in sys.path:
         sys.path.append(grandparent_dir)
 
-    from api_client import upload_drawing, get_job_status # Need get_job_status now!
+    from api_client import upload_drawing, get_job_status
     logger = logging.getLogger(__name__)
-    # Check if logger has handlers to avoid duplicate messages if run multiple times
     if not logger.hasHandlers():
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger.info("Successfully imported api_client in upload_drawing_component.")
 
 except ImportError as e:
     st.error(f"Failed to import api_client in upload component: {e}")
-    # Make the component unusable if imports fail
     def upload_drawing_component():
         st.error("Upload component disabled due to import error.")
         return False
     raise ImportError(f"Stopping due to failed api_client import in upload_drawing.py: {e}")
 
-
 # Define polling interval and timeout
-POLLING_INTERVAL_SECONDS = 5 # Check status every 5 seconds
-MAX_POLLING_TIME_SECONDS = 1800 # Stop polling after 15 minutes for upload processing
-
+POLLING_INTERVAL_SECONDS = 5
+MAX_POLLING_TIME_SECONDS = 1800
 
 def upload_drawing_component():
     """
@@ -43,23 +36,21 @@ def upload_drawing_component():
     Uses st.status for displaying progress while polling the background job.
     Returns True only if the background job completes successfully.
     """
-    st.header("Upload New Drawing") # Use header for consistency
+    st.header("Upload New Drawing")
     uploaded_file = st.file_uploader(
         label="Select a PDF drawing to upload and process",
         type=["pdf"],
-        key="pdf_uploader", # Key helps maintain state
+        key="pdf_uploader",
         help="Upload a construction drawing in PDF format. Processing will start automatically."
     )
 
     # Use session state to track the upload job ID and prevent re-submission
     if 'upload_job_id' not in st.session_state:
         st.session_state.upload_job_id = None
-    # We don't strictly need upload_in_progress if we check upload_job_id
 
     # --- Handle File Upload ---
     if uploaded_file is not None:
         # Check if this specific file upload is already being processed or has been processed
-        # Use a combination of filename and job ID to track state
         current_file_key = f"upload_status_{uploaded_file.name}_{uploaded_file.size}"
         if current_file_key not in st.session_state:
              st.session_state[current_file_key] = {"job_id": None, "status": "new"}
@@ -69,32 +60,24 @@ def upload_drawing_component():
         # Only start a new upload if status is 'new'
         if file_status_info["status"] == "new":
             st.info(f"⏳ Starting upload for {uploaded_file.name}...")
-            tmp_path = None
             try:
-                # 1. Save to a temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                    tmp.write(uploaded_file.getbuffer())
-                    tmp_path = tmp.name
-                logger.info(f"Frontend temp file created: {tmp_path}")
-
-                # 2. Call the async API endpoint
-                resp = upload_drawing(tmp_path) # api_client now handles its own logging
+                # Send the file directly to the API without creating a temp file
+                file_bytes = uploaded_file.getbuffer()
+                resp = upload_drawing(file_bytes, uploaded_file.name)
                 logger.info(f"Initial response from /upload for {uploaded_file.name}: {resp}")
 
-                # 3. Get the job_id
+                # Get the job_id
                 job_id = resp.get("job_id")
                 if job_id:
-                    # Store job_id in session state associated with this file upload
                     st.session_state[current_file_key]["job_id"] = job_id
                     st.session_state[current_file_key]["status"] = "processing"
                     logger.info(f"Upload processing job started for {uploaded_file.name}: {job_id}")
-                    # Force a rerun to enter the polling state below
                     st.rerun()
                 else:
                     error_msg = resp.get('error', 'Failed to initiate upload processing job.')
                     st.error(f"❌ Upload initiation failed: {error_msg}")
                     logger.error(f"Failed to get job_id for {uploaded_file.name}. Response: {resp}")
-                    st.session_state[current_file_key]["status"] = "failed" # Mark as failed
+                    st.session_state[current_file_key]["status"] = "failed"
                     st.session_state[current_file_key]["error"] = error_msg
 
             except Exception as e:
@@ -102,14 +85,6 @@ def upload_drawing_component():
                 logger.error(f"Error in upload component before polling for {uploaded_file.name}: {e}", exc_info=True)
                 st.session_state[current_file_key]["status"] = "failed"
                 st.session_state[current_file_key]["error"] = str(e)
-            finally:
-                # Clean up temp file immediately after upload attempt
-                if tmp_path and os.path.exists(tmp_path):
-                    try:
-                        os.remove(tmp_path)
-                        logger.info(f"Frontend temporary file removed: {tmp_path}")
-                    except Exception as clean_e:
-                        logger.warning(f"Failed to remove frontend temp file {tmp_path}: {clean_e}")
 
         # --- Monitor Job Progress using st.status ---
         job_id = file_status_info.get("job_id")
@@ -130,11 +105,11 @@ def upload_drawing_component():
                          status_container.update(label=f"⌛ {error_msg}", state="error", expanded=True)
                          st.session_state[current_file_key]["status"] = "failed"
                          st.session_state[current_file_key]["error"] = "Polling Timeout"
-                         return False # Indicate failure
+                         return False
 
                     try:
                         job = get_job_status(job_id)
-                        consecutive_error_count = 0 # Reset error count on success
+                        consecutive_error_count = 0
 
                         percent = job.get("progress", 0)
                         backend_status = job.get("status", "unknown")
@@ -144,13 +119,10 @@ def upload_drawing_component():
 
                         # Update UI INSIDE the status container
                         status_container.write(f"**Phase:** {current_phase}")
-                        # Use st.progress directly inside st.status context
                         st.progress(int(percent), text=f"Overall Progress: {percent}%")
                         st.write("--- Recent Updates ---")
-                        # Display latest messages
-                        for msg in messages[-5:]: # Show last 5
-                            st.text(msg.split(" - ", 1)[-1]) # Show message part after timestamp
-
+                        for msg in messages[-5:]:
+                            st.text(msg.split(" - ", 1)[-1])
 
                         # Check for job completion or failure reported by backend
                         if backend_status == "completed":
@@ -159,9 +131,6 @@ def upload_drawing_component():
                             logger.info(f"Upload job {job_id} completed successfully.")
                             status_container.update(label=f"✅ Processed: {drawing_name}", state="complete", expanded=False)
                             st.session_state[current_file_key]["status"] = "completed"
-                            # We return True ONCE upon completion then reset the file uploader state
-                            # Need a way to signal completion without causing infinite loop on rerun
-                            # This return True will trigger the main app to refresh drawings
                             return True
 
                         elif backend_status == "failed":
@@ -170,15 +139,14 @@ def upload_drawing_component():
                             status_container.update(label=fail_msg, state="error", expanded=True)
                             st.session_state[current_file_key]["status"] = "failed"
                             st.session_state[current_file_key]["error"] = error or 'Unknown backend error.'
-                            return False # Indicate failure
+                            return False
 
                         # Wait before next poll if still processing
                         time.sleep(POLLING_INTERVAL_SECONDS)
 
                     except Exception as poll_e:
-                        # Handle errors during the polling process itself
                         consecutive_error_count += 1
-                        logger.error(f"Error polling upload job status {job_id} (Attempt {consecutive_error_count}/{MAX_CONSECUTIVE_ERRORS}): {poll_e}", exc_info=False) # Keep log less noisy
+                        logger.error(f"Error polling upload job status {job_id} (Attempt {consecutive_error_count}/{MAX_CONSECUTIVE_ERRORS}): {poll_e}", exc_info=False)
                         status_container.write(f"⚠️ Warning: Could not retrieve job status (Attempt {consecutive_error_count}). Retrying...")
 
                         if consecutive_error_count >= MAX_CONSECUTIVE_ERRORS:
@@ -187,20 +155,16 @@ def upload_drawing_component():
                              status_container.update(label=f"❌ {error_msg}", state="error", expanded=True)
                              st.session_state[current_file_key]["status"] = "failed"
                              st.session_state[current_file_key]["error"] = "Polling Failed"
-                             return False # Indicate failure
+                             return False
 
                         # Wait a bit longer after an error
                         time.sleep(POLLING_INTERVAL_SECONDS * (consecutive_error_count + 1))
 
         elif current_status == "completed":
-             # If we rerun and the job was already completed, show success briefly maybe?
-             st.success(f"✅ Previously processed: {uploaded_file.name}") # Or get name from state if stored
-             # Important: Don't return True here again, or it will loop infinitely!
+             st.success(f"✅ Previously processed: {uploaded_file.name}")
 
         elif current_status == "failed":
-             # If we rerun and the job failed previously
              st.error(f"❌ Previously failed: {uploaded_file.name}. Error: {file_status_info.get('error', 'Unknown')}")
-
 
     # Default return if no file uploaded in this run, or process finished/failed in previous run
     return False
