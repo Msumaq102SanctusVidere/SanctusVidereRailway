@@ -8,11 +8,6 @@ def results_pane(result_text):
     Parameters:
         result_text (str or dict): The result from the analysis job
     """
-    # Handle None or empty results
-    if result_text is None or result_text == "":
-        st.warning("No results data available. Try clicking 'Show Results' again.")
-        return
-        
     try:
         # Handle if result_text is already a dictionary
         if isinstance(result_text, dict):
@@ -32,7 +27,7 @@ def results_pane(result_text):
                     
                     # Add a copy button
                     if st.button("Copy Results", key="copy_results_main"):
-                        # We'll use st.code for better clipboard support
+                        # Use st.code for better clipboard support
                         st.code(analysis_text, language=None)
                         st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
                 
@@ -55,7 +50,7 @@ def results_pane(result_text):
                             
                             # Add a copy button with unique key
                             if st.button("Copy Results", key=f"copy_results_batch_{i}"):
-                                # We'll use st.code for better clipboard support
+                                # Use st.code for better clipboard support
                                 st.code(analysis_text, language=None)
                                 st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
                         
@@ -65,7 +60,7 @@ def results_pane(result_text):
                         
                         return
             
-            # Handle direct text content (like in your screenshot)
+            # Handle direct text content
             if isinstance(result_obj, dict) and any(key for key in result_obj.keys() if isinstance(result_obj[key], str) and len(result_obj[key]) > 100):
                 # Find the longest string value in the dict - likely the main content
                 main_key = max(result_obj.keys(), key=lambda k: len(result_obj[k]) if isinstance(result_obj[k], str) else 0)
@@ -98,34 +93,27 @@ def results_pane(result_text):
             except:
                 pass  # If regex fails, continue to fallback
         
-        # Fallback to showing the raw result
-        st.text_area(
-            label="Raw Results Data",
-            value=str(result_text),
-            height=400,
-            key="results_text_area"
-        )
+        # If we've reached here, display the raw result in a nicer format
+        st.warning("Displaying raw results:")
+        if isinstance(result_text, dict):
+            # If it's a dict, display as JSON in a container
+            with st.container(border=True):
+                st.json(result_text)
+        else:
+            # Otherwise display as text in a container
+            with st.container(border=True):
+                st.text_area("Raw Results Data", value=str(result_text), height=400)
         
     except (json.JSONDecodeError, TypeError) as e:
-        # If not valid JSON, try to extract content directly
-        if isinstance(result_text, str) and "{'analysis':" in result_text:
+        # If not valid JSON, try to display the content directly
+        st.warning(f"Could not parse results as JSON: {str(e)}")
+        with st.container(border=True):
+            # Try to display as markdown first
             try:
-                # Simple regex extraction
-                import re
-                match = re.search(r"'analysis':\s*'(.*?)'\}", result_text, re.DOTALL)
-                if match:
-                    analysis_text = match.group(1)
-                    with st.container(border=True):
-                        st.markdown(analysis_text)
-                        return
+                if isinstance(result_text, str):
+                    st.markdown(result_text)
+                else:
+                    st.text_area("Raw Results Data", value=str(result_text), height=400)
             except:
-                pass  # If regex fails, continue to fallback
-        
-        # Display original error and text
-        st.error(f"Could not parse results as JSON: {str(e)}")
-        st.text_area(
-            label="Raw Results Data",
-            value=str(result_text),
-            height=400,
-            key="results_text_area"
-        )
+                # Fallback to simple text display
+                st.text_area("Raw Results Data", value=str(result_text), height=400)
