@@ -158,12 +158,10 @@ def main():
         # Buttons side by side 
         col2a, col2b = st.columns(2)
         
-        # Analyze button with improved error handling
+        # Analyze button - simple implementation that works
         with col2a:
             if st.button("Analyze Drawings"):
-                if not st.session_state.backend_healthy:
-                    st.error("⚠️ Backend service is not available. Please try again later.")
-                elif not st.session_state.selected_drawings:
+                if not st.session_state.selected_drawings:
                     st.error("Please select at least one drawing first.")
                 elif not st.session_state.query.strip():
                     st.error("Please enter a question first.")
@@ -177,54 +175,40 @@ def main():
                         if resp and 'job_id' in resp:
                             st.session_state.current_job_id = resp['job_id']
                             st.session_state.analysis_results = None
-                            st.session_state.last_status_check = time.time()
-                            st.success("Analysis started!")
+                            st.session_state.job_status = None
                             st.rerun()
                         else:
                             st.error(f"Failed to start analysis: {resp}")
                     except Exception as e:
                         st.error(f"Error starting analysis: {str(e)}")
         
-        # Show Results button with improved error handling
+        # Show Results button
         with col2b:
             if st.button("Show Results"):
                 if st.session_state.current_job_id:
                     try:
                         job = get_job_status(st.session_state.current_job_id)
                         result = job.get('result')
-                        if result:
-                            st.session_state.analysis_results = result
-                            st.session_state.current_job_id = None
-                            st.success("Results loaded!")
-                            st.rerun()
-                        else:
-                            st.warning("Results not ready yet. Please wait for analysis to complete.")
+                        st.session_state.analysis_results = result
+                        st.session_state.current_job_id = None
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Error retrieving results: {str(e)}")
-                elif st.session_state.job_status and st.session_state.job_status.get('result'):
-                    # If job status already contains result
-                    st.session_state.analysis_results = st.session_state.job_status.get('result')
-                    st.session_state.current_job_id = None
-                    st.rerun()
     
-        # Job status display with auto-refresh
+        # Stop analysis button
         if st.session_state.current_job_id:
-            # Only poll status every few seconds to avoid hammering the API
-            current_time = time.time()
-            should_update = (current_time - st.session_state.last_status_check) >= 2
-            
-            if should_update:
-                try:
-                    job = get_job_status(st.session_state.current_job_id)
-                    st.session_state.job_status = job
-                    st.session_state.last_status_check = current_time
-                except Exception as e:
-                    st.error(f"Error updating job status: {str(e)}")
-                    job = st.session_state.job_status  # Use last known status
-            else:
-                job = st.session_state.job_status
-            
-            if job:
+            if st.button("Stop Analysis"):  
+                st.session_state.current_job_id = None
+                st.info("Analysis stopped.")
+                st.rerun()
+    
+        # Job status display
+        if st.session_state.current_job_id:
+            try:
+                # Poll job status
+                job = get_job_status(st.session_state.current_job_id)
+                st.session_state.job_status = job
+        
                 phase = job.get('current_phase', '')
                 prog = job.get('progress', 0)
                 
@@ -247,15 +231,10 @@ def main():
                 
                 # Auto-refresh while analysis is running
                 if prog < 100 and 'complete' not in phase.lower():
-                    time.sleep(0.5)  # Short delay to avoid UI flickering
+                    time.sleep(2)  # Brief pause to avoid hammering the API
                     st.rerun()
-        
-        # Stop analysis button
-        if st.session_state.current_job_id:
-            if st.button("Stop Analysis"):  
-                st.session_state.current_job_id = None
-                st.info("Analysis stopped.")
-                st.rerun()
+            except Exception as e:
+                st.error(f"Error updating job status: {str(e)}")
 
     # --- Right Column: Analysis Results ---
     with col3:
