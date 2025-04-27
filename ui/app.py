@@ -202,7 +202,7 @@ def main():
                 st.info("Analysis stopped.")
                 st.rerun()
     
-        # Job status display
+        # Job status display - MODIFIED SECTION
         if st.session_state.current_job_id:
             try:
                 # Poll job status
