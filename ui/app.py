@@ -87,14 +87,22 @@ def main():
     # --- Three-Column Layout ---
     col1, col2, col3 = st.columns([1, 1, 2])
 
+    
     # --- Left Column: Drawing Selection ---
     with col1:
         st.subheader("Select Drawings")
-
+    
+        # Special notification if upload just completed
+        if st.session_state.get("refresh_drawings_needed", False):
+            st.info("✨ New drawing has been uploaded. Click 'Refresh Drawings' to see it.")
+    
         # Refresh button
         if st.button("Refresh Drawings", key="refresh_btn"):  
             if refresh_drawings():
                 st.success("Drawings list updated.")
+                # Clear the flag after successful refresh
+                if "refresh_drawings_needed" in st.session_state:
+                    del st.session_state["refresh_drawings_needed"]
             else:
                 st.error("Failed to refresh drawings.")
             st.rerun()
