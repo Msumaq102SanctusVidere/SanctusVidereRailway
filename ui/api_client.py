@@ -1,11 +1,11 @@
-# --- Filename: ui/api_client.py (Revised with Delete Function & Job Logs) ---
+# --- Filename: ui/api_client.py (Revised for Direct File Uploads) ---
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) # Disables warnings for verify=False
 
 import requests
 import logging # Import the logging library
-import os # Import os for file path operations and env vars
+import os # Import os for env vars
 from urllib.parse import quote #<-- Import quote for URL encoding
 
 # --- Add Logging Setup ---
@@ -61,30 +61,36 @@ def get_drawings():
         return []
 
 
-def upload_drawing(file_path):
-    """Upload a PDF file for processing. Includes debugging and error handling."""
+def upload_drawing(file_data, original_filename):
+    """
+    Upload a PDF file for processing directly without using temporary files.
+    
+    Args:
+        file_data: Can be either a file-like object, bytes, or a file path string
+        original_filename: The original name of the file
+    """
     if not API_BASE_URL:
         logger.error("Cannot upload drawing: BACKEND_API_URL not configured.")
         return {"success": False, "error": "Backend URL not configured"}
 
     api_url = f"{API_BASE_URL}/upload"
-    logger.info(f"Attempting to upload: {file_path} to {api_url}")
+    logger.info(f"Attempting to upload: {original_filename} to {api_url}")
 
     try:
-        # Check if file exists before opening
-        if not os.path.exists(file_path):
-             logger.error(f"File not found at path: {file_path}")
-             return {"success": False, "error": f"Client-side error: File not found at {file_path}"}
-        if os.path.getsize(file_path) == 0:
-            logger.error(f"File is empty: {file_path}")
-            return {"success": False, "error": f"Client-side error: File is empty {file_path}"}
-
-        with open(file_path, "rb") as f:
-            files = {"file": (os.path.basename(file_path), f, 'application/pdf')}
-            logger.info(f"POSTing file to {api_url}...")
+        # Handle different input types
+        if isinstance(file_data, str) and os.path.exists(file_data):
+            # It's a file path
+            with open(file_data, "rb") as f:
+                files = {"file": (original_filename, f, 'application/pdf')}
+                logger.info(f"POSTing file from path to {api_url}...")
+                resp = requests.post(api_url, files=files, verify=False, timeout=300)
+        else:
+            # It's bytes or a file-like object
+            files = {"file": (original_filename, file_data, 'application/pdf')}
+            logger.info(f"POSTing file data to {api_url}...")
             resp = requests.post(api_url, files=files, verify=False, timeout=300)
-            logger.info(f"Received response from {api_url}")
-
+        
+        logger.info(f"Received response from {api_url}")
         logger.info(f"Upload Response Status Code: {resp.status_code}")
         response_text = resp.text
         logger.info(f"Upload Response Text (first 500 chars): {response_text[:500]}")
@@ -99,10 +105,10 @@ def upload_drawing(file_path):
         logger.error(f"Response Body: {response_text}")
         return {"success": False, "error": f"Server returned error: {resp.status_code}", "details": response_text}
     except requests.exceptions.Timeout:
-        logger.error(f"Request timed out uploading {file_path} to {api_url}")
+        logger.error(f"Request timed out uploading {original_filename} to {api_url}")
         return {"success": False, "error": "Request timed out"}
     except requests.exceptions.ConnectionError as conn_err:
-        logger.error(f"Connection error uploading {file_path} to {api_url}: {conn_err}", exc_info=True)
+        logger.error(f"Connection error uploading {original_filename} to {api_url}: {conn_err}", exc_info=True)
         return {"success": False, "error": f"Connection error: {str(conn_err)}"}
     except requests.exceptions.JSONDecodeError as json_err:
         logger.error(f"Failed to decode JSON response even after status {resp.status_code}: {json_err}")
@@ -112,10 +118,10 @@ def upload_drawing(file_path):
         logger.error(f"Request failed during upload: {req_err}", exc_info=True)
         return {"success": False, "error": f"Network or request error: {str(req_err)}"}
     except FileNotFoundError:
-        logger.error(f"File not found error for {file_path}")
-        return {"success": False, "error": f"Client-side error: File not found at {file_path}"}
+        logger.error(f"File not found error for {original_filename}")
+        return {"success": False, "error": f"Client-side error: File not found"}
     except Exception as e:
-        logger.error(f"Unexpected error in upload_drawing for {file_path}: {e}", exc_info=True)
+        logger.error(f"Unexpected error in upload_drawing for {original_filename}: {e}", exc_info=True)
         return {"success": False, "error": f"Client-side error during upload: {str(e)}"}
 
 
