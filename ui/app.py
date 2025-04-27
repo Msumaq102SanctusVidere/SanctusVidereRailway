@@ -140,10 +140,11 @@ def main():
                     delete_drawing(d)
                     st.success(f"Deleted drawing '{d}'")
                     # Update selected drawings list
-                    if d in st.session_state.selected_drawings:
-                        st.session_state.selected_drawings.remove(d)
+                    st.session_state.selected_drawings = [x for x in st.session_state.selected_drawings if x != d]
+                    # Refresh drawings list
                     refresh_drawings()
-                    st.rerun()
+                    # Force complete page refresh
+                    st.experimental_rerun()  # Use experimental_rerun() instead of rerun()
                 except Exception as e:
                     st.error(f"Failed to delete drawing: {e}")
 
