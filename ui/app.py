@@ -40,6 +40,7 @@ def init_state():
         'current_job_id': None,
         'job_status': None,
         'analysis_results': None,
+        'last_status_check': 0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -135,63 +136,144 @@ def main():
         # Delete buttons for selected
         for d in st.session_state.selected_drawings:
             if st.button(f"Delete '{d}'", key=f"del_{d}"):
-                delete_drawing(d)
-                refresh_drawings()
-                st.rerun()
+                try:
+                    delete_drawing(d)
+                    st.success(f"Deleted drawing '{d}'")
+                    # Update selected drawings list
+                    if d in st.session_state.selected_drawings:
+                        st.session_state.selected_drawings.remove(d)
+                    refresh_drawings()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to delete drawing: {e}")
 
-    # --- Middle Column: Query, Analysis Control & Status ---
     # --- Middle Column: Query, Analysis Control & Status ---
     with col2:
         st.subheader("Query & Status")
     
         # Query input
-        query_text = st.text_area("Type your question here...", st.session_state.query)
-        st.session_state.query = query_text  # Make sure query value is always updated
-        use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
-        st.session_state.use_cache = use_cache  # Update cache value
-        
+        st.session_state.query = st.text_area("Type your question here...", st.session_state.query)
+        st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
+    
         # Buttons side by side 
         col2a, col2b = st.columns(2)
         
-        # Analyze button - Simplify logic to ensure it works
-        can_run = (st.session_state.backend_healthy 
-                   and len(st.session_state.selected_drawings) > 0
-                   and len(st.session_state.query.strip()) > 0)
-        
+        # Analyze button with improved error handling
         with col2a:
-            if st.button("Analyze Drawings", disabled=not can_run, key="analyze_button"):
-                # Basic logging to debug
-                st.write(f"Selected drawings: {st.session_state.selected_drawings}")
-                st.write(f"Query: {st.session_state.query}")
-                
-                # Simple try/except
+            if st.button("Analyze Drawings"):
+                if not st.session_state.backend_healthy:
+                    st.error("⚠️ Backend service is not available. Please try again later.")
+                elif not st.session_state.selected_drawings:
+                    st.error("Please select at least one drawing first.")
+                elif not st.session_state.query.strip():
+                    st.error("Please enter a question first.")
+                else:
+                    try:
+                        resp = start_analysis(
+                            st.session_state.query,
+                            st.session_state.selected_drawings,
+                            st.session_state.use_cache
+                        )
+                        if resp and 'job_id' in resp:
+                            st.session_state.current_job_id = resp['job_id']
+                            st.session_state.analysis_results = None
+                            st.session_state.last_status_check = time.time()
+                            st.success("Analysis started!")
+                            st.rerun()
+                        else:
+                            st.error(f"Failed to start analysis: {resp}")
+                    except Exception as e:
+                        st.error(f"Error starting analysis: {str(e)}")
+        
+        # Show Results button with improved error handling
+        with col2b:
+            if st.button("Show Results"):
+                if st.session_state.current_job_id:
+                    try:
+                        job = get_job_status(st.session_state.current_job_id)
+                        result = job.get('result')
+                        if result:
+                            st.session_state.analysis_results = result
+                            st.session_state.current_job_id = None
+                            st.success("Results loaded!")
+                            st.rerun()
+                        else:
+                            st.warning("Results not ready yet. Please wait for analysis to complete.")
+                    except Exception as e:
+                        st.error(f"Error retrieving results: {str(e)}")
+                elif st.session_state.job_status and st.session_state.job_status.get('result'):
+                    # If job status already contains result
+                    st.session_state.analysis_results = st.session_state.job_status.get('result')
+                    st.session_state.current_job_id = None
+                    st.rerun()
+    
+        # Job status display with auto-refresh
+        if st.session_state.current_job_id:
+            # Only poll status every few seconds to avoid hammering the API
+            current_time = time.time()
+            should_update = (current_time - st.session_state.last_status_check) >= 2
+            
+            if should_update:
                 try:
-                    # Call the API directly
-                    resp = start_analysis(
-                        st.session_state.query,
-                        st.session_state.selected_drawings,
-                        st.session_state.use_cache
-                    )
-                    
-                    # Check response
-                    if resp and 'job_id' in resp:
-                        jid = resp['job_id']
-                        st.session_state.current_job_id = jid
-                        st.session_state.analysis_results = None
-                        st.session_state.job_status = None
-                        st.success(f"Analysis started! Job ID: {jid}")
-                        st.rerun()
-                    else:
-                        st.error(f"Failed to start analysis: {resp}")
+                    job = get_job_status(st.session_state.current_job_id)
+                    st.session_state.job_status = job
+                    st.session_state.last_status_check = current_time
                 except Exception as e:
-                    st.error(f"Analysis request failed: {str(e)}")
+                    st.error(f"Error updating job status: {str(e)}")
+                    job = st.session_state.job_status  # Use last known status
+            else:
+                job = st.session_state.job_status
+            
+            if job:
+                phase = job.get('current_phase', '')
+                prog = job.get('progress', 0)
+                
+                # Status indicator
+                st.markdown(f"**Status:** {phase}")
+                progress_indicator(prog)
+                    
+                # Progress complete indicator
+                if prog >= 100 or 'complete' in phase.lower():
+                    st.success("✅ Analysis complete! Click 'Show Results' to view.")
+        
+                # Show latest log messages
+                st.markdown("**Recent Updates:**")
+                logs = job.get('progress_messages', [])
+                if logs:
+                    for log in logs[-3:]:
+                        # Remove HTML tags if present
+                        clean_log = re.sub(r'<[^>]+>', '', log)
+                        st.info(clean_log)
+                
+                # Auto-refresh while analysis is running
+                if prog < 100 and 'complete' not in phase.lower():
+                    time.sleep(0.5)  # Short delay to avoid UI flickering
+                    st.rerun()
+        
+        # Stop analysis button
+        if st.session_state.current_job_id:
+            if st.button("Stop Analysis"):  
+                st.session_state.current_job_id = None
+                st.info("Analysis stopped.")
+                st.rerun()
 
-    # --- Right Column: Analysis Results ---
     # --- Right Column: Analysis Results ---
     with col3:
         st.subheader("Analysis Results")
         if st.session_state.analysis_results is not None:
-            results_pane(st.session_state.analysis_results)
+            try:
+                results_pane(st.session_state.analysis_results)
+            except Exception as e:
+                st.error(f"Error displaying results: {str(e)}")
+                
+                # Fallback display
+                st.warning("Could not parse results in standard format. Displaying raw data:")
+                if isinstance(st.session_state.analysis_results, dict):
+                    # If it's a dict, display as JSON
+                    st.json(st.session_state.analysis_results)
+                else:
+                    # Otherwise display as text
+                    st.text_area("Raw Results:", value=str(st.session_state.analysis_results), height=400)
         else:
             st.info("Results will appear here after analysis completes.")
 
