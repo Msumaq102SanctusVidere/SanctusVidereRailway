@@ -1,4 +1,22 @@
-# --- Filename: ui/app.py (Frontend Streamlit UI - Three-Column Layout) ---
+# Add a separate section for Recent Updates
+        if st.session_state.current_job_id:
+            st.markdown("---")
+            st.markdown("#### Recent Updates")
+            
+            # Display the most recent log message in a more prominent way
+            if st.session_state.job_status and 'progress_messages' in st.session_state.job_status:
+                recent_logs = st.session_state.job_status.get('progress_messages', [])
+                if recent_logs:
+                    # Clean any HTML tags from logs
+                    clean_logs = []
+                    for log in recent_logs:
+                        # Use regex to remove HTML tags if present
+                        clean_log = re.sub(r'<[^>]+>', '', log)
+                        clean_logs.append(clean_log)
+                    
+                    # Display the latest log in a more formatted way
+                    for log in clean_logs[-3:]:  # Show last 3 logs
+                        st.info(log)# --- Filename: ui/app.py (Frontend Streamlit UI - Three-Column Layout) ---
 
 import streamlit as st
 import time
@@ -158,17 +176,28 @@ def main():
         
         # Show Results button - placed next to Analyze button
         with button_cols[1]:
+            # Force enable Show Results button if job is complete
+            force_enable = False
+            if st.session_state.current_job_id:
+                job = st.session_state.job_status
+                if job and (job.get('progress', 0) >= 100 or 
+                           (job.get('current_phase', '').lower() == 'complete') or
+                           (job.get('status', '').lower() == 'completed')):
+                    force_enable = True
+                    st.session_state.analysis_complete = True
+            
             show_results_button = st.button(
                 "Show Results", 
-                disabled=not st.session_state.analysis_complete,
+                disabled=not (st.session_state.analysis_complete or force_enable),
                 key="show_results_btn"
             )
-            if show_results_button and st.session_state.analysis_complete:
+            if show_results_button:
                 job = st.session_state.job_status
-                result = job.get('result')
-                st.session_state.analysis_results = result
-                st.session_state.current_job_id = None
-                st.rerun()
+                if job:
+                    result = job.get('result')
+                    st.session_state.analysis_results = result
+                    st.session_state.current_job_id = None
+                    st.rerun()
 
         # Stop analysis
         if st.session_state.current_job_id:
@@ -195,7 +224,7 @@ def main():
                 progress_indicator(prog)
                 
                 # Set analysis complete flag when progress is 100%
-                if prog >= 100:
+                if prog >= 100 or 'complete' in phase.lower():
                     st.session_state.analysis_complete = True
                     st.success("✅ Analysis complete! Click 'Show Results' to view.")
 
@@ -203,7 +232,15 @@ def main():
             logs = job.get('progress_messages', [])
             if logs:
                 st.markdown("**Recent Updates:**")
-                log_console(logs)
+                
+                # Clean any HTML tags from logs
+                clean_logs = []
+                for log in logs:
+                    # Use regex to remove HTML tags if present
+                    clean_log = re.sub(r'<[^>]+>', '', log)
+                    clean_logs.append(clean_log)
+                
+                log_console(clean_logs)
 
     # --- Right Column: Analysis Results ---
     with col3:
