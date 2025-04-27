@@ -6,7 +6,7 @@ def results_pane(result_text):
     Render the analysis results in a clean, professional dedicated window.
     
     Parameters:
-        result_text (str): The JSON-formatted result from the analysis job
+        result_text (str or dict): The result from the analysis job
     """
     # Handle None or empty results
     if result_text is None or result_text == "":
@@ -14,12 +14,12 @@ def results_pane(result_text):
         return
         
     try:
-        # Try to parse JSON
-        result_obj = json.loads(result_text)
-        
-        # Debug info
-        st.markdown("---")
-        st.markdown("### Analysis Results")
+        # Handle if result_text is already a dictionary
+        if isinstance(result_text, dict):
+            result_obj = result_text
+        else:
+            # If it's a string, try to parse as JSON
+            result_obj = json.loads(result_text)
         
         # Extract analysis text
         if isinstance(result_obj, dict):
@@ -64,24 +64,68 @@ def results_pane(result_text):
                             st.json(batch)
                         
                         return
+            
+            # Handle direct text content (like in your screenshot)
+            if isinstance(result_obj, dict) and any(key for key in result_obj.keys() if isinstance(result_obj[key], str) and len(result_obj[key]) > 100):
+                # Find the longest string value in the dict - likely the main content
+                main_key = max(result_obj.keys(), key=lambda k: len(result_obj[k]) if isinstance(result_obj[k], str) else 0)
+                analysis_text = result_obj[main_key]
                 
-                # If we didn't find analysis in batches
-                st.warning("Results format not recognized. Displaying raw data.")
+                # Display in a clean, bordered container
+                with st.container(border=True):
+                    st.markdown(analysis_text)
+                    
+                    # Add a copy button
+                    if st.button("Copy Results", key="copy_main_text"):
+                        # Use st.code for better clipboard support
+                        st.code(analysis_text, language=None)
+                        st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
+                
+                return
+        
+        # The result might be a simple string - check before showing raw data
+        if isinstance(result_text, str) and result_text.startswith("{'analysis':"):
+            # Try to extract analysis part directly
+            try:
+                # Simple string extraction for content between quotes
+                import re
+                match = re.search(r"'analysis':\s*'([^']*)'", result_text)
+                if match:
+                    analysis_text = match.group(1)
+                    with st.container(border=True):
+                        st.markdown(analysis_text)
+                        return
+            except:
+                pass  # If regex fails, continue to fallback
         
         # Fallback to showing the raw result
         st.text_area(
             label="Raw Results Data",
-            value=result_text,
+            value=str(result_text),
             height=400,
             key="results_text_area"
         )
         
     except (json.JSONDecodeError, TypeError) as e:
-        # If not valid JSON, just display as-is with error
+        # If not valid JSON, try to extract content directly
+        if isinstance(result_text, str) and "{'analysis':" in result_text:
+            try:
+                # Simple regex extraction
+                import re
+                match = re.search(r"'analysis':\s*'(.*?)'\}", result_text, re.DOTALL)
+                if match:
+                    analysis_text = match.group(1)
+                    with st.container(border=True):
+                        st.markdown(analysis_text)
+                        return
+            except:
+                pass  # If regex fails, continue to fallback
+        
+        # Display original error and text
         st.error(f"Could not parse results as JSON: {str(e)}")
         st.text_area(
             label="Raw Results Data",
-            value=result_text,
+            value=str(result_text),
             height=400,
             key="results_text_area"
         )
