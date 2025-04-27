@@ -175,17 +175,14 @@ def main():
                 except Exception as e:
                     st.error(f"Analysis request failed: {str(e)}")
         
-        # Show Results button - Fixed to ensure it works when analysis is complete
+        # Show Results button
         with col2b:
-            # Force enable button when job is complete
             if st.button("Show Results"):
                 if st.session_state.current_job_id:
                     try:
                         job = get_job_status(st.session_state.current_job_id)
                         result = job.get('result')
-                        # Debug logging
-                        print(f"Fetched job result: {result}")
-                        # Store even if None (will display appropriate message)
+                        # Store the result
                         st.session_state.analysis_results = result
                         # Only clear job ID if we have results
                         if result is not None:
@@ -206,7 +203,7 @@ def main():
                 st.info("Analysis stopped.")
                 st.rerun()
     
-        # Job status display - Fixed to handle different status states correctly
+        # Job status display - Fixed to only show relevant information
         jid = st.session_state.current_job_id
         if jid:
             # Poll job status
@@ -236,8 +233,7 @@ def main():
                     # Automatically fetch results if available
                     if job.get('result') and not st.session_state.analysis_results:
                         st.session_state.analysis_results = job.get('result')
-                        # Don't clear job ID yet to maintain state visibility
-    
+                
                 # Show latest log messages
                 st.markdown("**Recent Updates:**")
                 logs = job.get('progress_messages', [])
@@ -253,8 +249,6 @@ def main():
                     st.rerun()
             except Exception as e:
                 st.error(f"Error updating job status: {str(e)}")
-                # Add debug info
-                st.markdown(f"Debug: {str(e)}")
 
     # --- Right Column: Analysis Results ---
     # --- Right Column: Analysis Results ---
