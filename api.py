@@ -94,14 +94,12 @@ TILES_OUTPUT_DIR = "/app/tiles_output"  # Primary storage location for all drawi
 # Create fallback directories based on current path
 fallback_dir_default = Path(os.path.dirname(os.path.abspath(__file__))).resolve()
 UPLOAD_FOLDER_DEFAULT = fallback_dir_default / 'uploads'
-TEMP_UPLOAD_FOLDER_DEFAULT = UPLOAD_FOLDER_DEFAULT / 'temp_uploads'
 DRAWINGS_OUTPUT_DIR_DEFAULT = Path(TILES_OUTPUT_DIR).resolve()  # Use the specified path
 MEMORY_STORE_DIR_DEFAULT = fallback_dir_default / 'memory_store'
 DATABASE_DIR_DEFAULT = fallback_dir_default / 'database'
 
 # Initialize with defaults
 UPLOAD_FOLDER = UPLOAD_FOLDER_DEFAULT
-TEMP_UPLOAD_FOLDER = TEMP_UPLOAD_FOLDER_DEFAULT
 DRAWINGS_OUTPUT_DIR = DRAWINGS_OUTPUT_DIR_DEFAULT
 MEMORY_STORE_DIR = MEMORY_STORE_DIR_DEFAULT
 DATABASE_DIR = DATABASE_DIR_DEFAULT
@@ -116,7 +114,6 @@ try:
         
         # Set up other directories
         UPLOAD_FOLDER = os.path.join(base_dir, 'uploads')
-        TEMP_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, 'temp_uploads')
         DRAWINGS_OUTPUT_DIR = Path(Config.DRAWINGS_DIR).resolve()  # Use the specified path from Config
         MEMORY_STORE_DIR = Path(Config.MEMORY_STORE).resolve() if hasattr(Config, 'MEMORY_STORE') else Path(os.path.join(base_dir, 'memory_store')).resolve()
         DATABASE_DIR = Path(os.path.join(base_dir, 'database')).resolve()
@@ -132,7 +129,6 @@ except Exception as e:
     logger.warning(f"Using fallback directories due to error, with DRAWINGS_OUTPUT_DIR={DRAWINGS_OUTPUT_DIR}")
 
 logger.info(f"Final Uploads directory: {UPLOAD_FOLDER}")
-logger.info(f"Final Temporary uploads directory: {TEMP_UPLOAD_FOLDER}")
 logger.info(f"Final Processed drawings directory: {DRAWINGS_OUTPUT_DIR}")
 logger.info(f"Final Memory store directory: {MEMORY_STORE_DIR}")
 logger.info(f"Final Database directory: {DATABASE_DIR}")
@@ -169,7 +165,6 @@ try:
     if DRAWINGS_OUTPUT_DIR: os.makedirs(DRAWINGS_OUTPUT_DIR, exist_ok=True)
     if MEMORY_STORE_DIR: os.makedirs(MEMORY_STORE_DIR, exist_ok=True)
     if UPLOAD_FOLDER: os.makedirs(Path(UPLOAD_FOLDER), exist_ok=True)
-    if TEMP_UPLOAD_FOLDER: os.makedirs(Path(TEMP_UPLOAD_FOLDER), exist_ok=True)
     if DATABASE_DIR: os.makedirs(Path(DATABASE_DIR), exist_ok=True)
     logger.info(f"Ensured directories exist.")
 except Exception as e:
@@ -565,90 +560,9 @@ def create_analysis_job(query, drawings, use_cache):
         logger.error(f"Error creating analysis job: {e}", exc_info=True)
         raise
 
-# --- Custom function to patch metadata with the correct sheet name ---
-def patch_metadata_filenames(metadata_path, original_sheet_name):
-    """
-    Patch the metadata file to use the correct sheet_name in all filenames.
-    This prevents the tile analysis from using temporary filenames.
-    """
-    try:
-        if not os.path.exists(metadata_path):
-            logger.error(f"Cannot patch metadata: File {metadata_path} not found")
-            return False
-            
-        with open(metadata_path, 'r') as f:
-            metadata = json.load(f)
-            
-        # Check if this is a metadata file with tiles
-        if 'tiles' not in metadata:
-            logger.warning(f"Metadata file {metadata_path} does not contain tiles array, skipping patch")
-            return False
-            
-        # Extract temporary name from the first tile
-        if not metadata['tiles']:
-            logger.warning(f"Metadata file {metadata_path} has empty tiles array, skipping patch")
-            return False
-            
-        first_filename = metadata['tiles'][0].get('filename', '')
-        if not first_filename:
-            logger.warning(f"Could not find filename in first tile of {metadata_path}, skipping patch")
-            return False
-            
-        # Extract the temporary prefix from the first tile filename
-        parts = first_filename.split('_tile_')
-        if len(parts) != 2:
-            logger.warning(f"Unexpected filename format in {metadata_path}: {first_filename}, skipping patch")
-            return False
-            
-        temp_prefix = parts[0]
-        
-        # Only patch if the prefix differs from the original sheet name
-        if temp_prefix == original_sheet_name:
-            logger.info(f"Metadata already using correct sheet name: {original_sheet_name}, no patching needed")
-            return True
-            
-        patched_tiles = []
-        patched_count = 0
-        
-        # Update all tile filenames to use the original sheet name
-        for tile in metadata['tiles']:
-            if 'filename' in tile:
-                old_filename = tile['filename']
-                if temp_prefix in old_filename:
-                    # Replace the temporary prefix with the original sheet name
-                    new_filename = old_filename.replace(temp_prefix, original_sheet_name)
-                    tile['filename'] = new_filename
-                    patched_count += 1
-                    
-                    # Also rename the actual files if they exist
-                    old_path = os.path.join(os.path.dirname(metadata_path), old_filename)
-                    new_path = os.path.join(os.path.dirname(metadata_path), new_filename)
-                    
-                    if os.path.exists(old_path) and not os.path.exists(new_path):
-                        try:
-                            os.rename(old_path, new_path)
-                            logger.debug(f"Renamed file {old_path} to {new_path}")
-                        except Exception as rename_err:
-                            logger.warning(f"Could not rename file {old_path} to {new_path}: {rename_err}")
-                    
-            patched_tiles.append(tile)
-            
-        # Save the patched metadata back to the file
-        metadata['tiles'] = patched_tiles
-        
-        with open(metadata_path, 'w') as f:
-            json.dump(metadata, f, indent=2)
-            
-        logger.info(f"Patched {patched_count} tile filenames in {metadata_path} from {temp_prefix} to {original_sheet_name}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error patching metadata file {metadata_path}: {e}", exc_info=True)
-        return False
-
-# --- PDF Processing (Updated to fix temp filenames) ---
-def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_size=2048, overlap_ratio=0.35):
-    """Process a PDF file, properly handling the original filename throughout"""
+# --- PDF Processing (Revised to use proper naming from the start) ---
+def process_pdf_job(file_path, job_id, original_filename, dpi=300, tile_size=2048, overlap_ratio=0.35):
+    """Process a PDF file, using consistent naming conventions"""
     global analyze_all_tiles, convert_from_path, ensure_landscape, save_tiles_with_metadata, ensure_dir
     
     # Create a clean drawing name from the original filename
@@ -672,13 +586,13 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
         if not convert_from_path: raise ImportError("convert_from_path function not available due to import error.")
         
         try: # Main conversion
-            file_size = os.path.getsize(temp_file_path)
+            file_size = os.path.getsize(file_path)
             logger.info(f"[Job {job_id}] PDF file size: {file_size / 1024 / 1024:.2f} MB")
             if file_size == 0: raise Exception("PDF file is empty")
             logger.info(f"[Job {job_id}] Using DPI: {dpi}")
             
             conversion_start_time = time.time()
-            images = convert_from_path(str(temp_file_path), dpi=dpi)
+            images = convert_from_path(str(file_path), dpi=dpi)
             conversion_time = time.time() - conversion_start_time
             
             if not images: raise Exception("PDF conversion produced no images")
@@ -691,7 +605,7 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
             
             try:
                 conversion_start_time = time.time()
-                images = convert_from_path(str(temp_file_path), dpi=dpi, thread_count=1)
+                images = convert_from_path(str(file_path), dpi=dpi, thread_count=1)
                 conversion_time = time.time() - conversion_start_time
                 
                 if not images: raise Exception("Alternative PDF conversion produced no images")
@@ -724,17 +638,12 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
         
         try: # Tiling
             tile_start_time = time.time()
-            # Generate tiles using the original sheet name consistently
+            # Generate tiles using the sheet name consistently
             save_tiles_with_metadata(full_image, sheet_output_dir, sheet_name, tile_size=tile_size, overlap_ratio=overlap_ratio)
             tile_time = time.time() - tile_start_time
             
             metadata_file = sheet_output_dir / f"{sheet_name}_tile_metadata.json"
             if not metadata_file.exists(): raise Exception("Tile metadata file was not created")
-            
-            # NEW: Patch the metadata file to ensure consistent naming
-            patch_result = patch_metadata_filenames(metadata_file, sheet_name)
-            if patch_result:
-                logger.info(f"[Job {job_id}] Successfully patched metadata to use consistent sheet name: {sheet_name}")
             
             with open(metadata_file, 'r') as f: metadata = json.load(f)
             tile_count = len(metadata.get("tiles", []))
@@ -768,7 +677,7 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
                 logger.info(f"[Job {job_id}] Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
                 update_job_status(job_id, progress_message=f"🔄 Analysis attempt #{retry_count+1}/{MAX_RETRIES}")
                 
-                # IMPORTANT: Pass the sheet_name explicitly to ensure it's used
+                # Pass the sheet_name to analyze_all_tiles
                 analyze_all_tiles(
                     sheet_folder=sheet_output_dir,
                     sheet_name=sheet_name
@@ -836,12 +745,12 @@ def process_pdf_job(temp_file_path, job_id, original_filename, dpi=300, tile_siz
     
     finally:
         # Clean up temporary files
-        if os.path.exists(temp_file_path):
+        if os.path.exists(file_path) and file_path != str(sheet_output_dir / f"{sheet_name}.pdf"):
              try: 
-                 os.remove(temp_file_path)
-                 logger.info(f"[Job {job_id}] Cleaned up temporary upload file.")
+                 os.remove(file_path)
+                 logger.info(f"[Job {job_id}] Cleaned up upload file.")
              except Exception as clean_e: 
-                 logger.warning(f"[Job {job_id}] Failed to clean up temp file: {clean_e}")
+                 logger.warning(f"[Job {job_id}] Failed to clean up file: {clean_e}")
 
 # --- Background Job Processors ---
 def process_analysis_job(job_id):
@@ -1024,7 +933,6 @@ def health_check():
         "paths": {
             "drawings_output_dir": str(DRAWINGS_OUTPUT_DIR),
             "upload_folder": str(UPLOAD_FOLDER),
-            "temp_upload_folder": str(TEMP_UPLOAD_FOLDER),
             "memory_store_dir": str(MEMORY_STORE_DIR),
             "database_dir": str(DATABASE_DIR)
         }
@@ -1188,12 +1096,18 @@ def upload_file():
     if not allowed_file(file.filename):
         return jsonify({"error": f"File type not allowed. Supported types: {', '.join(ALLOWED_EXTENSIONS)}"}), 400
     try:
-        filename = werkzeug.utils.secure_filename(file.filename)
-        os.makedirs(TEMP_UPLOAD_FOLDER, exist_ok=True)
+        # Create a sanitized filename
+        safe_original_filename = werkzeug.utils.secure_filename(file.filename)
+        sheet_name = Path(safe_original_filename).stem.replace(" ", "_").replace("-", "_").replace(".", "_")
         
-        # Generate a temporary path for initial save, but keep original filename
-        temp_file_path = os.path.join(TEMP_UPLOAD_FOLDER, f"upload_{uuid.uuid4()}_{filename}")
-        file.save(temp_file_path)
+        # Create the proper directory structure for this drawing
+        sheet_output_dir = DRAWINGS_OUTPUT_DIR / sheet_name
+        os.makedirs(sheet_output_dir, exist_ok=True)
+        
+        # Save directly to a properly named file
+        pdf_file_path = os.path.join(UPLOAD_FOLDER, safe_original_filename)
+        os.makedirs(os.path.dirname(pdf_file_path), exist_ok=True)
+        file.save(pdf_file_path)
         
         # Create job in database
         job_data = {
@@ -1215,7 +1129,7 @@ def upload_file():
         # Start processing in background
         thread = threading.Thread(
             target=process_pdf_job,
-            args=(temp_file_path, job_id, file.filename),  # Pass the original filename
+            args=(pdf_file_path, job_id, file.filename),  # Pass the original filename
             name=f"Upload-{job_id[:8]}"
         )
         thread.daemon = True
