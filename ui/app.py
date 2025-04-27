@@ -40,6 +40,7 @@ def init_state():
         'current_job_id': None,
         'job_status': None,
         'analysis_results': None,
+        'analysis_complete': False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -123,28 +124,47 @@ def main():
     with col2:
         st.subheader("Query & Status")
 
-        # Query input - FIX: Don't pass a string, use default disabled=False
+        # Query input - Don't pass the disabled parameter to query_box
         st.session_state.query = query_box()
         st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
 
+        # Analyze and Show Results buttons in a row
+        col2a, col2b = st.columns(2)
+        
         # Analyze button
         can_run = (st.session_state.backend_healthy 
                    and st.session_state.selected_drawings 
                    and st.session_state.query.strip())
-        if st.button("Analyze Drawings", disabled=not can_run):
-            resp = start_analysis(
-                st.session_state.query,
-                st.session_state.selected_drawings,
-                st.session_state.use_cache
+        with col2a:
+            if st.button("Analyze Drawings", disabled=not can_run):
+                resp = start_analysis(
+                    st.session_state.query,
+                    st.session_state.selected_drawings,
+                    st.session_state.use_cache
+                )
+                jid = resp.get('job_id')
+                if jid:
+                    st.session_state.current_job_id = jid
+                    st.session_state.analysis_results = None
+                    st.session_state.job_status = None
+                    st.session_state.analysis_complete = False
+                else:
+                    st.error(f"Failed to start analysis: {resp}")
+                st.rerun()
+        
+        # Show Results button - placed next to Analyze button
+        with col2b:
+            show_results_button = st.button(
+                "Show Results", 
+                disabled=not st.session_state.analysis_complete,
+                key="show_results_top"
             )
-            jid = resp.get('job_id')
-            if jid:
-                st.session_state.current_job_id = jid
-                st.session_state.analysis_results = None
-                st.session_state.job_status = None
-            else:
-                st.error(f"Failed to start analysis: {resp}")
-            st.rerun()
+            if show_results_button and st.session_state.analysis_complete:
+                job = st.session_state.job_status
+                result = job.get('result')
+                st.session_state.analysis_results = result
+                st.session_state.current_job_id = None
+                st.rerun()
 
         # Stop analysis
         if st.session_state.current_job_id:
@@ -162,21 +182,24 @@ def main():
 
             phase = job.get('current_phase', '')
             prog = job.get('progress', 0)
-            st.markdown(f"**Status:** {phase}  ")
+            
+            # Status indicator with clearer phase information
+            st.markdown(f"**Status:** {phase}")
+            
+            # Progress bar
             if prog is not None:
                 progress_indicator(prog)
+                
+                # Set analysis complete flag when progress is 100%
+                if prog >= 100:
+                    st.session_state.analysis_complete = True
+                    st.success("✅ Analysis complete! Click 'Show Results' to view.")
 
             # Latest log message
             logs = job.get('progress_messages', [])
             if logs:
+                st.markdown("**Recent Updates:**")
                 log_console(logs)
-
-            # Show Results button
-            if st.button("Show Results"):
-                result = job.get('result')
-                st.session_state.analysis_results = result
-                st.session_state.current_job_id = None
-                st.rerun()
 
     # --- Right Column: Analysis Results ---
     with col3:
