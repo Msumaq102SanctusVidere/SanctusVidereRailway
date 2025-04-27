@@ -132,15 +132,15 @@ def main():
         st.session_state.query = query_box(empty_disabled=True, remove_analyze_button=True)
         st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
 
-        # Analyze and Show Results buttons in a row
-        col2a, col2b = st.columns(2)
+        # Analyze and Show Results buttons in a horizontally aligned container
+        button_cols = st.columns([1, 1])
         
         # Analyze button
         can_run = (st.session_state.backend_healthy 
                    and st.session_state.selected_drawings 
                    and st.session_state.query.strip())
-        with col2a:
-            if st.button("Analyze Drawings", disabled=not can_run):
+        with button_cols[0]:
+            if st.button("Analyze Drawings", disabled=not can_run, key="main_analyze_btn"):
                 resp = start_analysis(
                     st.session_state.query,
                     st.session_state.selected_drawings,
@@ -157,11 +157,11 @@ def main():
                 st.rerun()
         
         # Show Results button - placed next to Analyze button
-        with col2b:
+        with button_cols[1]:
             show_results_button = st.button(
                 "Show Results", 
                 disabled=not st.session_state.analysis_complete,
-                key="show_results_top"
+                key="show_results_btn"
             )
             if show_results_button and st.session_state.analysis_complete:
                 job = st.session_state.job_status
