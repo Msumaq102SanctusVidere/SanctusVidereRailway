@@ -143,11 +143,11 @@ def main():
     # --- Middle Column: Query, Analysis Control & Status ---
     with col2:
         st.subheader("Query & Status")
-
+    
         # Query input
         st.session_state.query = st.text_area("Type your question here...", st.session_state.query)
         st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
-
+    
         # Buttons side by side 
         col2a, col2b = st.columns(2)
         
@@ -175,58 +175,86 @@ def main():
                 except Exception as e:
                     st.error(f"Analysis request failed: {str(e)}")
         
-        # Show Results button
+        # Show Results button - Fixed to ensure it works when analysis is complete
         with col2b:
-            is_complete = (st.session_state.job_status and 
-                         (st.session_state.job_status.get('progress', 0) >= 100 or
-                          'complete' in st.session_state.job_status.get('current_phase', '').lower()))
-            
-            if st.button("Show Results", disabled=not (is_complete or st.session_state.analysis_results is not None)):
+            # Force enable button when job is complete
+            if st.button("Show Results"):
                 if st.session_state.current_job_id:
-                    job = get_job_status(st.session_state.current_job_id)
-                    result = job.get('result')
-                    st.session_state.analysis_results = result
+                    try:
+                        job = get_job_status(st.session_state.current_job_id)
+                        result = job.get('result')
+                        # Debug logging
+                        print(f"Fetched job result: {result}")
+                        # Store even if None (will display appropriate message)
+                        st.session_state.analysis_results = result
+                        # Only clear job ID if we have results
+                        if result is not None:
+                            st.session_state.current_job_id = None
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error retrieving results: {str(e)}")
+                elif st.session_state.job_status and st.session_state.job_status.get('result'):
+                    # If job status already contains result
+                    st.session_state.analysis_results = st.session_state.job_status.get('result')
                     st.session_state.current_job_id = None
                     st.rerun()
-
+    
         # Stop analysis button
         if st.session_state.current_job_id:
             if st.button("Stop Analysis"):  
                 st.session_state.current_job_id = None
                 st.info("Analysis stopped.")
                 st.rerun()
-
-        # Job status display
+    
+        # Job status display - Fixed to handle different status states correctly
         jid = st.session_state.current_job_id
         if jid:
             # Poll job status
-            job = get_job_status(jid)
-            st.session_state.job_status = job
-
-            phase = job.get('current_phase', '')
-            prog = job.get('progress', 0)
-            
-            # Status indicator
-            st.markdown(f"**Status:** {phase}")
-            progress_indicator(prog)
+            try:
+                job = get_job_status(jid)
+                st.session_state.job_status = job
                 
-            # Progress complete indicator
-            if prog >= 100 or 'complete' in phase.lower():
-                st.success("✅ Analysis complete! Click 'Show Results' to view.")
-
-            # Show latest log messages
-            st.markdown("**Recent Updates:**")
-            logs = job.get('progress_messages', [])
-            if logs:
-                for log in logs[-3:]:
-                    # Remove HTML tags if present
-                    clean_log = re.sub(r'<[^>]+>', '', log)
-                    st.info(clean_log)
-            
-            # Auto-refresh while analysis is running
-            if prog < 100 and 'complete' not in phase.lower():
-                time.sleep(2)  # Brief pause to avoid hammering the API
-                st.rerun()
+                # Extract proper status information
+                phase = job.get('current_phase', '')
+                prog = job.get('progress', 0)
+                
+                # Status indicator
+                is_complete = prog >= 100 or 'complete' in phase.lower()
+                
+                if is_complete:
+                    st.markdown("**Status:** ⚡ COMPLETE")
+                    st.markdown("**Processing:** 100% Complete")
+                    progress_indicator(100)
+                else:
+                    st.markdown(f"**Status:** {phase}")
+                    st.markdown(f"**Processing:** {prog}% Complete")
+                    progress_indicator(prog)
+                
+                # Progress complete indicator
+                if is_complete:
+                    st.success("✅ Analysis complete! Click 'Show Results' to view.")
+                    # Automatically fetch results if available
+                    if job.get('result') and not st.session_state.analysis_results:
+                        st.session_state.analysis_results = job.get('result')
+                        # Don't clear job ID yet to maintain state visibility
+    
+                # Show latest log messages
+                st.markdown("**Recent Updates:**")
+                logs = job.get('progress_messages', [])
+                if logs:
+                    for log in logs[-3:]:
+                        # Remove HTML tags if present
+                        clean_log = re.sub(r'<[^>]+>', '', log)
+                        st.info(clean_log)
+                
+                # Auto-refresh while analysis is running but not complete
+                if not is_complete:
+                    time.sleep(2)  # Brief pause to avoid hammering the API
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Error updating job status: {str(e)}")
+                # Add debug info
+                st.markdown(f"Debug: {str(e)}")
 
     # --- Right Column: Analysis Results ---
     # --- Right Column: Analysis Results ---
