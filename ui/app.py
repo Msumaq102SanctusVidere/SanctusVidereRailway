@@ -40,7 +40,6 @@ def init_state():
         'current_job_id': None,
         'job_status': None,
         'analysis_results': None,
-        'analysis_complete': False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -63,10 +62,26 @@ def refresh_drawings():
 def main():
     st.set_page_config(page_title="Sanctus Videre 1.0", layout="wide")
     
-    # Add main title to the page
-    st.title("Sanctus Videre 1.0")
-    st.markdown("*Architectural Drawing Analysis Tool*")
-
+    # Add custom CSS to make the title more prominent
+    st.markdown("""
+    <style>
+    .big-title {
+        font-size: 3rem !important;
+        margin-top: -1.5rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    .subtitle {
+        font-size: 1.2rem !important;
+        margin-top: -0.5rem !important;
+        margin-bottom: 1.5rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Add title with custom styling
+    st.markdown('<h1 class="big-title">Sanctus Videre 1.0</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle"><i>Architectural Drawing Analysis Tool</i></p>', unsafe_allow_html=True)
+    
     # --- Health Check & Initial Drawings Fetch ---
     try:
         status = health_check().get('status')
@@ -128,19 +143,20 @@ def main():
     with col2:
         st.subheader("Query & Status")
 
-        # Query input - Modified to pass empty_disabled=True to prevent automatic analyze button
-        st.session_state.query = query_box(empty_disabled=True, remove_analyze_button=True)
+        # Query input
+        st.session_state.query = st.text_area("Type your question here...", st.session_state.query)
         st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
 
-        # Analyze and Show Results buttons in a horizontally aligned container
-        button_cols = st.columns([1, 1])
+        # Buttons side by side 
+        col2a, col2b = st.columns(2)
         
         # Analyze button
         can_run = (st.session_state.backend_healthy 
                    and st.session_state.selected_drawings 
                    and st.session_state.query.strip())
-        with button_cols[0]:
-            if st.button("Analyze Drawings", disabled=not can_run, key="main_analyze_btn"):
+        
+        with col2a:
+            if st.button("Analyze Drawings", disabled=not can_run):
                 resp = start_analysis(
                     st.session_state.query,
                     st.session_state.selected_drawings,
@@ -151,37 +167,21 @@ def main():
                     st.session_state.current_job_id = jid
                     st.session_state.analysis_results = None
                     st.session_state.job_status = None
-                    st.session_state.analysis_complete = False
                 else:
                     st.error(f"Failed to start analysis: {resp}")
                 st.rerun()
         
-        # Show Results button - placed next to Analyze button
-        with button_cols[1]:
-            # Force enable Show Results button if job is complete
-            force_enable = False
-            if st.session_state.current_job_id:
-                job = st.session_state.job_status
-                if job and (job.get('progress', 0) >= 100 or 
-                           (job.get('current_phase', '').lower() == 'complete') or
-                           (job.get('status', '').lower() == 'completed')):
-                    force_enable = True
-                    st.session_state.analysis_complete = True
-            
-            show_results_button = st.button(
-                "Show Results", 
-                disabled=not (st.session_state.analysis_complete or force_enable),
-                key="show_results_btn"
-            )
-            if show_results_button:
-                job = st.session_state.job_status
-                if job:
+        # Show Results button
+        with col2b:
+            if st.button("Show Results"):
+                if st.session_state.current_job_id:
+                    job = get_job_status(st.session_state.current_job_id)
                     result = job.get('result')
                     st.session_state.analysis_results = result
                     st.session_state.current_job_id = None
                     st.rerun()
 
-        # Stop analysis
+        # Stop analysis button
         if st.session_state.current_job_id:
             if st.button("Stop Analysis"):  
                 st.session_state.current_job_id = None
@@ -198,51 +198,22 @@ def main():
             phase = job.get('current_phase', '')
             prog = job.get('progress', 0)
             
-            # Status indicator with clearer phase information
+            # Status indicator
             st.markdown(f"**Status:** {phase}")
-            
-            # Progress bar
-            if prog is not None:
-                progress_indicator(prog)
+            progress_indicator(prog)
                 
-                # Set analysis complete flag when progress is 100%
-                if prog >= 100 or 'complete' in phase.lower():
-                    st.session_state.analysis_complete = True
-                    st.success("✅ Analysis complete! Click 'Show Results' to view.")
+            # Progress complete indicator
+            if prog >= 100 or 'complete' in phase.lower():
+                st.success("✅ Analysis complete! Click 'Show Results' to view.")
 
-            # Latest log message
+            # Show latest log messages
+            st.markdown("**Recent Updates:**")
             logs = job.get('progress_messages', [])
             if logs:
-                st.markdown("**Recent Updates:**")
-                
-                # Clean any HTML tags from logs
-                clean_logs = []
-                for log in logs:
-                    # Use regex to remove HTML tags if present
+                for log in logs[-3:]:
+                    # Remove HTML tags if present
                     clean_log = re.sub(r'<[^>]+>', '', log)
-                    clean_logs.append(clean_log)
-                
-                log_console(clean_logs)
-        
-        # Add a separate section for Recent Updates
-        if st.session_state.current_job_id:
-            st.markdown("---")
-            st.markdown("#### Recent Updates")
-            
-            # Display the most recent log message in a more prominent way
-            if st.session_state.job_status and 'progress_messages' in st.session_state.job_status:
-                recent_logs = st.session_state.job_status.get('progress_messages', [])
-                if recent_logs:
-                    # Clean any HTML tags from logs
-                    clean_logs = []
-                    for log in recent_logs:
-                        # Use regex to remove HTML tags if present
-                        clean_log = re.sub(r'<[^>]+>', '', log)
-                        clean_logs.append(clean_log)
-                    
-                    # Display the latest log in a more formatted way
-                    for log in clean_logs[-3:]:  # Show last 3 logs
-                        st.info(log)
+                    st.info(clean_log)
 
     # --- Right Column: Analysis Results ---
     with col3:
