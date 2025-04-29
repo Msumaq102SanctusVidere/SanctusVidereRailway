@@ -24,6 +24,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- Add clear_cache to api_client imports ---
+# Add this line to the api_client.py imports
+# from api_client import clear_cache
+
+# --- Simple function to clear cache ---
+def clear_cache():
+    """Call the API to clear the memory cache"""
+    try:
+        # This should be imported from api_client
+        # For now, implement a simple version here
+        import requests
+        api_url = os.environ.get('API_URL', 'http://localhost:5000')
+        response = requests.delete(f"{api_url}/clear-cache")
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
+        return {"error": str(e)}
+
 # --- Session State Initialization ---
 def init_state():
     defaults = {
@@ -45,7 +63,7 @@ def init_state():
 
 init_state()
 
-# --- Helper to Refresh Drawings List ---
+# --- Helper to Refresh Drawings ---
 def refresh_drawings():
     try:
         # Force a clean fetch from API (no caching)
@@ -398,7 +416,20 @@ def main():
             st.session_state.query, 
             placeholder="Example: What are the finishes specified for the private offices?"
         )
-        st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
+        
+        # Cache controls - added Clear Cache button next to Use Cache checkbox
+        col_cache1, col_cache2 = st.columns([1, 1])
+        with col_cache1:
+            st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
+        with col_cache2:
+            if st.button("Clear Cache"):
+                # Call the clear_cache function
+                response = clear_cache()
+                if response and response.get('success'):
+                    st.success("Cache cleared successfully!")
+                else:
+                    error_msg = response.get('error', 'Unknown error')
+                    st.error(f"Failed to clear cache: {error_msg}")
     
         # Buttons side by side with new Clear Results button
         col2a, col2b, col2c = st.columns(3)
@@ -439,7 +470,7 @@ def main():
                 except Exception as e:
                     st.error(f"Error retrieving results: {str(e)}")
         
-        # NEW BUTTON: Clear Results
+        # Clear Results button
         with col2c:
             if st.button("Clear Results"):
                 # Simply clear the results
