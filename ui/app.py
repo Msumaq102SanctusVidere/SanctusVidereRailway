@@ -69,13 +69,19 @@ def get_directions_content():
     ## Overview
     Sanctus Videre utilizes advanced Large Language Model technology through API integration. The system will continue to improve as AI technology advances - this Version 1.0 represents just the beginning of its capabilities.
     
+    ## Key Capabilities
+    
+    • **Beyond Drawing Information**: The system can provide valuable construction insights that may not be explicitly stated in the drawings. It leverages advanced AI to offer context, implications, and related knowledge that construction managers would find useful.
+    
+    • **Integrated Multi-Drawing Analysis**: One of the system's most powerful features is its ability to analyze multiple drawings simultaneously. When you select more than one drawing, the system will integrate information across all selected drawings, providing comprehensive insights that reflect the entire selected set. Note that processing time increases with each additional drawing selected.
+    
     ## Important Guidelines
     
     • **Original Drawing Size**: Upload drawings in their native size without reduction or shrinking for optimal results.
     
     • **Processing Time**: Depending on drawing size and complexity, processing can take 5-7 minutes per drawing. Network capacity may affect processing speed.
     
-    • **One Drawing Per Session**: For best performance, upload only one drawing at a time.
+    • **One Drawing Per Upload Session**: For best performance, upload only one drawing at a time during the processing phase.
     
     • **Memory Building**: The system builds a knowledge base as you interact with it:
       - When first analyzing a drawing, uncheck "Use cache" to build comprehensive memory
