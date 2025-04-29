@@ -7,6 +7,7 @@ import threading
 import uuid
 import json
 import time
+import shutil
 from pathlib import Path
 import werkzeug.utils
 
@@ -392,6 +393,31 @@ def delete_drawing(drawing_name):
     except Exception as e:
         logger.error(f"Error deleting drawing {drawing_name}: {e}", exc_info=True)
         return jsonify({"error": f"Failed to delete drawing: {str(e)}"}), 500
+
+@app.route('/clear-cache', methods=['DELETE'])
+def clear_cache():
+    """Clear the memory cache used by the analyzer"""
+    if not Config:
+        return jsonify({"error": "Config not available"}), 500
+    
+    try:
+        # Check if memory store directory exists
+        if hasattr(Config, 'MEMORY_STORE') and Config.MEMORY_STORE:
+            # Delete the directory and recreate it
+            if os.path.exists(Config.MEMORY_STORE):
+                shutil.rmtree(Config.MEMORY_STORE)
+            
+            # Recreate empty directory
+            os.makedirs(Config.MEMORY_STORE, exist_ok=True)
+            logger.info(f"Cleared cache at: {Config.MEMORY_STORE}")
+            
+            return jsonify({"success": True, "message": "Cache cleared successfully"})
+        else:
+            return jsonify({"error": "Memory store path not configured"}), 500
+        
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to clear cache: {str(e)}"}), 500
 
 # --- Server Startup ---
 if __name__ == "__main__":
