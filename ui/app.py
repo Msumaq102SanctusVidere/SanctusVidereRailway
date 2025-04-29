@@ -24,10 +24,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Add clear_cache to api_client imports ---
-# Add this line to the api_client.py imports
-# from api_client import clear_cache
-
 # --- Simple function to clear cache ---
 def clear_cache():
     """Call the API to clear the memory cache"""
@@ -56,12 +52,47 @@ def init_state():
         'analysis_results': None,
         'last_status_check': 0,
         'upload_status': {},  # Track upload status
+        'show_directions': False,  # Track directions visibility
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 init_state()
+
+# --- System Directions Content ---
+def get_directions_content():
+    """Return the directions content for the system"""
+    return """
+    # Sanctus Videre 1.0 - System Guide
+    
+    ## Overview
+    Sanctus Videre utilizes advanced Large Language Model technology through API integration. The system will continue to improve as AI technology advances - this Version 1.0 represents just the beginning of its capabilities.
+    
+    ## Important Guidelines
+    
+    • **Original Drawing Size**: Upload drawings in their native size without reduction or shrinking for optimal results.
+    
+    • **Processing Time**: Depending on drawing size and complexity, processing can take 5-7 minutes per drawing. Network capacity may affect processing speed.
+    
+    • **One Drawing Per Session**: For best performance, upload only one drawing at a time.
+    
+    • **Memory Building**: The system builds a knowledge base as you interact with it:
+      - When first analyzing a drawing, uncheck "Use cache" to build comprehensive memory
+      - Similar questions will be answered faster over time as the system learns
+      - Initial analyses with "Use cache" unchecked may take 5-7 minutes
+      - Once memory is built, similar queries with "Use cache" checked can be answered in 2 minutes or less
+    
+    • **Project Management**:
+      - Use "Clear Cache" to delete the memory bank for the current project
+      - Use "Delete Selected Drawings" to remove drawings
+      - This flexibility allows you to start fresh with new projects
+    
+    ## Best Practices
+    1. Start with detailed questions with "Use cache" unchecked
+    2. For follow-up questions, keep "Use cache" checked for faster responses
+    3. When switching projects, clear the cache and delete unwanted drawings
+    """
 
 # --- Helper to Refresh Drawings ---
 def refresh_drawings():
@@ -133,7 +164,7 @@ def integrated_upload_drawing():
                 # Extract status information
                 percent = job.get("progress", 0)
                 backend_status = job.get("status", "unknown")
-                current_phase = job.get("current_phase", "")
+                current_phase = job.get("phase", "")
                 messages = job.get("progress_messages", [])
                 
                 # Show status details
@@ -312,6 +343,17 @@ def main():
     [data-testid="stVerticalBlock"] > div > [data-testid="stContainer"] {
         padding: 1rem;
     }
+    /* Custom styling for directions panel */
+    .directions-panel {
+        background-color: #1E1E1E;
+        color: white;
+        padding: 20px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .directions-panel h1, .directions-panel h2, .directions-panel h3 {
+        color: white;
+    }
     </style>
     """, unsafe_allow_html=True)
     
@@ -344,6 +386,20 @@ def main():
 
     # --- Left Column: Drawing Selection ---
     with col1:
+        # Directions Button - toggles direction visibility
+        if st.button("📋 Directions", use_container_width=True):
+            st.session_state.show_directions = not st.session_state.show_directions
+            st.rerun()
+            
+        # Show directions panel if enabled
+        if st.session_state.show_directions:
+            st.markdown('<div class="directions-panel">', unsafe_allow_html=True)
+            st.markdown(get_directions_content())
+            if st.button("Close Directions", use_container_width=True):
+                st.session_state.show_directions = False
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+        
         st.subheader("Select Drawings")
     
         # Special notification if upload just completed
@@ -491,7 +547,7 @@ def main():
                 job = get_job_status(st.session_state.current_job_id)
                 st.session_state.job_status = job
         
-                phase = job.get('current_phase', '')
+                phase = job.get('phase', '')
                 prog = job.get('progress', 0)
                 
                 # Status display in a bordered container with better spacing
