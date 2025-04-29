@@ -192,7 +192,7 @@ def process_pdf_file(pdf_path, job_id, original_filename):
                          result={"drawing_name": sheet_name},
                          message="Processing completed successfully")
         
-        logger.info(f"Successfully processed {original_filename}")
+        logger.info(f"Successfully processed {sheet_name}")
         return True
         
     except Exception as e:
