@@ -380,18 +380,8 @@ def main():
         st.session_state.backend_healthy = False
         st.error(f"⚠️ Health check failed: {e}")
 
-    # --- Sidebar: Upload ---
+    # --- Sidebar: Upload with Directions Button ---
     with st.sidebar:
-        upload_ok = integrated_upload_drawing()
-        if upload_ok:
-            # After upload completes, refresh the list
-            refresh_drawings()
-
-    # --- Three-Column Layout ---
-    col1, col2, col3 = st.columns([1, 1, 2])
-
-    # --- Left Column: Drawing Selection ---
-    with col1:
         # Directions Button - toggles direction visibility
         if st.button("📋 Directions", use_container_width=True):
             st.session_state.show_directions = not st.session_state.show_directions
@@ -406,6 +396,17 @@ def main():
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
         
+        # Upload Drawing component
+        upload_ok = integrated_upload_drawing()
+        if upload_ok:
+            # After upload completes, refresh the list
+            refresh_drawings()
+
+    # --- Three-Column Layout ---
+    col1, col2, col3 = st.columns([1, 1, 2])
+
+    # --- Left Column: Drawing Selection ---
+    with col1:
         st.subheader("Select Drawings")
     
         # Special notification if upload just completed
