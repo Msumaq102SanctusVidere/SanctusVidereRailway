@@ -264,6 +264,65 @@ def integrated_drawing_list(drawings):
     
     return selected
 
+# --- Helper function to convert markdown to HTML ---
+def markdown_to_html(markdown_text):
+    """
+    Basic conversion of markdown to HTML
+    For a more robust solution, consider using a library like markdown2 or python-markdown
+    """
+    # Create HTML header
+    html = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Analysis Results</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+        h1 { color: #333; }
+        h2 { color: #444; }
+        h3 { color: #555; }
+        ul, ol { margin-left: 20px; }
+        li { margin-bottom: 5px; }
+        code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+"""
+    
+    # Basic markdown conversion
+    # Headers
+    markdown_text = re.sub(r'^# (.*?)$', r'<h1>\1</h1>', markdown_text, flags=re.MULTILINE)
+    markdown_text = re.sub(r'^## (.*?)$', r'<h2>\1</h2>', markdown_text, flags=re.MULTILINE)
+    markdown_text = re.sub(r'^### (.*?)$', r'<h3>\1</h3>', markdown_text, flags=re.MULTILINE)
+    
+    # Lists
+    markdown_text = re.sub(r'^- (.*?)$', r'<li>\1</li>', markdown_text, flags=re.MULTILINE)
+    markdown_text = re.sub(r'^(\d+)\. (.*?)$', r'<li>\2</li>', markdown_text, flags=re.MULTILINE)
+    
+    # Bold
+    markdown_text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', markdown_text)
+    
+    # Italic
+    markdown_text = re.sub(r'\*(.*?)\*', r'<em>\1</em>', markdown_text)
+    
+    # Wrap lists in ul/ol tags
+    markdown_text = re.sub(r'(<li>.*?</li>)\n\n', r'<ul>\1</ul>\n\n', markdown_text, flags=re.DOTALL)
+    
+    # Paragraphs
+    markdown_text = re.sub(r'(?<!\n)\n(?!\n)', r'<br/>', markdown_text)
+    markdown_text = re.sub(r'\n\n', r'</p>\n\n<p>', markdown_text)
+    
+    # Wrap in paragraphs
+    html += f"<p>{markdown_text}</p>"
+    
+    # Close HTML
+    html += """
+</body>
+</html>
+"""
+    
+    return html
+
 # --- Integrated Results Pane Component - FIXED VERSION ---
 def integrated_results_pane(result_text):
     """Improved results display with better formatting and error handling"""
@@ -283,10 +342,17 @@ def integrated_results_pane(result_text):
                         # Display formatted analysis
                         st.markdown(analysis_text)
                         
-                        # Add a copy button
-                        if st.button("Copy Results", key="copy_results_main"):
-                            st.code(analysis_text, language=None)
-                            st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
+                        # Add a download button instead of copy+code block
+                        filename = "analysis_results.html"
+                        html_content = markdown_to_html(analysis_text)
+                        
+                        st.download_button(
+                            label="Copy Results",
+                            data=html_content,
+                            file_name=filename,
+                            mime="text/html",
+                            key="download_results_main"
+                        )
                         
                         # Technical information in an expandable section
                         with st.expander("Technical Information", expanded=False):
@@ -298,10 +364,15 @@ def integrated_results_pane(result_text):
                     st.subheader("Analysis Results")
                     st.json(result_obj)
                     
-                    # Add a copy button for json results
-                    if st.button("Copy Results", key="copy_results_json"):
-                        st.code(json.dumps(result_obj, indent=2), language="json")
-                        st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
+                    # Add a download button for JSON results
+                    json_str = json.dumps(result_obj, indent=2)
+                    st.download_button(
+                        label="Copy Results",
+                        data=json_str,
+                        file_name="analysis_results.json",
+                        mime="application/json",
+                        key="download_results_json"
+                    )
                     
                     return
                     
@@ -311,17 +382,43 @@ def integrated_results_pane(result_text):
                         # Try to parse as JSON first
                         result_obj = json.loads(result_text)
                         if isinstance(result_obj, dict) and 'analysis' in result_obj:
-                            st.markdown(result_obj['analysis'])
+                            analysis_text = result_obj['analysis']
+                            st.markdown(analysis_text)
+                            
+                            # Add a download button for analysis text
+                            html_content = markdown_to_html(analysis_text)
+                            st.download_button(
+                                label="Copy Results",
+                                data=html_content,
+                                file_name="analysis_results.html",
+                                mime="text/html",
+                                key="download_results_json_str"
+                            )
                         else:
                             st.markdown(result_text)
+                            
+                            # Add a download button for general text
+                            html_content = markdown_to_html(result_text)
+                            st.download_button(
+                                label="Copy Results",
+                                data=html_content,
+                                file_name="analysis_results.html",
+                                mime="text/html",
+                                key="download_results_parsed"
+                            )
                     except:
                         # If not valid JSON, just show as markdown
                         st.markdown(result_text)
-                    
-                    # Add copy button for all string results (regardless of format)
-                    if st.button("Copy Results", key="copy_results_str"):
-                        st.code(result_text, language=None)
-                        st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
+                        
+                        # Add a download button for plain text
+                        html_content = markdown_to_html(result_text)
+                        st.download_button(
+                            label="Copy Results",
+                            data=html_content,
+                            file_name="analysis_results.html",
+                            mime="text/html",
+                            key="download_results_plain"
+                        )
         else:
             # Empty or null result
             st.info("Results will appear here after analysis completes.")
