@@ -190,10 +190,10 @@ def main():
         st.markdown("### Navigation")
         
         if st.button("Go to Dashboard", type="primary", use_container_width=True):
-            st.switch_page("pages/01_dashboard.py")
+            st.switch_page("ui/pages/01_dashboard.py")
         
         if st.button("View Analysis History", use_container_width=True):
-            st.switch_page("pages/02_review.py")
+            st.switch_page("ui/pages/02_review.py")
         
         # Recent activity or system status
         st.markdown("### System Status")
