@@ -8,7 +8,6 @@ import os
 import re
 import json
 import datetime
-import subprocess
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -32,46 +31,6 @@ def init_state():
             st.session_state[k] = v
 
 init_state()
-
-# --- Function to launch dashboard directly ---
-def launch_dashboard():
-    """Launch the dashboard directly using subprocess"""
-    try:
-        dashboard_path = os.path.join(os.getcwd(), "ui", "pages", "01_dashboard.py")
-        logger.info(f"Launching dashboard at: {dashboard_path}")
-        
-        # Start the dashboard in a new process
-        cmd = [sys.executable, "-m", "streamlit", "run", dashboard_path]
-        subprocess.Popen(cmd)
-        
-        # Get the external URL for the dashboard
-        external_url = "http://localhost:8501"  # Default fallback
-        logger.info(f"Dashboard should be available at: {external_url}")
-        
-        return True, external_url
-    except Exception as e:
-        logger.error(f"Error launching dashboard: {e}")
-        return False, str(e)
-
-# --- Function to launch review page ---
-def launch_review():
-    """Launch the review page directly using subprocess"""
-    try:
-        review_path = os.path.join(os.getcwd(), "ui", "pages", "02_review.py")
-        logger.info(f"Launching review at: {review_path}")
-        
-        # Start the review page in a new process
-        cmd = [sys.executable, "-m", "streamlit", "run", review_path]
-        subprocess.Popen(cmd)
-        
-        # Get the external URL for the review page
-        external_url = "http://localhost:8501"  # Default fallback
-        logger.info(f"Review page should be available at: {external_url}")
-        
-        return True, external_url
-    except Exception as e:
-        logger.error(f"Error launching review page: {e}")
-        return False, str(e)
 
 # --- Main Application ---
 def main():
@@ -134,42 +93,6 @@ def main():
         width: 100%;
         height: 100%;
         border-radius: 10px;
-    }
-    /* Dashboard link styling */
-    .dashboard-link {
-        display: inline-block;
-        width: 100%;
-        background-color: #4CAF50;
-        color: white;
-        text-align: center;
-        padding: 10px 0;
-        text-decoration: none;
-        font-weight: bold;
-        border-radius: 4px;
-        margin-bottom: 10px;
-        transition: background-color 0.3s;
-    }
-    .dashboard-link:hover {
-        background-color: #3e8e41;
-        text-decoration: none;
-    }
-    /* Review link styling */
-    .review-link {
-        display: inline-block;
-        width: 100%;
-        background-color: #2C2C2C;
-        color: white;
-        text-align: center;
-        padding: 10px 0;
-        text-decoration: none;
-        font-weight: bold;
-        border-radius: 4px;
-        margin-bottom: 10px;
-        transition: background-color 0.3s;
-    }
-    .review-link:hover {
-        background-color: #444444;
-        text-decoration: none;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -266,57 +189,65 @@ def main():
         # Navigation buttons
         st.markdown("### Navigation")
         
-        # Dashboard button
-        if st.button("Go to Dashboard", type="primary", use_container_width=True):
-            # Create a dedicated streamlit instance for the dashboard
-            success, url = launch_dashboard()
+        # Create a form for showing the dashboard
+        with st.form("dashboard_form"):
+            st.form_submit_button("Go to Dashboard", type="primary", use_container_width=True)
             
-            if success:
-                # Open the dashboard in a new browser tab
-                st.success(f"Dashboard launched successfully! Opening in a new window...")
-                
-                # Create a JavaScript snippet to open the URL
-                js = f"""
-                <script>
-                    window.open("{url}", "_blank");
-                </script>
-                """
-                st.components.v1.html(js, height=0)
-            else:
-                st.error(f"Failed to launch dashboard: {url}")
-                
-                # Fallback - direct link to the dashboard
-                st.markdown("""
-                <a href="http://localhost:8501" target="_blank" class="dashboard-link">
-                    Open Dashboard
-                </a>
-                """, unsafe_allow_html=True)
+            # This will run when the form is submitted
+            if st.form_submitted():
+                logger.info("Dashboard form submitted")
+                # Store the path to navigate to in session state
+                st.session_state.navigate_to = "dashboard"
+                # Rerun to process the navigation
+                st.rerun()
         
-        # Review button
-        if st.button("View Analysis History", use_container_width=True):
-            # Create a dedicated streamlit instance for the review page
-            success, url = launch_review()
+        # Create a form for showing the review page
+        with st.form("review_form"):
+            st.form_submit_button("View Analysis History", use_container_width=True)
             
-            if success:
-                # Open the review page in a new browser tab
-                st.success(f"Review page launched successfully! Opening in a new window...")
-                
-                # Create a JavaScript snippet to open the URL
-                js = f"""
-                <script>
-                    window.open("{url}", "_blank");
-                </script>
-                """
-                st.components.v1.html(js, height=0)
-            else:
-                st.error(f"Failed to launch review page: {url}")
-                
-                # Fallback - direct link to the review page
-                st.markdown("""
-                <a href="http://localhost:8501" target="_blank" class="review-link">
-                    Open Review Page
-                </a>
-                """, unsafe_allow_html=True)
+            # This will run when the form is submitted
+            if st.form_submitted():
+                logger.info("Review form submitted")
+                # Store the path to navigate to in session state
+                st.session_state.navigate_to = "review"
+                # Rerun to process the navigation
+                st.rerun()
+        
+        # Process navigation
+        if 'navigate_to' in st.session_state:
+            if st.session_state.navigate_to == "dashboard":
+                # Navigate to dashboard
+                logger.info("Navigating to dashboard")
+                os.makedirs("pages", exist_ok=True)
+                # Create symlink to dashboard
+                try:
+                    # Execute dashboard directly 
+                    import ui.pages.01_dashboard as dashboard
+                    # Delete the navigate_to from session state to prevent infinite loop
+                    del st.session_state.navigate_to
+                    # Load the dashboard
+                    dashboard.main()
+                    # Exit current script
+                    st.stop()
+                except Exception as e:
+                    logger.error(f"Error loading dashboard: {e}")
+                    st.error(f"Error loading dashboard: {e}")
+            
+            elif st.session_state.navigate_to == "review":
+                # Navigate to review page
+                logger.info("Navigating to review page")
+                try:
+                    # Execute review page directly
+                    import ui.pages.02_review as review
+                    # Delete the navigate_to from session state to prevent infinite loop
+                    del st.session_state.navigate_to
+                    # Load the review page
+                    review.main()
+                    # Exit current script
+                    st.stop()
+                except Exception as e:
+                    logger.error(f"Error loading review page: {e}")
+                    st.error(f"Error loading review page: {e}")
         
         # Recent activity or system status
         st.markdown("### System Status")
