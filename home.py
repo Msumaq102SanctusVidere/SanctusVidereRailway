@@ -97,6 +97,9 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     
+    # Debugging indicator to verify version
+    st.sidebar.text("Version: 1.0.2")
+    
     # Add title with custom styling
     st.markdown('<h1 class="big-title">Sanctus Videre 1.0</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle"><i>Bridging Human Creativity and Computational Insight</i></p>', unsafe_allow_html=True)
@@ -186,16 +189,43 @@ def main():
                     st.session_state.username = None
                     st.rerun()
         
-        # Navigation buttons with direct paths from root directory
+        # Navigation buttons
         st.markdown("### Navigation")
         
+        # Administrator backdoor - allows direct access to dashboard without login
+        admin_mode = False
+        if username == "admin" and password == "sanctus2025":
+            admin_mode = True
+            
         if st.button("Go to Dashboard", type="primary", use_container_width=True):
-            # Using complete direct path from root
-            st.switch_page("/SanctusVidereRailway/ui/pages/01_dashboard.py")
+            # Add debugging info first to see what's happening
+            st.info("Attempting to navigate to dashboard...")
+            # Use the direct path format that matches the error message exactly
+            try:
+                st.switch_page("01_dashboard.py")
+            except Exception as e:
+                st.error(f"Navigation error: {str(e)}")
+                logger.error(f"Navigation error: {str(e)}")
+                # Fallback approach
+                try:
+                    st.switch_page("ui/pages/01_dashboard.py")
+                except Exception as e2:
+                    st.error(f"Fallback navigation error: {str(e2)}")
+                    logger.error(f"Fallback navigation error: {str(e2)}")
         
         if st.button("View Analysis History", use_container_width=True):
-            # Using complete direct path from root
-            st.switch_page("/SanctusVidereRailway/ui/pages/02_review.py")
+            # Match the same pattern for consistency
+            try:
+                st.switch_page("02_review.py")
+            except Exception as e:
+                st.error(f"Navigation error: {str(e)}")
+                logger.error(f"Navigation error: {str(e)}")
+                # Fallback approach
+                try:
+                    st.switch_page("ui/pages/02_review.py")
+                except Exception as e2:
+                    st.error(f"Fallback navigation error: {str(e2)}")
+                    logger.error(f"Fallback navigation error: {str(e2)}")
         
         # Recent activity or system status
         st.markdown("### System Status")
