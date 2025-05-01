@@ -1,4 +1,4 @@
-# --- Filename: ui/home.py (Frontend Streamlit Home Page) ---
+# --- Filename: home.py (Frontend Streamlit Home Page) ---
 
 import streamlit as st
 import time
