@@ -297,6 +297,12 @@ def integrated_results_pane(result_text):
                     # If no analysis field but it's still a dict, just display content
                     st.subheader("Analysis Results")
                     st.json(result_obj)
+                    
+                    # Add a copy button for json results
+                    if st.button("Copy Results", key="copy_results_json"):
+                        st.code(json.dumps(result_obj, indent=2), language="json")
+                        st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
+                    
                     return
                     
                 # If it's a string, try to display as markdown
@@ -311,6 +317,11 @@ def integrated_results_pane(result_text):
                     except:
                         # If not valid JSON, just show as markdown
                         st.markdown(result_text)
+                    
+                    # Add copy button for all string results (regardless of format)
+                    if st.button("Copy Results", key="copy_results_str"):
+                        st.code(result_text, language=None)
+                        st.success("Results ready to copy! Use the copy button in the top-right of the code block above.")
         else:
             # Empty or null result
             st.info("Results will appear here after analysis completes.")
