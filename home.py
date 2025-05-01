@@ -190,10 +190,12 @@ def main():
         st.markdown("### Navigation")
         
         if st.button("Go to Dashboard", type="primary", use_container_width=True):
-            st.switch_page("pages/01_dashboard.py")  # CHANGED LINE: Removed "ui/" prefix
+            # Just use the filename without any path
+            st.switch_page("01_dashboard.py")
         
         if st.button("View Analysis History", use_container_width=True):
-            st.switch_page("pages/02_review.py")  # CHANGED LINE: Removed "ui/" prefix for consistency
+            # Just use the filename without any path
+            st.switch_page("02_review.py")
         
         # Recent activity or system status
         st.markdown("### System Status")
