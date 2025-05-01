@@ -8,7 +8,6 @@ import os
 import re
 import json
 import datetime
-import subprocess
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -32,45 +31,6 @@ def init_state():
             st.session_state[k] = v
 
 init_state()
-
-# --- Dashboard Launch Function ---
-def launch_dashboard():
-    """Launch the dashboard directly by running streamlit on the dashboard file"""
-    try:
-        # Log the action
-        logger.info("Launching dashboard directly")
-        
-        # Use subprocess to run streamlit on the dashboard file
-        # This launches the dashboard in a new streamlit process
-        subprocess.Popen(["streamlit", "run", "ui/pages/01_dashboard.py"])
-        
-        # Show a message to the user
-        st.success("Dashboard launching in a new window. Please wait a moment...")
-        
-        # Provide a direct URL as fallback
-        st.markdown("[Click here if dashboard doesn't open automatically](http://localhost:8501)")
-    except Exception as e:
-        logger.error(f"Error launching dashboard: {e}")
-        st.error(f"Error launching dashboard: {e}")
-
-# --- Launch Review Function ---
-def launch_review():
-    """Launch the review page directly by running streamlit on the review file"""
-    try:
-        # Log the action
-        logger.info("Launching review page directly")
-        
-        # Use subprocess to run streamlit on the review file
-        subprocess.Popen(["streamlit", "run", "ui/pages/02_review.py"])
-        
-        # Show a message to the user
-        st.success("Review page launching in a new window. Please wait a moment...")
-        
-        # Provide a direct URL as fallback
-        st.markdown("[Click here if review page doesn't open automatically](http://localhost:8501)")
-    except Exception as e:
-        logger.error(f"Error launching review page: {e}")
-        st.error(f"Error launching review page: {e}")
 
 # --- Main Application ---
 def main():
@@ -229,24 +189,34 @@ def main():
         # Navigation buttons
         st.markdown("### Navigation")
         
-        # Dashboard button - Uses direct launching function
+        # Dashboard button - Uses direct JavaScript redirect
         if st.button("Go to Dashboard", type="primary", use_container_width=True):
-            # Launch dashboard directly instead of using st.switch_page
-            launch_dashboard()
+            # Log the action
+            logger.info("Redirecting to dashboard directly")
+            
+            # Use JavaScript to redirect directly to the dashboard
+            # This avoids Streamlit's page navigation system entirely
+            js = """
+            <script>
+                window.open("ui/pages/01_dashboard.py", "_self");
+            </script>
+            """
+            st.components.v1.html(js, height=0)
+            st.info("Redirecting to dashboard...")
         
-        # Review button - Uses direct launching function
+        # Review button - Same direct approach
         if st.button("View Analysis History", use_container_width=True):
-            # Launch review page directly instead of using st.switch_page
-            launch_review()
-        
-        # Admin backdoor - allows direct access without auth
-        admin_access = st.checkbox("Administrator Access", value=False, key="admin_access")
-        if admin_access:
-            st.text_input("Admin Code", type="password", key="admin_code")
-            if st.session_state.get("admin_code") == "sanctus2025":
-                st.success("Administrator access granted")
-                if st.button("Direct Dashboard Access", use_container_width=True):
-                    launch_dashboard()
+            # Log the action
+            logger.info("Redirecting to review page directly")
+            
+            # Use JavaScript to redirect directly to the review page
+            js = """
+            <script>
+                window.open("ui/pages/02_review.py", "_self");
+            </script>
+            """
+            st.components.v1.html(js, height=0)
+            st.info("Redirecting to review page...")
         
         # Recent activity or system status
         st.markdown("### System Status")
