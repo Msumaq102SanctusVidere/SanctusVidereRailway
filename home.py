@@ -189,34 +189,25 @@ def main():
         # Navigation buttons
         st.markdown("### Navigation")
         
-        # Dashboard button - Uses direct JavaScript redirect
-        if st.button("Go to Dashboard", type="primary", use_container_width=True):
-            # Log the action
-            logger.info("Redirecting to dashboard directly")
-            
-            # Use JavaScript to redirect directly to the dashboard
-            # This avoids Streamlit's page navigation system entirely
-            js = """
-            <script>
-                window.open("ui/pages/01_dashboard.py", "_self");
-            </script>
-            """
-            st.components.v1.html(js, height=0)
-            st.info("Redirecting to dashboard...")
+        # Simple direct HTML link to dashboard - this should work reliably
+        st.markdown("""
+        <a href="/ui/pages/01_dashboard.py" target="_self" style="text-decoration:none; display:block;">
+            <button style="background-color:#4CAF50; color:white; padding:0.5rem 1rem; 
+            border-radius:0.25rem; border:none; font-weight:bold; width:100%; cursor:pointer;">
+                Go to Dashboard
+            </button>
+        </a>
+        """, unsafe_allow_html=True)
         
-        # Review button - Same direct approach
-        if st.button("View Analysis History", use_container_width=True):
-            # Log the action
-            logger.info("Redirecting to review page directly")
-            
-            # Use JavaScript to redirect directly to the review page
-            js = """
-            <script>
-                window.open("ui/pages/02_review.py", "_self");
-            </script>
-            """
-            st.components.v1.html(js, height=0)
-            st.info("Redirecting to review page...")
+        # Simple direct HTML link to review page
+        st.markdown("""
+        <a href="/ui/pages/02_review.py" target="_self" style="text-decoration:none; display:block; margin-top:10px;">
+            <button style="background-color:#2C2C2C; color:white; padding:0.5rem 1rem; 
+            border-radius:0.25rem; border:none; font-weight:bold; width:100%; cursor:pointer;">
+                View Analysis History
+            </button>
+        </a>
+        """, unsafe_allow_html=True)
         
         # Recent activity or system status
         st.markdown("### System Status")
