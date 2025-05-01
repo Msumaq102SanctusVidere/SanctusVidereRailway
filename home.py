@@ -8,6 +8,7 @@ import os
 import re
 import json
 import datetime
+import subprocess
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -31,6 +32,45 @@ def init_state():
             st.session_state[k] = v
 
 init_state()
+
+# --- Dashboard Launch Function ---
+def launch_dashboard():
+    """Launch the dashboard directly by running streamlit on the dashboard file"""
+    try:
+        # Log the action
+        logger.info("Launching dashboard directly")
+        
+        # Use subprocess to run streamlit on the dashboard file
+        # This launches the dashboard in a new streamlit process
+        subprocess.Popen(["streamlit", "run", "ui/pages/01_dashboard.py"])
+        
+        # Show a message to the user
+        st.success("Dashboard launching in a new window. Please wait a moment...")
+        
+        # Provide a direct URL as fallback
+        st.markdown("[Click here if dashboard doesn't open automatically](http://localhost:8501)")
+    except Exception as e:
+        logger.error(f"Error launching dashboard: {e}")
+        st.error(f"Error launching dashboard: {e}")
+
+# --- Launch Review Function ---
+def launch_review():
+    """Launch the review page directly by running streamlit on the review file"""
+    try:
+        # Log the action
+        logger.info("Launching review page directly")
+        
+        # Use subprocess to run streamlit on the review file
+        subprocess.Popen(["streamlit", "run", "ui/pages/02_review.py"])
+        
+        # Show a message to the user
+        st.success("Review page launching in a new window. Please wait a moment...")
+        
+        # Provide a direct URL as fallback
+        st.markdown("[Click here if review page doesn't open automatically](http://localhost:8501)")
+    except Exception as e:
+        logger.error(f"Error launching review page: {e}")
+        st.error(f"Error launching review page: {e}")
 
 # --- Main Application ---
 def main():
@@ -96,9 +136,6 @@ def main():
     }
     </style>
     """, unsafe_allow_html=True)
-    
-    # Debugging indicator to verify version
-    st.sidebar.text("Version: 1.0.2")
     
     # Add title with custom styling
     st.markdown('<h1 class="big-title">Sanctus Videre 1.0</h1>', unsafe_allow_html=True)
@@ -192,40 +229,24 @@ def main():
         # Navigation buttons
         st.markdown("### Navigation")
         
-        # Administrator backdoor - allows direct access to dashboard without login
-        admin_mode = False
-        if username == "admin" and password == "sanctus2025":
-            admin_mode = True
-            
+        # Dashboard button - Uses direct launching function
         if st.button("Go to Dashboard", type="primary", use_container_width=True):
-            # Add debugging info first to see what's happening
-            st.info("Attempting to navigate to dashboard...")
-            # Use the direct path format that matches the error message exactly
-            try:
-                st.switch_page("01_dashboard.py")
-            except Exception as e:
-                st.error(f"Navigation error: {str(e)}")
-                logger.error(f"Navigation error: {str(e)}")
-                # Fallback approach
-                try:
-                    st.switch_page("ui/pages/01_dashboard.py")
-                except Exception as e2:
-                    st.error(f"Fallback navigation error: {str(e2)}")
-                    logger.error(f"Fallback navigation error: {str(e2)}")
+            # Launch dashboard directly instead of using st.switch_page
+            launch_dashboard()
         
+        # Review button - Uses direct launching function
         if st.button("View Analysis History", use_container_width=True):
-            # Match the same pattern for consistency
-            try:
-                st.switch_page("02_review.py")
-            except Exception as e:
-                st.error(f"Navigation error: {str(e)}")
-                logger.error(f"Navigation error: {str(e)}")
-                # Fallback approach
-                try:
-                    st.switch_page("ui/pages/02_review.py")
-                except Exception as e2:
-                    st.error(f"Fallback navigation error: {str(e2)}")
-                    logger.error(f"Fallback navigation error: {str(e2)}")
+            # Launch review page directly instead of using st.switch_page
+            launch_review()
+        
+        # Admin backdoor - allows direct access without auth
+        admin_access = st.checkbox("Administrator Access", value=False, key="admin_access")
+        if admin_access:
+            st.text_input("Admin Code", type="password", key="admin_code")
+            if st.session_state.get("admin_code") == "sanctus2025":
+                st.success("Administrator access granted")
+                if st.button("Direct Dashboard Access", use_container_width=True):
+                    launch_dashboard()
         
         # Recent activity or system status
         st.markdown("### System Status")
