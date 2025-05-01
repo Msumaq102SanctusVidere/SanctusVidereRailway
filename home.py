@@ -186,16 +186,16 @@ def main():
                     st.session_state.username = None
                     st.rerun()
         
-        # Navigation buttons
+        # Navigation buttons with direct paths from root directory
         st.markdown("### Navigation")
         
         if st.button("Go to Dashboard", type="primary", use_container_width=True):
-            # Just use the filename without any path
-            st.switch_page("01_dashboard.py")
+            # Using complete direct path from root
+            st.switch_page("/SanctusVidereRailway/ui/pages/01_dashboard.py")
         
         if st.button("View Analysis History", use_container_width=True):
-            # Just use the filename without any path
-            st.switch_page("02_review.py")
+            # Using complete direct path from root
+            st.switch_page("/SanctusVidereRailway/ui/pages/02_review.py")
         
         # Recent activity or system status
         st.markdown("### System Status")
