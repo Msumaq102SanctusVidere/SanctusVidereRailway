@@ -9,6 +9,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Button event listeners
     setupNavigationButtons();
+    
+    // Setup direct dashboard access
+    setupDirectAccess();
 });
 
 // User state management
@@ -75,6 +78,29 @@ function setupLoginForm() {
             if (adminCode === 'admin123') { // Simple demo code
                 localStorage.setItem('isAdmin', 'true');
                 alert('Admin access granted. You now have access to all features.');
+            }
+        });
+    }
+}
+
+// Setup direct dashboard access link in footer
+function setupDirectAccess() {
+    const directAccessLink = document.getElementById('admin-access-direct');
+    if (directAccessLink) {
+        directAccessLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Prompt for access code
+            const accessCode = prompt('Enter direct access code:');
+            
+            // Check for correct code
+            // Replace 'sanctus2025' with your preferred access code
+            if (accessCode === 'sanctus2025') {
+                // Direct access to Streamlit dashboard
+                // Update this URL to match your actual Streamlit service URL
+                window.location.href = 'https://ui-production-b574.up.railway.app';
+            } else {
+                alert('Invalid access code.');
             }
         });
     }
