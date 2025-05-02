@@ -87,7 +87,7 @@ function setupLoginForm() {
 function accessDashboard() {
     const accessCode = prompt('Enter direct access code:');
     if (accessCode === 'sanctus2025') {
-        window.location.href = 'https://ui-production-b574.up.railway.app';
+        window.location.href = 'https://web-production-044b.up.railway.app';
     } else {
         alert('Invalid access code.');
     }
