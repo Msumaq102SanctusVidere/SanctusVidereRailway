@@ -1,10 +1,5 @@
 FROM nginx:alpine
-
-# Copy website files
-COPY . /usr/share/nginx/html
-
-# Expose port 80
+COPY ./web /app/web
+COPY ./web/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
-
-# Start Nginx server
 CMD ["nginx", "-g", "daemon off;"]
