@@ -1,1 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanctus Videre 1.0</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Google Analytics or similar script would go here -->
+    <script async src="js/tracking.js"></script>
+    <script src="js/main.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Title section matching Streamlit styling -->
+        <div class="header">
+            <h1 class="big-title">Sanctus Videre 1.0</h1>
+            <p class="subtitle"><i>Bridging Human Creativity and Computational Insight</i></p>
+        </div>
 
+        <!-- Three-column layout matching Streamlit -->
+        <div class="main-content">
+            <!-- Left Column: Videos -->
+            <div class="column left-column">
+                <h2>Introduction</h2>
+                <div class="video-container">
+                    <!-- Placeholder for introduction video -->
+                    <div class="placeholder-video">
+                        <p>Introduction Video</p>
+                    </div>
+                </div>
+                
+                <h2>Tutorial</h2>
+                <div class="video-container">
+                    <!-- Placeholder for tutorial video -->
+                    <div class="placeholder-video">
+                        <p>Tutorial Video</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle Column: Feature Highlights -->
+            <div class="column middle-column">
+                <h2>Key Capabilities</h2>
+                
+                <div class="feature-card">
+                    <h3>Beyond Drawing Information</h3>
+                    <p>The system provides valuable construction insights that may not be explicitly stated in the drawings. It leverages advanced AI to offer context, implications, and related knowledge.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>Integrated Multi-Drawing Analysis</h3>
+                    <p>One of the system's most powerful features is its ability to analyze multiple drawings simultaneously, providing comprehensive insights across your entire selected set.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>Advanced Memory Building</h3>
+                    <p>The system builds a knowledge base as you interact with it, making subsequent analyses faster and more accurate over time.</p>
+                </div>
+                
+                <h2>Client Testimonials</h2>
+                <!-- Reviews section - critical for funding -->
+                <div class="testimonials">
+                    <div class="testimonial-card">
+                        <div class="rating">★★★★★</div>
+                        <p>"Sanctus Videre transformed our workflow, reducing analysis time by 60% and improving accuracy."</p>
+                        <p class="reviewer">- John D., Project Manager</p>
+                    </div>
+                    
+                    <div class="testimonial-card">
+                        <div class="rating">★★★★★</div>
+                        <p>"The multi-drawing analysis feature has been revolutionary for our complex projects."</p>
+                        <p class="reviewer">- Sarah T., Construction Lead</p>
+                    </div>
+                    
+                    <a href="#" class="button secondary-button" id="review-button">Submit Your Review</a>
+                </div>
+            </div>
+
+            <!-- Right Column: Login and Dashboard Access -->
+            <div class="column right-column">
+                <!-- Login form -->
+                <div class="login-panel" id="login-form">
+                    <h2>Account Access</h2>
+                    <form id="login">
+                        <div class="form-group">
+                            <label for="email">Email</label>
+                            <input type="email" id="email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <input type="password" id="password" name="password" required>
+                        </div>
+                        <button type="submit" class="button primary-button">Login</button>
+                    </form>
+                    <p class="create-account">
+                        New user? <a href="#" id="create-account-link">Create an account</a>
+                    </p>
+                    
+                    <!-- Hidden admin access link -->
+                    <div class="admin-access">
+                        <a href="#" id="admin-link">Admin Access</a>
+                    </div>
+                </div>
+                
+                <!-- Post-login dashboard access panel (hidden by default) -->
+                <div class="dashboard-panel" id="dashboard-access" style="display: none;">
+                    <h2>Welcome, <span id="user-name">User</span>!</h2>
+                    <p>You're now logged in to Sanctus Videre.</p>
+                    
+                    <a href="https://streamlit-service.up.railway.app" class="button primary-button dashboard-button">
+                        Go to Dashboard
+                    </a>
+                    
+                    <a href="#" class="button secondary-button" id="submit-review-button">
+                        Submit Review
+                    </a>
+                    
+                    <button class="button text-button" id="logout-button">Logout</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Review submission form (hidden by default) -->
+        <div class="review-form-container" id="review-form-container" style="display: none;">
+            <div class="review-form">
+                <h2>Submit Your Review</h2>
+                <form id="review-submission">
+                    <div class="form-group">
+                        <label>Your Rating</label>
+                        <div class="star-rating">
+                            <input type="radio" id="star5" name="rating" value="5"><label for="star5">★</label>
+                            <input type="radio" id="star4" name="rating" value="4"><label for="star4">★</label>
+                            <input type="radio" id="star3" name="rating" value="3"><label for="star3">★</label>
+                            <input type="radio" id="star2" name="rating" value="2"><label for="star2">★</label>
+                            <input type="radio" id="star1" name="rating" value="1"><label for="star1">★</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="review-text">Your Experience</label>
+                        <textarea id="review-text" name="review" rows="4" required></textarea>
+                    </div>
+                    <div class="form-buttons">
+                        <button type="submit" class="button primary-button">Submit Review</button>
+                        <button type="button" class="button text-button" id="cancel-review">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <footer>
+            <p>© 2025 Sanctus Videre. All rights reserved.</p>
+        </footer>
+    </div>
+</body>
+</html>
