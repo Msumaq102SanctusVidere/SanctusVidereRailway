@@ -83,26 +83,31 @@ function setupLoginForm() {
     }
 }
 
+// Direct dashboard access function - simplified approach
+function accessDashboard() {
+    const accessCode = prompt('Enter direct access code:');
+    if (accessCode === 'sanctus2025') {
+        window.location.href = 'https://ui-production-b574.up.railway.app';
+    } else {
+        alert('Invalid access code.');
+    }
+}
+
 // Setup direct dashboard access link in footer
 function setupDirectAccess() {
     const directAccessLink = document.getElementById('admin-access-direct');
+    console.log("Direct access link element:", directAccessLink); // Debug line
+    
     if (directAccessLink) {
         directAccessLink.addEventListener('click', function(e) {
+            console.log("Direct access link clicked"); // Debug line
             e.preventDefault();
             
-            // Prompt for access code
-            const accessCode = prompt('Enter direct access code:');
-            
-            // Check for correct code
-            // Replace 'sanctus2025' with your preferred access code
-            if (accessCode === 'sanctus2025') {
-                // Direct access to Streamlit dashboard
-                // Update this URL to match your actual Streamlit service URL
-                window.location.href = 'https://ui-production-b574.up.railway.app';
-            } else {
-                alert('Invalid access code.');
-            }
+            // Call the simpler function
+            accessDashboard();
         });
+    } else {
+        console.log("Direct access link not found in the document"); // Debug line
     }
 }
 
