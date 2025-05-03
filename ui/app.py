@@ -170,7 +170,7 @@ def integrated_upload_drawing():
                 # Extract status information
                 percent = job.get("progress", 0)
                 backend_status = job.get("status", "unknown")
-                current_phase = job.get("phase", "")
+                current_phase = job.get("current_phase", "")
                 messages = job.get("progress_messages", [])
                 
                 # Show status details
