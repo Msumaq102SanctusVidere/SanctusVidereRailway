@@ -211,12 +211,13 @@ def process_analysis(job_id, query, drawings, use_cache):
         update_job_status(job_id, "processing", 10, "initializing", 
                          message="Starting analysis")
         
-        # The line formatting the query with drawings prefix has been removed
+        # Format the query with the drawings prefix
+        formatted_query = f"[DRAWINGS:{','.join(drawings)}] {query}"
         
         logger.info(f"Processing query with drawings {drawings}: {query}")
         
-        # Simply call analyze_query with the specified_drawings parameter
-        response = analyzer.analyze_query(query, use_cache=use_cache, specified_drawings=drawings)
+        # Call analyze_query with the formatted query
+        response = analyzer.analyze_query(formatted_query, use_cache=use_cache)
         
         # Complete the job
         update_job_status(job_id, "completed", 100, "complete", 
