@@ -21,263 +21,51 @@ body {
     position: relative;
 }
 
-/* --- Logo & Hero Section --- */
-.hero-section {
+/* --- Header & Logo --- */
+.site-header {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    margin-bottom: 4rem;
-    position: relative;
-    overflow: hidden;
+    margin-bottom: 3rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .logo-container {
-    margin-bottom: 2rem;
-}
-
-.logo {
     width: 120px;
-    height: 120px;
-    position: relative;
-    margin: 0 auto;
+    margin-right: 30px;
 }
 
-.logo-eye {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-}
-
-.logo-eye-outer {
-    width: 80px;
-    height: 80px;
-    border: 3px solid #64B5F6;
-    border-radius: 50%;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    box-shadow: 0 0 15px rgba(100, 181, 246, 0.7);
-}
-
-.logo-eye-inner {
-    width: 50px;
-    height: 50px;
-    border: 2px solid #90CAF9;
-    border-radius: 50%;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    box-shadow: 0 0 10px rgba(144, 202, 249, 0.5);
-}
-
-.logo-eye-pupil {
-    width: 20px;
-    height: 20px;
-    background: linear-gradient(135deg, #FFD700, #FFA000);
-    border-radius: 50%;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    box-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
-    animation: pulse 3s infinite alternate;
-}
-
-@keyframes pulse {
-    0% {
-        box-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
-    }
-    100% {
-        box-shadow: 0 0 25px rgba(255, 215, 0, 1);
-    }
-}
-
-.logo-lines {
-    position: absolute;
+.site-logo {
     width: 100%;
-    height: 100%;
+    height: auto;
+    display: block;
+    transition: transform 0.3s ease;
 }
 
-.logo-lines span {
-    position: absolute;
-    background: rgba(100, 181, 246, 0.3);
-    border-radius: 2px;
+.site-logo:hover {
+    transform: scale(1.05);
 }
 
-.logo-lines span:nth-child(1) {
-    width: 100px;
-    height: 1px;
-    top: 50%;
-    left: 20px;
-    transform: rotate(45deg);
-}
-
-.logo-lines span:nth-child(2) {
-    width: 100px;
-    height: 1px;
-    top: 50%;
-    left: 20px;
-    transform: rotate(-45deg);
-}
-
-.logo-lines span:nth-child(3) {
-    width: 100px;
-    height: 1px;
-    top: 50%;
-    left: 20px;
-    transform: rotate(0deg);
-}
-
-.hero-content {
+.header-title {
+    flex: 1;
     text-align: center;
-    position: relative;
-    z-index: 2;
-    width: 100%;
-}
-
-.hero-visual {
-    position: absolute;
-    top: -50px;
-    left: 0;
-    width: 100%;
-    height: 300px;
-    overflow: hidden;
-    z-index: -1;
-    opacity: 0.15;
-}
-
-.blueprint-grid {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-image: linear-gradient(#64B5F6 1px, transparent 1px), 
-                      linear-gradient(90deg, #64B5F6 1px, transparent 1px);
-    background-size: 20px 20px;
-    opacity: 0.1;
-}
-
-.neural-network {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-}
-
-.node {
-    position: absolute;
-    border-radius: 50%;
-    background: #64B5F6;
-    box-shadow: 0 0 15px rgba(100, 181, 246, 0.7);
-}
-
-.n1 {
-    width: 12px;
-    height: 12px;
-    top: 50px;
-    left: 30%;
-}
-
-.n2 {
-    width: 10px;
-    height: 10px;
-    top: 100px;
-    left: 45%;
-}
-
-.n3 {
-    width: 14px;
-    height: 14px;
-    top: 70px;
-    left: 60%;
-}
-
-.n4 {
-    width: 8px;
-    height: 8px;
-    top: 150px;
-    left: 35%;
-}
-
-.n5 {
-    width: 10px;
-    height: 10px;
-    top: 130px;
-    left: 70%;
-}
-
-.connection {
-    position: absolute;
-    height: 1px;
-    background: linear-gradient(90deg, rgba(100, 181, 246, 0), rgba(100, 181, 246, 0.7), rgba(100, 181, 246, 0));
-    transform-origin: left center;
-}
-
-.c1 {
-    width: 200px;
-    top: 56px;
-    left: 30%;
-    transform: rotate(10deg);
-}
-
-.c2 {
-    width: 150px;
-    top: 76px;
-    left: 45%;
-    transform: rotate(-15deg);
-}
-
-.c3 {
-    width: 120px;
-    top: 105px;
-    left: 46%;
-    transform: rotate(40deg);
-}
-
-.c4 {
-    width: 180px;
-    top: 135px;
-    left: 36%;
-    transform: rotate(-5deg);
 }
 
 /* --- Typography --- */
 .big-title {
     font-family: 'Playfair Display', serif;
-    font-size: 4.2rem;
-    margin-top: 1rem;
-    margin-bottom: 1rem;
+    font-size: 3.5rem;
+    margin-bottom: 0.5rem;
     color: #FFFFFF;
     letter-spacing: 1px;
     text-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    position: relative;
-    display: inline-block;
-}
-
-.big-title:after {
-    content: '';
-    display: block;
-    width: 80px;
-    height: 3px;
-    background: linear-gradient(90deg, rgba(255, 215, 0, 0), rgba(255, 215, 0, 1), rgba(255, 215, 0, 0));
-    margin: 10px auto 0;
 }
 
 .subtitle {
-    font-size: 1.4rem;
+    font-size: 1.2rem;
     font-weight: 300;
-    margin-top: 0.5rem;
-    margin-bottom: 3.5rem;
     color: #A3A8B8;
     letter-spacing: 1px;
-    max-width: 800px;
-    margin-left: auto;
-    margin-right: auto;
 }
 
 h2 {
@@ -789,7 +577,16 @@ footer {
     }
     
     .big-title {
-        font-size: 3.8rem;
+        font-size: 3rem;
+    }
+    
+    .site-header {
+        flex-direction: column;
+    }
+    
+    .logo-container {
+        margin-right: 0;
+        margin-bottom: 20px;
     }
 }
 
@@ -803,12 +600,7 @@ footer {
     }
     
     .big-title {
-        font-size: 3.2rem;
-    }
-    
-    .logo {
-        width: 100px;
-        height: 100px;
+        font-size: 2.8rem;
     }
 }
 
@@ -823,25 +615,25 @@ footer {
     }
     
     .big-title {
-        font-size: 2.8rem;
+        font-size: 2.5rem;
     }
     
     .subtitle {
-        font-size: 1.2rem;
+        font-size: 1.1rem;
     }
     
     body {
         padding: 15px;
     }
     
-    .hero-visual {
-        height: 250px;
+    .logo-container {
+        width: 100px;
     }
 }
 
 @media (max-width: 480px) {
     .big-title {
-        font-size: 2.4rem;
+        font-size: 2rem;
     }
     
     .column {
@@ -852,12 +644,7 @@ footer {
         font-size: 1.5rem;
     }
     
-    .logo {
+    .logo-container {
         width: 80px;
-        height: 80px;
-    }
-    
-    .hero-visual {
-        height: 200px;
     }
 }
