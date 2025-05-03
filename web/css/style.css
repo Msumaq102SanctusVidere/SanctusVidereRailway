@@ -9,11 +9,28 @@ body {
     font-family: 'Montserrat', sans-serif;
     line-height: 1.6;
     background-color: #0E1117;
-    background-image: linear-gradient(to bottom, #0E1117, #1a1f2c);
+    /* Add subtle gradient background */
+    background-image: linear-gradient(to bottom right, #0E1117, #1a1f2c);
     color: #FAFAFA;
     padding: 30px;
     overflow-x: hidden;
     position: relative;
+}
+
+/* Blueprint grid background overlay */
+body:after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+        linear-gradient(rgba(100, 181, 246, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 181, 246, 0.03) 1px, transparent 1px);
+    background-size: 20px 20px;
+    pointer-events: none;
+    z-index: -1;
 }
 
 .container {
@@ -22,13 +39,41 @@ body {
     position: relative;
 }
 
+/* Add subtle construction element accents to corners */
+.container:before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 150px;
+    height: 150px;
+    background-image: radial-gradient(rgba(100, 181, 246, 0.03) 2px, transparent 2px);
+    background-size: 15px 15px;
+    border-radius: 50%;
+    opacity: 0.7;
+    z-index: -1;
+}
+
+.container:after {
+    content: '';
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 180px;
+    height: 180px;
+    border: 1px solid rgba(100, 181, 246, 0.07);
+    border-radius: 50%;
+    opacity: 0.5;
+    z-index: -1;
+}
+
 /* --- Absolute Logo --- */
 .absolute-logo {
     position: fixed;
     top: 20px;
     left: 20px;
     z-index: 1000;
-    width: 225px; 
+    width: 200px; /* Increased from 80px to 200px */
 }
 
 .site-logo {
@@ -48,6 +93,23 @@ body {
     margin-bottom: 3rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    position: relative;
+}
+
+/* Enhanced header with blueprint elements */
+.site-header:after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 30%;
+    width: 40%;
+    height: 1px;
+    background: linear-gradient(90deg, 
+        transparent, 
+        rgba(100, 181, 246, 0.2), 
+        rgba(100, 181, 246, 0.5), 
+        rgba(100, 181, 246, 0.2), 
+        transparent);
 }
 
 /* --- Typography --- */
@@ -57,7 +119,8 @@ body {
     margin-bottom: 0.5rem;
     color: #FFFFFF;
     letter-spacing: 1px;
-    text-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    text-shadow: 0 0 10px rgba(100, 181, 246, 0.3);
+    position: relative;
 }
 
 .subtitle {
@@ -150,6 +213,25 @@ a:hover {
     z-index: -1;
 }
 
+/* Add subtle construction measurement lines */
+.main-content:after {
+    content: '';
+    position: absolute;
+    bottom: -15px;
+    left: 10%;
+    width: 80%;
+    height: 30px;
+    background-image: 
+        linear-gradient(90deg, rgba(100, 181, 246, 0.2), transparent 70%),
+        linear-gradient(90deg, rgba(100, 181, 246, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 181, 246, 0.02) 1px, transparent 1px);
+    background-size: 100% 1px, 50px 10px, 10px 10px;
+    background-position: 0 0, 0 15px, 0 15px;
+    background-repeat: no-repeat, repeat-x, repeat-x;
+    opacity: 0.4;
+    z-index: -1;
+}
+
 .column {
     flex: 1;
     min-width: 300px;
@@ -161,6 +243,8 @@ a:hover {
     border: 1px solid rgba(255, 255, 255, 0.05); /* Subtle border */
     position: relative;
     overflow: hidden;
+    /* Add subtle glass morphism effect */
+    backdrop-filter: blur(5px);
 }
 
 .column:hover {
@@ -168,19 +252,20 @@ a:hover {
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
 }
 
-/* Subtle blueprint corner accent */
+/* Enhanced blueprint corner accent */
 .column:before {
     content: '';
     position: absolute;
     top: 0;
     right: 0;
-    width: 80px;
-    height: 80px;
-    background-image: linear-gradient(#64B5F6 1px, transparent 1px), 
-                      linear-gradient(90deg, #64B5F6 1px, transparent 1px);
+    width: 100px;
+    height: 100px;
+    background-image: 
+        linear-gradient(rgba(100, 181, 246, 0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 181, 246, 0.07) 1px, transparent 1px);
     background-size: 10px 10px;
-    opacity: 0.05;
-    border-radius: 0 12px 0 20px;
+    opacity: 0.7;
+    border-radius: 0 12px 0 30px;
 }
 
 .left-column {
@@ -278,6 +363,12 @@ a:hover {
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     position: relative;
     overflow: hidden;
+    /* Add subtle construction elements */
+    background-image: 
+        linear-gradient(135deg, rgba(45, 55, 72, 0.7), rgba(35, 45, 62, 0.7)),
+        linear-gradient(rgba(100, 181, 246, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 181, 246, 0.02) 1px, transparent 1px);
+    background-size: 100% 100%, 20px 20px, 20px 20px;
 }
 
 .feature-card:hover {
@@ -298,6 +389,12 @@ a:hover {
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.03);
     position: relative;
+    /* Add subtle construction elements */
+    background-image: 
+        linear-gradient(135deg, rgba(45, 55, 72, 0.7), rgba(35, 45, 62, 0.7)),
+        linear-gradient(rgba(100, 181, 246, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 181, 246, 0.02) 1px, transparent 1px);
+    background-size: 100% 100%, 20px 20px, 20px 20px;
 }
 
 .testimonial-card:after {
@@ -331,6 +428,12 @@ a:hover {
     padding: 30px; /* Increased from 20px */
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.05);
+    /* Add subtle construction elements */
+    background-image: 
+        linear-gradient(135deg, rgba(45, 55, 72, 0.7), rgba(35, 45, 62, 0.7)),
+        linear-gradient(rgba(100, 181, 246, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 181, 246, 0.02) 1px, transparent 1px);
+    background-size: 100% 100%, 20px 20px, 20px 20px;
 }
 
 .form-group {
@@ -483,6 +586,12 @@ textarea {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.05);
     position: relative;
+    /* Add subtle construction elements */
+    background-image: 
+        linear-gradient(135deg, #1E1E1E, #2D3748),
+        linear-gradient(rgba(100, 181, 246, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 181, 246, 0.02) 1px, transparent 1px);
+    background-size: 100% 100%, 20px 20px, 20px 20px;
 }
 
 .review-form:before {
@@ -565,6 +674,98 @@ footer {
     color: #64B5F6; /* Blue accent */
 }
 
+/* --- Create Account Page Styles --- */
+.center-form {
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.form-panel {
+    background: linear-gradient(135deg, rgba(45, 55, 72, 0.7), rgba(35, 45, 62, 0.7));
+    border-radius: 10px;
+    padding: 40px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    /* Add subtle construction elements */
+    background-image: 
+        linear-gradient(135deg, rgba(45, 55, 72, 0.7), rgba(35, 45, 62, 0.7)),
+        linear-gradient(rgba(100, 181, 246, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 181, 246, 0.02) 1px, transparent 1px);
+    background-size: 100% 100%, 20px 20px, 20px 20px;
+}
+
+.terms-checkbox {
+    margin-top: 25px;
+    padding-left: 35px;
+    position: relative;
+}
+
+.checkbox-container {
+    position: relative;
+    padding-left: 35px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    user-select: none;
+    display: block;
+    line-height: 1.4;
+}
+
+.checkbox-container input {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+.checkmark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 25px;
+    width: 25px;
+    background-color: rgba(30, 30, 30, 0.7);
+    border: 1px solid #4A5568;
+    border-radius: 4px;
+}
+
+.checkbox-container:hover input ~ .checkmark {
+    background-color: rgba(40, 40, 40, 0.7);
+}
+
+.checkbox-container input:checked ~ .checkmark {
+    background-color: #64B5F6;
+    border-color: #64B5F6;
+}
+
+.checkmark:after {
+    content: "";
+    position: absolute;
+    display: none;
+}
+
+.checkbox-container input:checked ~ .checkmark:after {
+    display: block;
+}
+
+.checkbox-container .checkmark:after {
+    left: 9px;
+    top: 5px;
+    width: 5px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 3px 3px 0;
+    transform: rotate(45deg);
+}
+
+.login-link {
+    text-align: center;
+    margin-top: 30px;
+}
+
 /* --- Responsive Design --- */
 @media (max-width: 1200px) {
     .main-content {
@@ -580,7 +781,7 @@ footer {
     }
     
     .absolute-logo {
-        width: 70px;
+        width: 180px;
     }
 }
 
@@ -598,7 +799,7 @@ footer {
     }
     
     .absolute-logo {
-        width: 60px;
+        width: 160px;
     }
 }
 
@@ -625,7 +826,7 @@ footer {
     }
     
     .absolute-logo {
-        width: 50px;
+        width: 120px;
         top: 15px;
         left: 15px;
     }
@@ -645,7 +846,7 @@ footer {
     }
     
     .absolute-logo {
-        width: 40px;
+        width: 100px;
         top: 10px;
         left: 10px;
     }
