@@ -24,31 +24,29 @@ body {
 /* --- Header & Logo --- */
 .site-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 3rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    position: relative;
 }
 
 .logo-container {
-    width: 120px;
-    margin-right: 30px;
+    width: 60px; /* Much smaller logo */
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 10;
 }
 
 .site-logo {
     width: 100%;
     height: auto;
     display: block;
-    transition: transform 0.3s ease;
 }
 
-.site-logo:hover {
-    transform: scale(1.05);
-}
-
-.header-title {
-    flex: 1;
+.header-content {
+    width: 100%;
     text-align: center;
+    padding-top: 20px;
 }
 
 /* --- Typography --- */
