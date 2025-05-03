@@ -13,6 +13,7 @@ body {
     color: #FAFAFA;
     padding: 30px;
     overflow-x: hidden;
+    position: relative;
 }
 
 .container {
@@ -21,32 +22,32 @@ body {
     position: relative;
 }
 
-/* --- Header & Logo --- */
-.site-header {
-    display: flex;
-    align-items: flex-start;
-    margin-bottom: 3rem;
-    position: relative;
-}
-
-.logo-container {
-    width: 60px; /* Much smaller logo */
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 10;
+/* --- Absolute Logo --- */
+.absolute-logo {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+    width: 80px; /* Half the size of the original */
 }
 
 .site-logo {
     width: 100%;
     height: auto;
     display: block;
+    transition: transform 0.3s ease;
 }
 
-.header-content {
-    width: 100%;
+.site-logo:hover {
+    transform: scale(1.05);
+}
+
+/* --- Header --- */
+.site-header {
     text-align: center;
-    padding-top: 20px;
+    margin-bottom: 3rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 /* --- Typography --- */
@@ -578,13 +579,8 @@ footer {
         font-size: 3rem;
     }
     
-    .site-header {
-        flex-direction: column;
-    }
-    
-    .logo-container {
-        margin-right: 0;
-        margin-bottom: 20px;
+    .absolute-logo {
+        width: 70px;
     }
 }
 
@@ -599,6 +595,10 @@ footer {
     
     .big-title {
         font-size: 2.8rem;
+    }
+    
+    .absolute-logo {
+        width: 60px;
     }
 }
 
@@ -624,8 +624,10 @@ footer {
         padding: 15px;
     }
     
-    .logo-container {
-        width: 100px;
+    .absolute-logo {
+        width: 50px;
+        top: 15px;
+        left: 15px;
     }
 }
 
@@ -642,7 +644,9 @@ footer {
         font-size: 1.5rem;
     }
     
-    .logo-container {
-        width: 80px;
+    .absolute-logo {
+        width: 40px;
+        top: 10px;
+        left: 10px;
     }
 }
