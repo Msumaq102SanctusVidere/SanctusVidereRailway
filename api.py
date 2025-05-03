@@ -211,12 +211,15 @@ def process_analysis(job_id, query, drawings, use_cache):
         update_job_status(job_id, "processing", 10, "initializing", 
                          message="Starting analysis")
         
-        # Format query with drawings prefix (just like in GUI)
-        formatted_query = f"[DRAWINGS:{','.join(drawings)}] {query}"
-        logger.info(f"Processing query: {formatted_query}")
+        # REMOVE THIS LINE:
+        # formatted_query = f"[DRAWINGS:{','.join(drawings)}] {query}"
         
-        # Call analyze_query directly (no reimplementation)
-        response = analyzer.analyze_query(formatted_query, use_cache=use_cache)
+        logger.info(f"Processing query with drawings {drawings}: {query}")
+        
+        # CHANGE THIS LINE TO:
+        # Call analyze_query directly with explicit drawings parameter
+        from construction_drawing_analyzer_rev2_wow_rev6 import extract_drawings_from_query
+        response = analyzer.analyze_query(query, use_cache=use_cache, specified_drawings=drawings)
         
         # Complete the job
         update_job_status(job_id, "completed", 100, "complete", 
