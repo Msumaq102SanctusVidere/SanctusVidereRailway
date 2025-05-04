@@ -59,6 +59,33 @@ except Exception as e:
     logger.error(f"Failed to import construction_drawing_analyzer_rev2_wow_rev6: {e}")
     ConstructionAnalyzer, Config, DrawingManager = None, None, None
 
+# Function to patch the ConstructionAnalyzer to respect selected drawings
+def patch_analyzer():
+    """Monkey patch the ConstructionAnalyzer to respect selected drawings"""
+    if not ConstructionAnalyzer:
+        logger.error("Cannot patch analyzer: ConstructionAnalyzer not available")
+        return
+    
+    # Store original method
+    original_identify_relevant_drawings = ConstructionAnalyzer.identify_relevant_drawings
+    
+    def patched_identify_relevant_drawings(self, query):
+        if query.startswith("[DRAWINGS:"):
+            end_bracket = query.find("]")
+            if end_bracket > 0:
+                drawings_str = query[10:end_bracket]
+                selected_drawings = [d.strip() for d in drawings_str.split(",")]
+                self._original_query = query[end_bracket + 1:].strip()
+                available_drawings = self.drawing_manager.get_available_drawings()
+                filtered_drawings = [d for d in selected_drawings if d in available_drawings]
+                logger.info(f"Using selected drawings: {filtered_drawings}")
+                return filtered_drawings
+        return original_identify_relevant_drawings(self, query)
+    
+    # Apply the patch
+    ConstructionAnalyzer.identify_relevant_drawings = patched_identify_relevant_drawings
+    logger.info("Patched ConstructionAnalyzer to respect drawing selections")
+
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -86,6 +113,8 @@ if ConstructionAnalyzer and Config:
     try:
         analyzer = ConstructionAnalyzer()
         logger.info("Created ConstructionAnalyzer instance")
+        # Apply the patch to make sure drawing selection works
+        patch_analyzer()
     except Exception as e:
         logger.error(f"Failed to create ConstructionAnalyzer: {e}")
 
@@ -215,7 +244,6 @@ def process_analysis(job_id, query, drawings, use_cache):
     """Process a drawing analysis query using ConstructionAnalyzer directly"""
     try:
         # Check if job has been manually stopped by an explicit API call
-        # Only explicit stops will set is_running to False
         if job_id in jobs and jobs[job_id].get("status") == "stopped":
             logger.info(f"Job {job_id} was manually stopped before processing started")
             return False
