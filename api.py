@@ -131,6 +131,20 @@ jobs = {}
 # Dictionary to track active analysis threads
 active_analysis_threads = {}
 
+# Helper function to refresh DrawingManager
+def refresh_drawing_manager():
+    """Re-initialize the DrawingManager to refresh its internal state"""
+    global drawing_manager
+    if DrawingManager and drawing_manager:
+        try:
+            drawing_manager = DrawingManager(OUTPUT_DIR)
+            logger.info("Re-initialized DrawingManager to refresh available drawings")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to refresh DrawingManager: {e}")
+            return False
+    return False
+
 def allowed_file(filename):
     """Check if filename has an allowed extension"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -231,6 +245,12 @@ def process_pdf_file(pdf_path, job_id, original_filename):
                          message="Processing completed successfully")
         
         logger.info(f"Successfully processed {sheet_name}")
+        
+        # Now that the upload is complete and all JSON files are saved,
+        # refresh the DrawingManager to ensure it recognizes the new drawing
+        refresh_drawing_manager()
+        logger.info(f"Refreshed DrawingManager after completing processing of {sheet_name}")
+        
         return True
         
     except Exception as e:
@@ -476,6 +496,9 @@ def delete_drawing(drawing_name):
         import shutil
         shutil.rmtree(drawing_dir)
         logger.info(f"Deleted drawing: {drawing_name}")
+        
+        # Refresh DrawingManager to ensure it has updated list after deletion
+        refresh_drawing_manager()
         
         return jsonify({"success": True, "message": f"Drawing {drawing_name} deleted"})
         
