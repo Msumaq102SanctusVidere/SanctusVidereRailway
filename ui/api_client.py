@@ -46,16 +46,54 @@ def health_check():
 
 def get_drawings():
     """Fetch the list of available drawings you can analyze."""
-    if not API_BASE_URL: return [] # Return empty list if URL not set
+    if not API_BASE_URL: 
+        logger.error("Cannot get drawings: BACKEND_API_URL not configured.")
+        return [] # Return empty list if URL not set
+    
     url = f"{API_BASE_URL}/drawings"
     logger.info(f"Fetching drawings from: {url}")
+    
     try:
-        resp = requests.get(url, verify=False, timeout=60) # Added timeout
+        # Log the exact request we're making
+        logger.info(f"Making GET request to {url} with verify=False and timeout=60")
+        
+        # Make the API call
+        resp = requests.get(url, verify=False, timeout=60)
+        
+        # Log the raw response
+        logger.info(f"Received response from {url}, status code: {resp.status_code}")
+        logger.info(f"Response headers: {resp.headers}")
+        
+        # Log the raw response content for debugging
+        response_text = resp.text
+        logger.info(f"Raw response text: {response_text[:1000]}") # Log first 1000 chars in case response is large
+        
+        # Check for errors
         resp.raise_for_status()
-        data = resp.json()
-        return data.get("drawings", [])
+        
+        # Try to parse the JSON
+        try:
+            data = resp.json()
+            logger.info(f"Successfully parsed JSON response: {data}")
+            
+            # Extract the drawings list
+            drawings = data.get("drawings", [])
+            
+            # Log the number and content of drawings
+            logger.info(f"Retrieved {len(drawings)} drawings: {drawings}")
+            
+            return drawings
+        except Exception as json_err:
+            logger.error(f"Failed to parse response as JSON: {json_err}")
+            logger.error(f"Response text that failed parsing: {response_text[:500]}")
+            return []
+            
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to get drawings: {e}")
+        # Additional error details if available
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"Error response status code: {e.response.status_code}")
+            logger.error(f"Error response text: {e.response.text[:500]}")
         return [] # Return empty list on error
     except Exception as e:
         logger.error(f"Unexpected error getting drawings: {e}")
@@ -189,7 +227,7 @@ def get_job_logs(job_id, limit=100, since_id=None):
         return {"error": f"Unexpected error: {str(e)}", "logs": []}
 # --- END NEW FUNCTION ---
 
-# --- REVISED DELETE DRAWING FUNCTION ---
+# --- DELETE DRAWING FUNCTION ---
 def delete_drawing(drawing_name):
     """Request deletion of a specific drawing file from the backend."""
     if not API_BASE_URL:
@@ -252,4 +290,4 @@ def delete_drawing(drawing_name):
         logger.error(f"Unexpected error in delete_drawing for '{drawing_name}': {e}", exc_info=True)
         # Even if there's an exception, return success to allow UI refresh
         return {"success": True, "message": f"Drawing deletion process completed with status: error occurred"}
-# --- END REVISED DELETE FUNCTION ---
+# --- END DELETE FUNCTION ---
