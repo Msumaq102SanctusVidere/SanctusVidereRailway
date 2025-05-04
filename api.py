@@ -134,16 +134,26 @@ active_analysis_threads = {}
 # Helper function to refresh DrawingManager
 def refresh_drawing_manager():
     """Re-initialize the DrawingManager to refresh its internal state"""
-    global drawing_manager
-    if DrawingManager and drawing_manager:
-        try:
-            drawing_manager = DrawingManager(OUTPUT_DIR)
-            logger.info("Re-initialized DrawingManager to refresh available drawings")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to refresh DrawingManager: {e}")
-            return False
-    return False
+    global drawing_manager, analyzer
+    
+    if not DrawingManager:
+        logger.error("Cannot refresh drawing manager: DrawingManager not available")
+        return False
+    
+    try:
+        # Re-initialize the global DrawingManager
+        drawing_manager = DrawingManager(OUTPUT_DIR)
+        logger.info("Re-initialized DrawingManager to refresh available drawings")
+        
+        # Update the analyzer's DrawingManager reference to point to the new one
+        if analyzer:
+            analyzer.drawing_manager = drawing_manager
+            logger.info("Updated analyzer's DrawingManager reference")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Failed to refresh DrawingManager: {e}")
+        return False
 
 def allowed_file(filename):
     """Check if filename has an allowed extension"""
@@ -497,7 +507,7 @@ def delete_drawing(drawing_name):
         shutil.rmtree(drawing_dir)
         logger.info(f"Deleted drawing: {drawing_name}")
         
-        # Refresh DrawingManager to ensure it has updated list after deletion
+        # Refresh DrawingManager and update analyzer's reference
         refresh_drawing_manager()
         
         return jsonify({"success": True, "message": f"Drawing {drawing_name} deleted"})
