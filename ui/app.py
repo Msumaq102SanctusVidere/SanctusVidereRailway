@@ -7,6 +7,7 @@ import sys
 import os
 import re
 import json
+import requests
 from api_client import (
     health_check,
     get_drawings,
@@ -36,6 +37,17 @@ def clear_cache():
         return response.json()
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
+        return {"error": str(e)}
+
+# --- Function to stop analysis ---
+def stop_analysis(job_id):
+    """Call the API to stop an analysis job"""
+    try:
+        api_url = os.environ.get('API_URL', 'http://localhost:5000')
+        response = requests.post(f"{api_url}/stop-analysis/{job_id}")
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error stopping analysis: {e}")
         return {"error": str(e)}
 
 # --- Session State Initialization ---
@@ -170,7 +182,7 @@ def integrated_upload_drawing():
                 # Extract status information
                 percent = job.get("progress", 0)
                 backend_status = job.get("status", "unknown")
-                current_phase = job.get("current_phase", "")
+                current_phase = job.get("phase", "")
                 messages = job.get("progress_messages", [])
                 
                 # Show status details
@@ -648,12 +660,30 @@ def main():
                 st.session_state.analysis_results = None
                 st.rerun()
     
-        # Stop analysis button
+        # Stop analysis button - UPDATED
         if st.session_state.current_job_id:
             if st.button("Stop Analysis"):  
-                st.session_state.current_job_id = None
-                st.info("Analysis stopped.")
-                st.rerun()
+                try:
+                    job_id = st.session_state.current_job_id
+                    # Call the API to actually stop the analysis
+                    api_url = os.environ.get('API_URL', 'http://localhost:5000')
+                    response = requests.post(f"{api_url}/stop-analysis/{job_id}")
+                    response_data = response.json()
+                    
+                    if response.status_code == 200 and response_data.get('success'):
+                        st.success("Analysis stopped successfully.")
+                    else:
+                        error_msg = response_data.get('error', response_data.get('message', 'Unknown error'))
+                        st.warning(f"Note: {error_msg}")
+                        
+                    # Clear the job ID from session state
+                    st.session_state.current_job_id = None
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error stopping analysis: {str(e)}")
+                    # Still clear the job ID to allow starting a new analysis
+                    st.session_state.current_job_id = None
+                    st.rerun()
     
         # Job status display - styled with border for better appearance
         if st.session_state.current_job_id:
