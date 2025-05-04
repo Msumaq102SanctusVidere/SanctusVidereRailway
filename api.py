@@ -99,7 +99,7 @@ if DrawingManager:
 # Simple job tracking (would use a database in production)
 jobs = {}
 
-# ADDED: Dictionary to track active analysis threads
+# Dictionary to track active analysis threads
 active_analysis_threads = {}
 
 def allowed_file(filename):
@@ -119,18 +119,17 @@ def update_job_status(job_id, status, progress=0, phase=None, result=None, error
             "result": None,
             "error": None,
             "progress_messages": [],
-            "is_running": True if status == "processing" else False  # ADDED: Track running state
+            "is_running": True  # Always start as running
         }
     
     jobs[job_id]["status"] = status
     jobs[job_id]["progress"] = progress
     jobs[job_id]["updated_at"] = time.time()
     
-    # ADDED: Update running state based on status
-    if status in ["completed", "failed", "stopped"]:
+    # Only update is_running flag if explicitly set to a stopped state
+    if status in ["completed", "failed"]:
         jobs[job_id]["is_running"] = False
-    elif status == "processing":
-        jobs[job_id]["is_running"] = True
+    # Don't change the is_running flag for "queued" or "processing" - let it stay as initially set
     
     if phase:
         jobs[job_id]["phase"] = phase
@@ -141,7 +140,7 @@ def update_job_status(job_id, status, progress=0, phase=None, result=None, error
     if message:
         jobs[job_id]["progress_messages"] = jobs[job_id].get("progress_messages", []) + [message]
     
-    logger.info(f"Updated job {job_id}: status={status}, progress={progress}, phase={phase}")
+    logger.info(f"Updated job {job_id}: status={status}, progress={progress}, phase={phase}, is_running={jobs[job_id]['is_running']}")
 
 def process_pdf_file(pdf_path, job_id, original_filename):
     """Process PDF file using the tile generator and tile analyzer directly"""
@@ -215,11 +214,10 @@ def process_pdf_file(pdf_path, job_id, original_filename):
 def process_analysis(job_id, query, drawings, use_cache):
     """Process a drawing analysis query using ConstructionAnalyzer directly"""
     try:
-        # ADDED: Check if job has been requested to stop
-        if job_id in jobs and not jobs[job_id].get("is_running", True):
-            logger.info(f"Job {job_id} was stopped before processing started")
-            update_job_status(job_id, "stopped", 0, "stopped", 
-                             message="Analysis stopped before processing")
+        # Check if job has been manually stopped by an explicit API call
+        # Only explicit stops will set is_running to False
+        if job_id in jobs and jobs[job_id].get("status") == "stopped":
+            logger.info(f"Job {job_id} was manually stopped before processing started")
             return False
 
         if not analyzer:
@@ -233,26 +231,18 @@ def process_analysis(job_id, query, drawings, use_cache):
         
         logger.info(f"Processing query with drawings {drawings}: {query}")
         
-        # ADDED: Periodic check for job stop requests
-        def should_continue():
-            """Check if the job should continue or has been stopped"""
-            return job_id in jobs and jobs[job_id].get("is_running", True)
-        
-        # NOTE: We can't interrupt the analyzer directly, but we can check before and after
-        # the call to analyze_query to handle stop requests as promptly as possible
-        
-        if not should_continue():
-            update_job_status(job_id, "stopped", 0, "stopped",
-                             message="Analysis stopped during initialization")
+        # Check if job has been manually stopped only if the status is explicitly "stopped"
+        if job_id in jobs and jobs[job_id].get("status") == "stopped":
+            logger.info(f"Job {job_id} was manually stopped during initialization")
             return False
         
         # Call analyze_query with the formatted query
         response = analyzer.analyze_query(formatted_query, use_cache=use_cache)
         
-        # Check again after analysis if we should continue
-        if not should_continue():
-            update_job_status(job_id, "stopped", 0, "stopped",
-                             message="Analysis stopped after completion but before finalization")
+        # Check again after analysis if we should continue,
+        # only if status is explicitly "stopped"
+        if job_id in jobs and jobs[job_id].get("status") == "stopped":
+            logger.info(f"Job {job_id} was manually stopped after completion but before finalization")
             return False
         
         # Complete the job
@@ -270,7 +260,7 @@ def process_analysis(job_id, query, drawings, use_cache):
                          message=f"Analysis failed: {str(e)}")
         return False
     finally:
-        # ADDED: Clean up thread tracking
+        # Clean up thread tracking
         if job_id in active_analysis_threads:
             del active_analysis_threads[job_id]
 
@@ -382,10 +372,13 @@ def analyze_drawings():
         
         use_cache = data.get('use_cache', True)
         
-        # Create job
+        # Create job - force is_running to True
         job_id = str(uuid.uuid4())
         update_job_status(job_id, "queued", 0, "queued", 
                          message=f"Queued analysis: {query[:50]}...")
+        
+        # Double check is_running is set to True and can't be misinterpreted
+        jobs[job_id]["is_running"] = True
         
         # Start processing in background thread
         thread = threading.Thread(
@@ -395,7 +388,7 @@ def analyze_drawings():
         thread.daemon = True
         thread.start()
         
-        # ADDED: Track the analysis thread
+        # Track the analysis thread
         active_analysis_threads[job_id] = thread
         
         return jsonify({"job_id": job_id})
@@ -404,7 +397,6 @@ def analyze_drawings():
         logger.error(f"Error starting analysis: {e}", exc_info=True)
         return jsonify({"error": f"Failed to start analysis: {str(e)}"}), 500
 
-# ADDED: New endpoint to stop a running analysis
 @app.route('/stop-analysis/<job_id>', methods=['POST'])
 def stop_analysis(job_id):
     """Stop a running analysis job"""
@@ -416,9 +408,14 @@ def stop_analysis(job_id):
     if job.get("status") in ["completed", "failed", "stopped"]:
         return jsonify({"message": f"Job {job_id} is already {job.get('status')}"})
     
-    # Mark the job as stopped
-    update_job_status(job_id, "stopped", job.get("progress", 0), "stopped", 
-                    message="Analysis stopped by user request")
+    # Mark the job as stopped - set both status and is_running flag
+    jobs[job_id]["status"] = "stopped"
+    jobs[job_id]["is_running"] = False
+    
+    # Add a message about the stop
+    if "progress_messages" not in jobs[job_id]:
+        jobs[job_id]["progress_messages"] = []
+    jobs[job_id]["progress_messages"].append("Analysis stopped by user request")
     
     logger.info(f"Stopped job {job_id} by user request")
     
