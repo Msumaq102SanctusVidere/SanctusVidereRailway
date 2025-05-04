@@ -7,6 +7,7 @@ import requests
 import logging # Import the logging library
 import os # Import os for env vars
 from urllib.parse import quote #<-- Import quote for URL encoding
+import re # Import re for pattern matching
 
 # --- Add Logging Setup ---
 # Configure logging to show messages from this client
@@ -188,17 +189,51 @@ def get_job_logs(job_id, limit=100, since_id=None):
         return {"error": f"Unexpected error: {str(e)}", "logs": []}
 # --- END NEW FUNCTION ---
 
-# --- DELETE DRAWING FUNCTION ---
+# --- REVISED DELETE DRAWING FUNCTION ---
 def delete_drawing(drawing_name):
     """Request deletion of a specific drawing file from the backend."""
     if not API_BASE_URL:
         logger.error("Cannot delete drawing: BACKEND_API_URL not configured.")
         return {"success": False, "error": "Backend URL not configured"}
 
-    # URL-encode the drawing name to handle spaces, slashes, etc., safely in the URL path
-    encoded_drawing_name = quote(drawing_name)
+    # First get the list of actual drawings from the backend to find the closest match
+    try:
+        available_drawings = get_drawings()
+        logger.info(f"Fetched {len(available_drawings)} drawings to find match for '{drawing_name}'")
+        
+        # Try to find an exact match first (case-sensitive)
+        if drawing_name in available_drawings:
+            logger.info(f"Found exact match for '{drawing_name}'")
+            actual_drawing_name = drawing_name
+        else:
+            # If no exact match, look for a case-insensitive match or similar name
+            # This covers cases where the UI name differs slightly from backend storage
+            for available_drawing in available_drawings:
+                # Case-insensitive comparison
+                if available_drawing.lower() == drawing_name.lower():
+                    logger.info(f"Found case-insensitive match: '{available_drawing}' for '{drawing_name}'")
+                    actual_drawing_name = available_drawing
+                    break
+                # Normalize comparison (remove common separators)
+                normalized_available = re.sub(r'[_\s-]', '', available_drawing.lower())
+                normalized_requested = re.sub(r'[_\s-]', '', drawing_name.lower())
+                if normalized_available == normalized_requested:
+                    logger.info(f"Found normalized match: '{available_drawing}' for '{drawing_name}'")
+                    actual_drawing_name = available_drawing
+                    break
+            else:
+                # No match found after trying case-insensitive and normalized approaches
+                logger.error(f"No matching drawing found for '{drawing_name}' in {available_drawings}")
+                return {"success": False, "error": f"Drawing {drawing_name} not found or cannot be matched"}
+    except Exception as e:
+        logger.error(f"Error while trying to find matching drawing: {e}")
+        # Fall back to using the original name if we can't fetch the list
+        actual_drawing_name = drawing_name
+
+    # URL-encode the actual drawing name to handle spaces, slashes, etc., safely in the URL path
+    encoded_drawing_name = quote(actual_drawing_name)
     url = f"{API_BASE_URL}/delete_drawing/{encoded_drawing_name}"
-    logger.info(f"Requesting deletion of drawing '{drawing_name}' via DELETE to: {url}")
+    logger.info(f"Requesting deletion of drawing '{actual_drawing_name}' (original request: '{drawing_name}') via DELETE to: {url}")
 
     try:
         # Use requests.delete method
@@ -217,21 +252,21 @@ def delete_drawing(drawing_name):
             logger.info("Successfully parsed delete response JSON.")
              # Assume response contains 'success' field based on the UI logic
             if not json_response.get("success", False):
-                 logger.warning(f"Deletion request for '{drawing_name}' returned success=false or missing: {json_response}")
+                 logger.warning(f"Deletion request for '{actual_drawing_name}' returned success=false or missing: {json_response}")
             return json_response
         except requests.exceptions.JSONDecodeError:
              # If the response was successful (2xx) but not JSON, maybe it's just a 204 No Content
              if 200 <= resp.status_code < 300:
-                  logger.warning(f"Deletion request for '{drawing_name}' succeeded (status {resp.status_code}) but returned non-JSON content. Assuming success.")
+                  logger.warning(f"Deletion request for '{actual_drawing_name}' succeeded (status {resp.status_code}) but returned non-JSON content. Assuming success.")
                   return {"success": True} # Assume success on 2xx non-JSON
              else:
                  # This case should technically be caught by raise_for_status, but for safety:
-                 logger.error(f"Deletion request for '{drawing_name}' failed with status {resp.status_code} and non-JSON response: {response_text}")
+                 logger.error(f"Deletion request for '{actual_drawing_name}' failed with status {resp.status_code} and non-JSON response: {response_text}")
                  return {"success": False, "error": f"Server returned status {resp.status_code}", "details": response_text}
 
     # --- Specific Error Handling ---
     except requests.exceptions.HTTPError as http_err:
-        logger.error(f"HTTP error during delete for '{drawing_name}': {http_err} - Status Code: {resp.status_code}")
+        logger.error(f"HTTP error during delete for '{actual_drawing_name}': {http_err} - Status Code: {resp.status_code}")
         logger.error(f"Response Body: {response_text}")
         # Try to parse error details from response if possible
         try:
@@ -240,16 +275,16 @@ def delete_drawing(drawing_name):
             error_details = response_text
         return {"success": False, "error": f"Server returned error: {resp.status_code}", "details": error_details}
     except requests.exceptions.Timeout:
-        logger.error(f"Request timed out deleting '{drawing_name}' from {url}")
+        logger.error(f"Request timed out deleting '{actual_drawing_name}' from {url}")
         return {"success": False, "error": "Request timed out"}
     except requests.exceptions.ConnectionError as conn_err:
-        logger.error(f"Connection error deleting '{drawing_name}' from {url}: {conn_err}", exc_info=True)
+        logger.error(f"Connection error deleting '{actual_drawing_name}' from {url}: {conn_err}", exc_info=True)
         return {"success": False, "error": f"Connection error: {str(conn_err)}"}
     except requests.exceptions.RequestException as req_err:
-        logger.error(f"Request failed during delete for '{drawing_name}': {req_err}", exc_info=True)
+        logger.error(f"Request failed during delete for '{actual_drawing_name}': {req_err}", exc_info=True)
         return {"success": False, "error": f"Network or request error: {str(req_err)}"}
     except Exception as e:
         # Catch any other unexpected errors
-        logger.error(f"Unexpected error in delete_drawing for '{drawing_name}': {e}", exc_info=True)
+        logger.error(f"Unexpected error in delete_drawing for '{actual_drawing_name}': {e}", exc_info=True)
         return {"success": False, "error": f"Client-side error during delete request: {str(e)}"}
-# --- END DELETE FUNCTION ---
+# --- END REVISED DELETE FUNCTION ---
