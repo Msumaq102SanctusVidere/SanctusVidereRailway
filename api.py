@@ -382,20 +382,8 @@ def analyze_drawings():
         
         use_cache = data.get('use_cache', True)
         
-        # Create the new job ID first
+        # Create job
         job_id = str(uuid.uuid4())
-        
-        # ADDED: Check for any EXISTING running jobs and stop them (excluding our new job)
-        running_jobs = [j_id for j_id, job in jobs.items() 
-                       if j_id != job_id and job.get("status") in ["processing", "queued"] and job.get("is_running", True)]
-        
-        for running_job_id in running_jobs:
-            # Mark job as stopped
-            update_job_status(running_job_id, "stopped", 0, "stopped", 
-                           message="Analysis stopped by new analysis request")
-            logger.info(f"Stopped job {running_job_id} due to new analysis request")
-        
-        # Now create our new job
         update_job_status(job_id, "queued", 0, "queued", 
                          message=f"Queued analysis: {query[:50]}...")
         
