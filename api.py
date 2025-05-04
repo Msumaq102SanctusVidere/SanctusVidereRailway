@@ -131,9 +131,6 @@ jobs = {}
 # Dictionary to track active analysis threads
 active_analysis_threads = {}
 
-# Flag to force drawing manager refresh after deletions
-drawing_manager_needs_refresh = False
-
 def allowed_file(filename):
     """Check if filename has an allowed extension"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -233,10 +230,6 @@ def process_pdf_file(pdf_path, job_id, original_filename):
                          result={"drawing_name": sheet_name},
                          message="Processing completed successfully")
         
-        # Set the flag to refresh drawing manager
-        global drawing_manager_needs_refresh
-        drawing_manager_needs_refresh = True
-        
         logger.info(f"Successfully processed {sheet_name}")
         return True
         
@@ -299,26 +292,6 @@ def process_analysis(job_id, query, drawings, use_cache):
         if job_id in active_analysis_threads:
             del active_analysis_threads[job_id]
 
-# --- Helper function to reload DrawingManager internal state ---
-def refresh_drawing_manager():
-    """Force the DrawingManager to refresh its internal state by scanning the output directory"""
-    global drawing_manager, drawing_manager_needs_refresh
-    
-    if not drawing_manager:
-        logger.error("Cannot refresh drawing manager: Drawing manager not available")
-        return False
-    
-    try:
-        # Re-initialize the drawing manager with the same output directory
-        # This forces it to rescan the directory for available drawings
-        drawing_manager = DrawingManager(OUTPUT_DIR)
-        logger.info("Re-initialized DrawingManager to refresh available drawings")
-        drawing_manager_needs_refresh = False
-        return True
-    except Exception as e:
-        logger.error(f"Failed to refresh DrawingManager: {e}")
-        return False
-
 # --- API Endpoints ---
 
 @app.route('/health', methods=['GET'])
@@ -352,18 +325,8 @@ def get_drawings():
         return jsonify({"error": "Drawing manager not available"}), 500
     
     try:
-        # Check if we need to refresh the drawing manager
-        global drawing_manager_needs_refresh
-        if drawing_manager_needs_refresh:
-            refresh_drawing_manager()
-            logger.info("Refreshed DrawingManager before returning drawings list")
-        
         # Direct call to drawing_manager's method
         drawings = drawing_manager.get_available_drawings()
-        
-        # Log the drawings we're returning for debugging
-        logger.info(f"Returning drawings list with {len(drawings)} items: {drawings}")
-        
         return jsonify({"drawings": drawings})
     except Exception as e:
         logger.error(f"Error listing drawings: {e}", exc_info=True)
@@ -513,13 +476,6 @@ def delete_drawing(drawing_name):
         import shutil
         shutil.rmtree(drawing_dir)
         logger.info(f"Deleted drawing: {drawing_name}")
-        
-        # Set flag to refresh drawing manager
-        global drawing_manager_needs_refresh
-        drawing_manager_needs_refresh = True
-        
-        # Force immediate refresh of DrawingManager
-        refresh_drawing_manager()
         
         return jsonify({"success": True, "message": f"Drawing {drawing_name} deleted"})
         
