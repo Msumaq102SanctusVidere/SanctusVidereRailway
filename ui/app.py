@@ -543,8 +543,15 @@ def main():
                 delete_count = 0
                 error_count = 0
                 
-                # Process each selected drawing
-                for drawing in list(st.session_state.selected_drawings):
+                # Save a copy of selected drawings to process
+                drawings_to_delete = list(st.session_state.selected_drawings)
+                
+                # Clear the selected drawings list immediately to avoid UI state issues
+                # This is the key fix: clearing selection before processing deletions
+                st.session_state.selected_drawings = []
+                
+                # Process each drawing from our saved copy
+                for drawing in drawings_to_delete:
                     try:
                         # Log before deletion attempt
                         logger.info(f"Attempting to delete drawing: {drawing}")
@@ -553,28 +560,35 @@ def main():
                         response = delete_drawing(drawing)
                         logger.info(f"Delete API response: {response}")
                         
-                        # Check if deletion was successful
+                        # Consider 404 errors as success for UI purposes
                         if response and response.get('success'):
-                            st.session_state.selected_drawings.remove(drawing)
                             delete_count += 1
+                            logger.info(f"Successfully deleted drawing: {drawing}")
                         else:
                             error_msg = response.get('error', 'Unknown error')
                             logger.error(f"API reported error deleting {drawing}: {error_msg}")
-                            st.error(f"Failed to delete {drawing}: {error_msg}")
-                            error_count += 1
+                            
+                            # Check if it's a 404 error (drawing not found)
+                            if "404" in str(error_msg) or "not found" in str(error_msg).lower():
+                                # Treat "not found" as success for UI purposes
+                                logger.info(f"Drawing {drawing} not found, treating as already deleted")
+                                delete_count += 1
+                            else:
+                                st.error(f"Failed to delete {drawing}: {error_msg}")
+                                error_count += 1
                     except Exception as e:
                         logger.error(f"Exception when deleting {drawing}: {e}")
                         st.error(f"Failed to delete {drawing}: {e}")
                         error_count += 1
                 
-                # Refresh the drawings list
+                # Refresh the drawings list to show current state
                 refresh_drawings()
                 
                 # Show summary message
                 if delete_count > 0:
-                    st.success(f"Successfully deleted {delete_count} drawings.")
+                    st.success(f"Successfully processed {delete_count} drawings.")
                 
-                # Force UI refresh
+                # Force UI refresh regardless of success/failure
                 st.rerun()
 
     # --- Middle Column: Query, Analysis Control & Status ---
@@ -647,8 +661,6 @@ def main():
                 # Simply clear the results
                 st.session_state.analysis_results = None
                 st.rerun()
-    
-        # Stop Analysis button has been removed
     
         # Job status display - styled with border for better appearance
         if st.session_state.current_job_id:
