@@ -62,8 +62,10 @@ function setupLoginForm() {
                 } 
                 // Test user case
                 else if (email === 'test@example.com' && password === 'testuser123') {
-                    // Redirect test user to fresh AI system
-                    window.location.href = 'https://ui-production-b574.up.railway.app?user=new';
+                    // Store a flag to identify test user
+                    localStorage.setItem('isTestUser', 'true');
+                    // Redirect test user to fresh AI system - Force clear URL cache
+                    window.location.href = 'https://ui-production-b574.up.railway.app?user=new&t=' + Date.now();
                 }
                 else {
                     // Regular users get normal URL for now
@@ -212,14 +214,15 @@ function setupNavigationButtons() {
             const userToken = localStorage.getItem('userToken');
             const userName = localStorage.getItem('userName');
             const isAdmin = localStorage.getItem('isAdmin');
+            const isTestUser = localStorage.getItem('isTestUser') === 'true';
             
             // Create URL with auth parameters
             let dashboardUrl = this.getAttribute('href');
             dashboardUrl += dashboardUrl.includes('?') ? '&' : '?';
             
             // Special handling for test user
-            if (userName === 'test') {
-                dashboardUrl += `token=${userToken}&user=new`;
+            if (isTestUser || userName === 'test') {
+                dashboardUrl += `token=${userToken}&user=new&t=${Date.now()}`;
             } else {
                 dashboardUrl += `token=${userToken}&user=${userName}`;
             }
@@ -242,6 +245,7 @@ function setupNavigationButtons() {
             localStorage.removeItem('userToken');
             localStorage.removeItem('userName');
             localStorage.removeItem('isAdmin');
+            localStorage.removeItem('isTestUser');
             
             // Update UI
             checkUserState();
