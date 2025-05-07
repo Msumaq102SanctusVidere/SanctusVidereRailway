@@ -138,9 +138,10 @@ def get_directions_content():
       - This flexibility allows you to start fresh with new projects
     
     ## Best Practices
-    1. Start with detailed questions with "Use cache" unchecked
-    2. For follow-up questions, keep "Use cache" checked for faster responses
-    3. When switching projects, clear the cache and delete unwanted drawings
+    1. Start with asking questions using one drawing only
+    2. Ask detailed questions about a specific topic such as doors and finishes with "Use cache" unchecked
+    3. Keep "Use cache" unchecked while asking different questions to build memory bank
+    4. When switching projects, clear the cache and delete unwanted drawings
     """
 
 # --- Helper to Refresh Drawings ---
