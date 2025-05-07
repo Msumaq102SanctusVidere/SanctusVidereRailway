@@ -37,17 +37,26 @@ def check_user_parameter():
             # Log that we're initializing a fresh workspace
             logger.info(f"Initializing fresh workspace for user type: {user_param}")
             
+            # Set the one-time flag to skip the next refresh
+            st.session_state["skip_next_refresh"] = True
+            # Safety timestamp to prevent the flag from getting stuck
+            st.session_state["skip_flag_timestamp"] = time.time()
+            
             # Clear any existing data
             if 'drawings' in st.session_state:
                 st.session_state.drawings = []
+                logger.info("Cleared drawings for fresh workspace")
             if 'selected_drawings' in st.session_state:
                 st.session_state.selected_drawings = []
+                logger.info("Cleared selected drawings for fresh workspace")
             if 'analysis_results' in st.session_state:
                 st.session_state.analysis_results = None
+                logger.info("Cleared analysis results for fresh workspace")
             
             # Clear cache for completely fresh experience
             try:
                 clear_cache()
+                logger.info("Cache cleared for fresh workspace")
             except Exception as e:
                 logger.error(f"Error clearing cache for fresh workspace: {e}")
                 
@@ -137,7 +146,20 @@ def get_directions_content():
 # --- Helper to Refresh Drawings ---
 def refresh_drawings():
     try:
-        # Force a clean fetch from API (no caching)
+        # Check if we should skip this refresh operation (one-time flag for fresh workspace)
+        if st.session_state.get("skip_next_refresh", False):
+            logger.info("Skipping refresh_drawings call for fresh workspace (one-time skip)")
+            # Reset the skip flag immediately to ensure future refreshes work normally
+            st.session_state["skip_next_refresh"] = False
+            return True
+            
+        # Safety check: if the skip flag is somehow stuck for more than 5 minutes, reset it
+        skip_timestamp = st.session_state.get("skip_flag_timestamp", 0)
+        if skip_timestamp and (time.time() - skip_timestamp > 300):  # 5 minutes
+            logger.warning("Skip refresh flag was stuck - resetting it")
+            st.session_state["skip_next_refresh"] = False
+        
+        # Normal operation - fetch drawings from API
         st.session_state.drawings = get_drawings()
         st.session_state.drawings_last_updated = time.time()
         logger.info(f"Refreshed drawings list: {len(st.session_state.drawings)} items")
