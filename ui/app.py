@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 def check_user_parameter():
     """Check if URL contains a user parameter to determine if fresh workspace is needed"""
     try:
-        # Get query parameters from URL
-        query_params = st.experimental_get_query_params()
-        user_param = query_params.get("user", [""])[0]
+        # Get query parameters from URL (using the newer method)
+        query_params = st.query_params
+        user_param = query_params.get("user", "")
         
         # If user parameter exists and is not admin, initialize a fresh workspace
         if user_param and user_param in ["new", "regular"]:
