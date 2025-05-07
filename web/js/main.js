@@ -216,7 +216,13 @@ function setupNavigationButtons() {
             // Create URL with auth parameters
             let dashboardUrl = this.getAttribute('href');
             dashboardUrl += dashboardUrl.includes('?') ? '&' : '?';
-            dashboardUrl += `token=${userToken}&user=${userName}`;
+            
+            // Special handling for test user
+            if (userName === 'test') {
+                dashboardUrl += `token=${userToken}&user=new`;
+            } else {
+                dashboardUrl += `token=${userToken}&user=${userName}`;
+            }
             
             // Add admin flag if present
             if (isAdmin === 'true') {
