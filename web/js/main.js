@@ -42,12 +42,9 @@ function setupLoginForm() {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             
-            // For demo/beta, use simple localStorage authentication
-            // In production, this would connect to your authentication API
-            
             // Simple validation
             if (email && password) {
-                // Create a demo token (in production this would come from your API)
+                // Create a demo token
                 const demoToken = 'demo-token-' + Date.now();
                 
                 // Store auth info in localStorage
@@ -56,6 +53,22 @@ function setupLoginForm() {
                 
                 // Update UI
                 checkUserState();
+                
+                // Check if admin access or test user
+                if (password === 'admin123') { // Your existing admin password
+                    localStorage.setItem('isAdmin', 'true');
+                    // Admin gets normal URL (existing setup)
+                    window.location.href = 'https://ui-production-b574.up.railway.app';
+                } 
+                // Test user case
+                else if (email === 'test@example.com' && password === 'testuser123') {
+                    // Redirect test user to fresh AI system
+                    window.location.href = 'https://ui-production-b574.up.railway.app?user=new';
+                }
+                else {
+                    // Regular users get normal URL for now
+                    window.location.href = 'https://ui-production-b574.up.railway.app';
+                }
             }
         });
     }
@@ -65,7 +78,7 @@ function setupLoginForm() {
     if (createAccountLink) {
         createAccountLink.addEventListener('click', function(e) {
             e.preventDefault();
-            alert('Account creation would be implemented here in the full version.');
+            alert('Account creation would be implemented here in the full version. For testing, use test@example.com with password testuser123.');
         });
     }
     
