@@ -24,6 +24,40 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- Check for user parameter in URL (for fresh AI system) ---
+def check_user_parameter():
+    """Check if URL contains a user parameter to determine if fresh workspace is needed"""
+    try:
+        # Get query parameters from URL
+        query_params = st.experimental_get_query_params()
+        user_param = query_params.get("user", [""])[0]
+        
+        # If user parameter exists and is not admin, initialize a fresh workspace
+        if user_param and user_param in ["new", "regular"]:
+            # Log that we're initializing a fresh workspace
+            logger.info(f"Initializing fresh workspace for user type: {user_param}")
+            
+            # Clear any existing data
+            if 'drawings' in st.session_state:
+                st.session_state.drawings = []
+            if 'selected_drawings' in st.session_state:
+                st.session_state.selected_drawings = []
+            if 'analysis_results' in st.session_state:
+                st.session_state.analysis_results = None
+            
+            # Clear cache for completely fresh experience
+            try:
+                clear_cache()
+            except Exception as e:
+                logger.error(f"Error clearing cache for fresh workspace: {e}")
+                
+            return True
+            
+        return False
+    except Exception as e:
+        logger.error(f"Error checking user parameter: {e}")
+        return False
+
 # --- Simple function to clear cache ---
 def clear_cache():
     """Call the API to clear the memory cache"""
@@ -430,6 +464,9 @@ def integrated_results_pane(result_text):
 # --- Main Application ---
 def main():
     st.set_page_config(page_title="Sanctus Videre 1.0", layout="wide")
+    
+    # Check for user parameter (for fresh workspace)
+    check_user_parameter()
     
     # Add custom CSS to make the title more prominent
     st.markdown("""
