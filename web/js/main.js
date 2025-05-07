@@ -64,8 +64,8 @@ function setupLoginForm() {
                 else if (email === 'test@example.com' && password === 'testuser123') {
                     // Store a flag to identify test user
                     localStorage.setItem('isTestUser', 'true');
-                    // Redirect test user to fresh AI system - Force clear URL cache
-                    window.location.href = 'https://ui-production-b574.up.railway.app?user=new&t=' + Date.now();
+                    // Redirect test user to Streamlit frontend with correct URL and fresh parameter
+                    window.location.href = 'https://web-production-044b.up.railway.app?user=new&t=' + Date.now();
                 }
                 else {
                     // Regular users get normal URL for now
@@ -216,24 +216,24 @@ function setupNavigationButtons() {
             const isAdmin = localStorage.getItem('isAdmin');
             const isTestUser = localStorage.getItem('isTestUser') === 'true';
             
-            // Create URL with auth parameters
-            let dashboardUrl = this.getAttribute('href');
-            dashboardUrl += dashboardUrl.includes('?') ? '&' : '?';
-            
             // Special handling for test user
             if (isTestUser || userName === 'test') {
-                dashboardUrl += `token=${userToken}&user=new&t=${Date.now()}`;
+                // Redirect to Streamlit frontend with fresh parameter
+                window.location.href = 'https://web-production-044b.up.railway.app?user=new&t=' + Date.now();
             } else {
+                // Create URL with auth parameters - use normal dashboard URL
+                let dashboardUrl = this.getAttribute('href');
+                dashboardUrl += dashboardUrl.includes('?') ? '&' : '?';
                 dashboardUrl += `token=${userToken}&user=${userName}`;
+                
+                // Add admin flag if present
+                if (isAdmin === 'true') {
+                    dashboardUrl += '&admin=true';
+                }
+                
+                // Navigate to dashboard
+                window.location.href = dashboardUrl;
             }
-            
-            // Add admin flag if present
-            if (isAdmin === 'true') {
-                dashboardUrl += '&admin=true';
-            }
-            
-            // Navigate to dashboard
-            window.location.href = dashboardUrl;
         });
     }
     
