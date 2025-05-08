@@ -306,26 +306,26 @@ a:hover {
     margin-bottom: 2.5rem;
 }
 
-/* YouTube Link Styling */
+/* YouTube Link Styling - Changed to yellow/gold */
 .youtube-link {
     display: block;
     text-align: center;
     margin: 10px auto 25px;
     padding: 8px;
-    background: rgba(255, 0, 0, 0.1);
+    background: rgba(255, 215, 0, 0.15); /* Changed from red to gold/yellow */
     border-radius: 6px;
     color: #FAFAFA;
     transition: all 0.3s ease;
 }
 
 .youtube-link:hover {
-    background: rgba(255, 0, 0, 0.2);
+    background: rgba(255, 215, 0, 0.25); /* Slightly brighter on hover */
     color: #FFFFFF;
     text-decoration: none;
 }
 
 .youtube-link i {
-    color: #FF0000;
+    color: #FFD700; /* Changed from red to gold */
     margin-right: 8px;
 }
 
