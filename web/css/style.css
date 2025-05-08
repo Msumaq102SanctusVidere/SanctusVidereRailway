@@ -34,10 +34,11 @@ body:after {
 }
 
 .container {
-    max-width: 1600px; /* Increased from 1400px to use more screen width */
-    margin: 0 auto 0 auto; /* Centered by default, but we'll shift it */
+    max-width: 1700px; /* Increased from 1600px to use even more screen width */
+    margin: 0 0 0 auto; /* Right-aligned instead of centered */
     position: relative;
-    padding-left: 120px; /* Added padding to make space for the fixed logo */
+    padding-left: 150px; /* Increased padding to shift content more to the right */
+    padding-right: 30px; /* Added right padding for balance */
 }
 
 /* Add subtle construction element accents to corners */
@@ -97,13 +98,13 @@ body:after {
     position: relative;
 }
 
-/* Enhanced header with blueprint elements */
+/* Enhanced header with blueprint elements and animated line */
 .site-header:after {
     content: '';
     position: absolute;
     bottom: -10px;
-    left: 30%;
-    width: 40%;
+    left: 0;
+    width: 100%;
     height: 1px;
     background: linear-gradient(90deg, 
         transparent, 
@@ -111,6 +112,19 @@ body:after {
         rgba(100, 181, 246, 0.5), 
         rgba(100, 181, 246, 0.2), 
         transparent);
+    z-index: 1;
+    animation: lightMovement 8s linear infinite;
+    background-size: 200% 100%;
+}
+
+/* Animation for the moving light effect */
+@keyframes lightMovement {
+    0% {
+        background-position: -100% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
 }
 
 /* --- Typography --- */
@@ -196,7 +210,7 @@ a:hover {
 .main-content {
     display: flex;
     flex-wrap: wrap;
-    gap: 40px; /* Increased from 20px */
+    gap: 45px; /* Increased from 40px to provide more separation between columns */
     margin-bottom: 3rem;
     justify-content: space-between;
     position: relative;
@@ -248,7 +262,7 @@ a:hover {
 
 /* Modified column flex values for new layout */
 .left-column {
-    flex: 2; /* Twice as wide as standard */
+    flex: 3; /* Increased from 2.5 to 3 - much wider than before */
     min-width: 300px;
     background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(20, 30, 45, 0.8));
 }
@@ -816,7 +830,11 @@ footer {
     
     /* Adjust column proportions for smaller screens */
     .left-column {
-        flex: 1.5; /* Less dramatic difference on smaller screens */
+        flex: 2; /* Less dramatic difference on smaller screens */
+    }
+    
+    .container {
+        padding-left: 120px;
     }
 }
 
@@ -839,7 +857,7 @@ footer {
     
     /* Adjust column proportions for even smaller screens */
     .left-column {
-        flex: 1.3; /* Even smaller difference */
+        flex: 1.5; /* Even smaller difference */
     }
     
     .container {
@@ -877,6 +895,7 @@ footer {
     
     .container {
         padding-left: 15px; /* Minimal padding on mobile */
+        padding-right: 15px;
     }
 }
 
