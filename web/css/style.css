@@ -352,6 +352,29 @@ a:hover {
     z-index: 1;
 }
 
+/* --- YouTube Link Styling --- */
+.youtube-link {
+    display: block;
+    text-align: center;
+    margin: 10px auto 25px;
+    padding: 8px;
+    background: rgba(255, 0, 0, 0.1);
+    border-radius: 6px;
+    color: #FAFAFA;
+    transition: all 0.3s ease;
+}
+
+.youtube-link:hover {
+    background: rgba(255, 0, 0, 0.2);
+    color: #FFFFFF;
+    text-decoration: none;
+}
+
+.youtube-link i {
+    color: #FF0000;
+    margin-right: 8px;
+}
+
 /* --- Feature Cards --- */
 .feature-card {
     background: linear-gradient(135deg, rgba(45, 55, 72, 0.7), rgba(35, 45, 62, 0.7));
