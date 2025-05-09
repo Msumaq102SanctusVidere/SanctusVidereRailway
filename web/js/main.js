@@ -12,10 +12,67 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Setup direct dashboard access
     setupDirectAccess();
+    
+    // Initialize Auth0 if enabled
+    initAuth0IfEnabled();
 });
+
+// Auth0 configuration - You'll update these values when setting up Auth0
+const AUTH0_CONFIG = {
+    domain: 'your-domain.auth0.com',
+    clientId: 'your-client-id',
+    redirectUri: window.location.origin,
+    audience: 'https://your-api-identifier',
+    responseType: 'token id_token',
+    scope: 'openid profile email'
+};
+
+// Flag to control which authentication method to use
+// Set this to true when you're ready to switch to Auth0
+let useAuth0 = localStorage.getItem('useAuth0') === 'true';
+
+// Auth0 client instance
+let auth0Client = null;
+
+// Predefined test user accounts
+const TEST_USERS = [
+    { email: 'test1@example.com', password: 'testuser123', name: 'Test User 1' },
+    { email: 'test2@example.com', password: 'testuser123', name: 'Test User 2' },
+    { email: 'test3@example.com', password: 'testuser123', name: 'Test User 3' },
+    { email: 'test4@example.com', password: 'testuser123', name: 'Test User 4' },
+    { email: 'test5@example.com', password: 'testuser123', name: 'Test User 5' },
+    { email: 'test6@example.com', password: 'testuser123', name: 'Test User 6' },
+    { email: 'test7@example.com', password: 'testuser123', name: 'Test User 7' },
+    { email: 'test8@example.com', password: 'testuser123', name: 'Test User 8' },
+    { email: 'test9@example.com', password: 'testuser123', name: 'Test User 9' },
+    { email: 'test10@example.com', password: 'testuser123', name: 'Test User 10' }
+];
+
+// Initialize Auth0 if enabled
+function initAuth0IfEnabled() {
+    if (!useAuth0) return; // Skip if not using Auth0
+    
+    // This will be implemented when you're ready to activate Auth0
+    // We'll load the Auth0 SDK and initialize it here
+    console.log("Auth0 would be initialized here when enabled");
+    
+    // Check if we're returning from an Auth0 redirect
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+        console.log("Auth0 redirect detected, would process tokens here");
+        // We'll handle the Auth0 callback here when implemented
+    }
+}
 
 // User state management
 function checkUserState() {
+    // For Auth0 (will be used later)
+    if (useAuth0) {
+        console.log("Would check Auth0 state here");
+        // We'll check Auth0 authentication state here when implemented
+        // For now, fall back to original implementation
+    }
+    
+    // Original implementation
     const userToken = localStorage.getItem('userToken');
     const userName = localStorage.getItem('userName');
     
@@ -31,6 +88,16 @@ function checkUserState() {
     }
 }
 
+// Check if an email is one of our test users
+function isTestUser(email) {
+    return TEST_USERS.some(user => user.email === email);
+}
+
+// Validate test user credentials
+function validateTestUser(email, password) {
+    return TEST_USERS.some(user => user.email === email && user.password === password);
+}
+
 // Login functionality
 function setupLoginForm() {
     const loginForm = document.getElementById('login');
@@ -38,39 +105,60 @@ function setupLoginForm() {
         loginForm.addEventListener('submit', function(e) {
             e.preventDefault();
             
+            // If using Auth0, handle differently
+            if (useAuth0) {
+                console.log("Would use Auth0 login here");
+                // We'll implement Auth0 login here when ready
+                // For now, fall back to original implementation
+            }
+            
+            // Original implementation
             // Get form values
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             
             // Simple validation
             if (email && password) {
-                // Create a demo token
-                const demoToken = 'demo-token-' + Date.now();
+                // Create a demo token with user identifier
+                const userId = email.split('@')[0];
+                const demoToken = `user-${userId}-${Date.now()}`;
                 
-                // Store auth info in localStorage
+                // Check if admin access
+                if (password === 'admin123') { 
+                    // Admin gets special privileges
+                    localStorage.setItem('isAdmin', 'true');
+                    localStorage.setItem('userToken', demoToken);
+                    localStorage.setItem('userName', userId);
+                    
+                    // Admin gets normal URL (existing setup without fresh workspace)
+                    window.location.href = 'https://ui-production-b574.up.railway.app';
+                    return;
+                }
+                
+                // Check if this is one of our test users
+                if (validateTestUser(email, password)) {
+                    // Store test user info
+                    localStorage.setItem('isTestUser', 'true');
+                    localStorage.setItem('userToken', demoToken);
+                    localStorage.setItem('userName', userId);
+                    
+                    // Update UI
+                    checkUserState();
+                    
+                    // Redirect test user to Streamlit frontend with fresh workspace
+                    window.location.href = `https://web-production-044b.up.railway.app?user=new&userid=${userId}&token=${demoToken}&t=${Date.now()}`;
+                    return;
+                }
+                
+                // Regular user login (future Auth0 integration)
                 localStorage.setItem('userToken', demoToken);
-                localStorage.setItem('userName', email.split('@')[0]);
+                localStorage.setItem('userName', userId);
                 
                 // Update UI
                 checkUserState();
                 
-                // Check if admin access or test user
-                if (password === 'admin123') { // Your existing admin password
-                    localStorage.setItem('isAdmin', 'true');
-                    // Admin gets normal URL (existing setup)
-                    window.location.href = 'https://ui-production-b574.up.railway.app';
-                } 
-                // Test user case
-                else if (email === 'test@example.com' && password === 'testuser123') {
-                    // Store a flag to identify test user
-                    localStorage.setItem('isTestUser', 'true');
-                    // Redirect test user to Streamlit frontend with correct URL and fresh parameter
-                    window.location.href = 'https://web-production-044b.up.railway.app?user=new&t=' + Date.now();
-                }
-                else {
-                    // Regular users get normal URL for now
-                    window.location.href = 'https://ui-production-b574.up.railway.app';
-                }
+                // Give regular users a fresh workspace too
+                window.location.href = `https://web-production-044b.up.railway.app?user=new&userid=${userId}&token=${demoToken}&t=${Date.now()}`;
             }
         });
     }
@@ -80,7 +168,17 @@ function setupLoginForm() {
     if (createAccountLink) {
         createAccountLink.addEventListener('click', function(e) {
             e.preventDefault();
-            alert('Account creation would be implemented here in the full version. For testing, use test@example.com with password testuser123.');
+            
+            // If using Auth0, handle differently
+            if (useAuth0) {
+                console.log("Would redirect to Auth0 signup here");
+                // We'll implement Auth0 signup here when ready
+                // For now, fall back to original implementation
+            }
+            
+            // Show test user information
+            const testUserInfo = TEST_USERS.map(user => `${user.email}: password = ${user.password}`).join('\n');
+            alert(`Account creation will be implemented with Auth0 in the full version.\n\nFor testing, you can use one of these test accounts:\n\n${testUserInfo}`);
         });
     }
     
@@ -210,29 +308,25 @@ function setupNavigationButtons() {
         dashboardButton.addEventListener('click', function(e) {
             e.preventDefault();
             
-            // Get user token
+            // If using Auth0, handle differently
+            if (useAuth0) {
+                console.log("Would use Auth0 tokens for navigation here");
+                // We'll implement Auth0 token usage here when ready
+                // For now, fall back to original implementation
+            }
+            
+            // Original implementation
+            // Get user info
             const userToken = localStorage.getItem('userToken');
             const userName = localStorage.getItem('userName');
-            const isAdmin = localStorage.getItem('isAdmin');
-            const isTestUser = localStorage.getItem('isTestUser') === 'true';
+            const isAdmin = localStorage.getItem('isAdmin') === 'true';
             
-            // Special handling for test user
-            if (isTestUser || userName === 'test') {
-                // Redirect to Streamlit frontend with fresh parameter
-                window.location.href = 'https://web-production-044b.up.railway.app?user=new&t=' + Date.now();
+            if (isAdmin) {
+                // Admin users go to admin dashboard
+                window.location.href = 'https://ui-production-b574.up.railway.app';
             } else {
-                // Create URL with auth parameters - use normal dashboard URL
-                let dashboardUrl = this.getAttribute('href');
-                dashboardUrl += dashboardUrl.includes('?') ? '&' : '?';
-                dashboardUrl += `token=${userToken}&user=${userName}`;
-                
-                // Add admin flag if present
-                if (isAdmin === 'true') {
-                    dashboardUrl += '&admin=true';
-                }
-                
-                // Navigate to dashboard
-                window.location.href = dashboardUrl;
+                // All other users (test and regular) get their own workspace
+                window.location.href = `https://web-production-044b.up.railway.app?user=new&userid=${userName}&token=${userToken}&t=${Date.now()}`;
             }
         });
     }
@@ -241,6 +335,14 @@ function setupNavigationButtons() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', function() {
+            // If using Auth0, handle differently
+            if (useAuth0) {
+                console.log("Would use Auth0 logout here");
+                // We'll implement Auth0 logout here when ready
+                // For now, fall back to original implementation
+            }
+            
+            // Original implementation
             // Clear auth data
             localStorage.removeItem('userToken');
             localStorage.removeItem('userName');
@@ -252,3 +354,15 @@ function setupNavigationButtons() {
         });
     }
 }
+
+// Toggle Auth0 functionality for testing (will be removed in production)
+function toggleAuth0() {
+    useAuth0 = !useAuth0;
+    localStorage.setItem('useAuth0', useAuth0);
+    alert(`Auth0 integration is now ${useAuth0 ? 'ENABLED' : 'DISABLED'}`);
+    window.location.reload();
+}
+
+// Add a hidden function to enable/disable Auth0 for testing
+// You can call this from the browser console with toggleAuth0()
+window.toggleAuth0 = toggleAuth0;
