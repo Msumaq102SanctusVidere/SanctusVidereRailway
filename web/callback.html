@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sanctus Videre - Authentication Callback</title>
+    <title>Sanctus Videre - Authentication</title>
     <style>
         body {
             font-family: 'Montserrat', sans-serif;
@@ -57,7 +57,6 @@
             padding: 10px;
             border-radius: 4px;
             margin-top: 1rem;
-            display: none;
         }
         
         button {
@@ -75,87 +74,113 @@
             background-color: #2d4b8a;
         }
     </style>
-    <!-- Auth0 SDK -->
-    <script src="https://cdn.auth0.com/js/auth0-spa-js/2.1.0/auth0-spa-js.production.js"></script>
 </head>
 <body>
     <div class="loading-container">
         <h1>Sanctus Videre</h1>
-        <div class="loading-spinner"></div>
-        <p id="status-message">Completing authentication, please wait...</p>
-        <div id="error-container" class="error-message"></div>
+        <div class="loading-spinner" id="spinner"></div>
+        <p id="status-message">Processing authentication...</p>
+        <div id="error-message" class="error-message" style="display: none;"></div>
         <button id="return-button" style="display: none;" onclick="window.location.href='/'">Return to Home</button>
     </div>
-    
+
     <script>
-        // Execute as soon as page loads
-        window.onload = async function() {
-            try {
-                console.log("Callback page loaded, processing authentication...");
-                
-                // Check if Auth0 SDK is loaded
-                if (typeof auth0 === 'undefined') {
-                    throw new Error("Auth0 SDK not loaded properly");
-                }
-                
-                // Create Auth0 client with the same config as main.js
-                const auth0Client = await auth0.createAuth0Client({
-                    domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
-                    client_id: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
-                    client_secret: 'v7jTmzE6fnPxuFyguFLjIBIMDiwDmEyCV-xXkIyIOuDTb5SHltLfU9h55CjOgauc',
-                    redirect_uri: 'https://sanctusvidere.com/callback.html',
-                    response_type: 'code',
-                    cacheLocation: 'localstorage'
-                });
-                
-                // Check if we have an authentication result to process
-                if (!window.location.search.includes('code=') && 
-                    !window.location.search.includes('error=') &&
-                    !window.location.hash.includes('access_token=')) {
-                    throw new Error("No authentication data found in URL");
-                }
-                
-                // Handle the authentication callback
-                await auth0Client.handleRedirectCallback();
-                console.log("Auth0 callback processed successfully");
-                
-                // Get user information after successful authentication
-                const isAuthenticated = await auth0Client.isAuthenticated();
-                
-                if (isAuthenticated) {
-                    console.log("Authentication successful!");
-                    
-                    // Get user info
-                    const user = await auth0Client.getUser();
-                    const token = await auth0Client.getTokenSilently();
-                    
-                    // Store in localStorage for use in main application
-                    localStorage.setItem('userToken', token);
-                    localStorage.setItem('userName', user.name || user.email.split('@')[0]);
-                    localStorage.setItem('userEmail', user.email);
-                    
-                    // Update status message
-                    document.getElementById('status-message').textContent = "Authentication successful! Redirecting...";
-                    
-                    // Redirect back to the main page after a short delay
-                    setTimeout(() => {
-                        window.location.href = '/';
-                    }, 1000);
-                } else {
-                    console.error("Authentication callback processed but user is not authenticated");
-                    throw new Error("Authentication failed");
-                }
-                
-            } catch (error) {
-                console.error('Error handling Auth0 callback:', error);
-                
-                // Show error message to user
-                document.getElementById('status-message').textContent = "Authentication Error";
-                document.getElementById('error-container').textContent = error.message || "There was a problem logging you in. Please try again.";
-                document.getElementById('error-container').style.display = "block";
-                document.getElementById('return-button').style.display = "block";
-                document.querySelector('.loading-spinner').style.display = "none";
+        // Auth0 configuration
+        const AUTH0_CONFIG = {
+            domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
+            clientId: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
+            clientSecret: 'v7jTmzE6fnPxuFyguFLjIBIMDiwDmEyCV-xXkIyIOuDTb5SHltLfU9h55CjOgauc',
+            redirectUri: 'https://sanctusvidere.com/callback-simple.html'
+        };
+        
+        // Function to get URL parameters
+        function getUrlParameter(name) {
+            name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+            const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+            const results = regex.exec(location.search);
+            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+        }
+        
+        // Function to show error
+        function showError(message) {
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('status-message').textContent = 'Authentication Error';
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('error-message').style.display = 'block';
+            document.getElementById('return-button').style.display = 'block';
+        }
+        
+        // Process the authentication when page loads
+        window.onload = function() {
+            // Check for authorization code
+            const code = getUrlParameter('code');
+            const error = getUrlParameter('error');
+            const errorDescription = getUrlParameter('error_description');
+            
+            if (error) {
+                // Show error from Auth0
+                showError(errorDescription || 'Authentication failed');
+                return;
             }
+            
+            if (!code) {
+                // No code parameter found
+                showError('No authentication code found in URL');
+                return;
+            }
+            
+            // Exchange code for token using fetch
+            const tokenUrl = `https://${AUTH0_CONFIG.domain}/oauth/token`;
+            const tokenData = {
+                grant_type: 'authorization_code',
+                client_id: AUTH0_CONFIG.clientId,
+                client_secret: AUTH0_CONFIG.clientSecret,
+                code: code,
+                redirect_uri: AUTH0_CONFIG.redirectUri
+            };
+            
+            // Get token from Auth0
+            fetch(tokenUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(tokenData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error_description || 'Failed to get access token');
+                }
+                
+                // Save tokens
+                localStorage.setItem('userToken', data.access_token);
+                
+                // Get user info
+                return fetch(`https://${AUTH0_CONFIG.domain}/userinfo`, {
+                    headers: {
+                        'Authorization': `Bearer ${data.access_token}`
+                    }
+                });
+            })
+            .then(response => response.json())
+            .then(user => {
+                // Save user info
+                localStorage.setItem('userName', user.name || user.email.split('@')[0]);
+                localStorage.setItem('userEmail', user.email);
+                
+                // Update status message
+                document.getElementById('status-message').textContent = 'Login successful! Redirecting...';
+                
+                // Redirect to home page
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            })
+            .catch(error => {
+                showError(error.message || 'Authentication failed');
+                console.error('Auth error:', error);
+            });
         };
     </script>
 </body>
