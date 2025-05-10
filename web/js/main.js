@@ -1,201 +1,40 @@
 // main.js - Core functionality for Sanctus Videre HTML service with Auth0 integration
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize Auth0 directly (no toggle)
-    initDirectAuth0();
-    
-    // Other event listeners will be set up after authentication state is checked
-    setupReviewForm();
-    setupDirectAccess();
-    
-    // Set up the new Auth0 login buttons
-    setupAuth0Buttons();
-    
-    // Keep the original login form functionality
-    setupLoginForm();
-    setupNavigationButtons();
-});
 
-// Auth0 configuration - Updated with your actual values
+// Auth0 configuration
 const AUTH0_CONFIG = {
     domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
     clientId: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
-    redirectUri: 'https://sanctusvidere.com/callback.html',
-    // audience parameter removed as it may cause issues
+    redirectUri: window.location.origin + '/callback.html',
     responseType: 'token id_token',
-    scope: 'openid profile email'
+    scope: 'openid profile email',
+    cacheLocation: 'localstorage'
 };
 
-// Auth0 client instance for direct login
-let directAuth0Client = null;
-
-// Initialize Auth0 directly (no toggle needed)
-async function initDirectAuth0() {
-    try {
-        console.log("Initializing direct Auth0 client...");
-        
-        // Check if auth0 is available as a global object
-        if (typeof auth0 === 'undefined') {
-            console.error("Auth0 SDK not loaded properly!");
-            return;
-        }
-        
-        // Create Auth0 client
-        directAuth0Client = await auth0.createAuth0Client({
-            domain: AUTH0_CONFIG.domain,
-            client_id: AUTH0_CONFIG.clientId,
-            redirect_uri: AUTH0_CONFIG.redirectUri,
-            cacheLocation: 'localstorage'
-        });
-        
-        // Check for authentication callback
-        if (window.location.search.includes('code=') || 
-            window.location.search.includes('error=') ||
-            window.location.hash.includes('access_token=')) {
-            
-            console.log("Auth0 callback detected, handling redirect");
-            
-            // Handle the redirect
-            await directAuth0Client.handleRedirectCallback();
-            
-            // Clear the URL
-            window.history.replaceState({}, document.title, '/');
-        }
-        
-        // Check if authenticated
-        const isAuthenticated = await directAuth0Client.isAuthenticated();
-        
-        if (isAuthenticated) {
-            console.log("User is authenticated with Auth0");
-            
-            // Get user info
-            const user = await directAuth0Client.getUser();
-            
-            // Store user info in localStorage for easy access
-            localStorage.setItem('userToken', await directAuth0Client.getTokenSilently());
-            localStorage.setItem('userName', user.name || user.email.split('@')[0]);
-            localStorage.setItem('userEmail', user.email);
-            
-            // Update UI
-            document.getElementById('login-form').style.display = 'none';
-            document.querySelector('.auth0-login-panel').style.display = 'none';
-            document.getElementById('dashboard-access').style.display = 'block';
-            document.getElementById('user-name').textContent = user.name || user.email.split('@')[0];
-        } else {
-            console.log("User is not authenticated with Auth0");
-        }
-        
-    } catch (error) {
-        console.error('Error initializing direct Auth0:', error);
-    }
-}
-
-// Setup the new Auth0 login buttons - FIXED VERSION
-function setupAuth0Buttons() {
-    // Main login button
-    const auth0LoginButton = document.getElementById('auth0-login-button');
-    if (auth0LoginButton) {
-        auth0LoginButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            console.log("Auth0 login button clicked");
-            
-            // Create a new Auth0 client directly when button is clicked
-            auth0
-                .createAuth0Client({
-                    domain: AUTH0_CONFIG.domain,
-                    client_id: AUTH0_CONFIG.clientId,
-                    redirect_uri: AUTH0_CONFIG.redirectUri
-                })
-                .then(client => {
-                    console.log("Auth0 client created successfully for login");
-                    return client.loginWithRedirect();
-                })
-                .catch(error => {
-                    console.error("Error during Auth0 login:", error);
-                    alert("Login error: " + error.message);
-                });
-        });
-    }
-    
-    // Google login button
-    const auth0GoogleButton = document.getElementById('auth0-google-login');
-    if (auth0GoogleButton) {
-        auth0GoogleButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            console.log("Google login button clicked");
-            
-            // Create a new Auth0 client directly when button is clicked
-            auth0
-                .createAuth0Client({
-                    domain: AUTH0_CONFIG.domain,
-                    client_id: AUTH0_CONFIG.clientId,
-                    redirect_uri: AUTH0_CONFIG.redirectUri
-                })
-                .then(client => {
-                    console.log("Auth0 client created successfully for Google login");
-                    return client.loginWithRedirect({
-                        connection: 'google-oauth2'
-                    });
-                })
-                .catch(error => {
-                    console.error("Error during Google login:", error);
-                    alert("Google login error: " + error.message);
-                });
-        });
-    }
-    
-    // Signup button
-    const auth0SignupButton = document.getElementById('auth0-signup-button');
-    if (auth0SignupButton) {
-        auth0SignupButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            console.log("Signup button clicked");
-            
-            // Create a new Auth0 client directly when button is clicked
-            auth0
-                .createAuth0Client({
-                    domain: AUTH0_CONFIG.domain,
-                    client_id: AUTH0_CONFIG.clientId,
-                    redirect_uri: AUTH0_CONFIG.redirectUri
-                })
-                .then(client => {
-                    console.log("Auth0 client created successfully for signup");
-                    return client.loginWithRedirect({
-                        screen_hint: 'signup'
-                    });
-                })
-                .catch(error => {
-                    console.error("Error during Auth0 signup:", error);
-                    alert("Signup error: " + error.message);
-                });
-        });
-    }
-}
-
-// Flag to control which authentication method to use (kept for backwards compatibility)
-// Set this to true to enable Auth0
-let useAuth0 = localStorage.getItem('useAuth0') === 'true';
-
-// Auth0 client instance (kept for backwards compatibility)
+// Global Auth0 client instance
 let auth0Client = null;
 
-// Initialize Auth0 if enabled (kept for backwards compatibility)
+// Initialize everything when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM loaded, initializing application...");
+    
+    // Initialize Auth0 first
+    initAuth0().then(() => {
+        // Set up the other components after Auth0 is initialized
+        setupReviewForm();
+        setupDirectAccess();
+        setupAuth0Buttons();
+    });
+});
+
+// Initialize Auth0
 async function initAuth0() {
     try {
-        // Only proceed if using Auth0
-        if (!useAuth0) {
-            console.log("Auth0 is disabled, using original authentication");
-            checkUserState();
-            setupLoginForm();
-            setupNavigationButtons();
-            return;
-        }
-        
-        console.log("Initializing Auth0...");
+        console.log("Initializing Auth0 client...");
         
         // Check if auth0 is available as a global object
         if (typeof auth0 === 'undefined') {
             console.error("Auth0 SDK not loaded properly!");
-            throw new Error("Auth0 SDK not available");
+            return;
         }
         
         // Create Auth0 client
@@ -203,7 +42,7 @@ async function initAuth0() {
             domain: AUTH0_CONFIG.domain,
             client_id: AUTH0_CONFIG.clientId,
             redirect_uri: AUTH0_CONFIG.redirectUri,
-            cacheLocation: 'localstorage'
+            cacheLocation: AUTH0_CONFIG.cacheLocation
         });
         
         // Check for authentication callback
@@ -234,232 +73,89 @@ async function initAuth0() {
             localStorage.setItem('userName', user.name || user.email.split('@')[0]);
             localStorage.setItem('userEmail', user.email);
             
-            // Update UI
-            document.getElementById('login-form').style.display = 'none';
+            // Update UI to show dashboard access
+            document.getElementById('login-panel').style.display = 'none';
             document.getElementById('dashboard-access').style.display = 'block';
             document.getElementById('user-name').textContent = user.name || user.email.split('@')[0];
         } else {
             console.log("User is not authenticated with Auth0");
             
-            // Show login form
-            document.getElementById('login-form').style.display = 'block';
+            // Show login panel
+            document.getElementById('login-panel').style.display = 'block';
             document.getElementById('dashboard-access').style.display = 'none';
         }
         
-        // Set up event listeners
-        setupLoginForm();
-        setupNavigationButtons();
-        
     } catch (error) {
         console.error('Error initializing Auth0:', error);
-        
-        // Fall back to original implementation
-        useAuth0 = false;
-        localStorage.setItem('useAuth0', 'false');
-        
-        checkUserState();
-        setupLoginForm();
-        setupNavigationButtons();
     }
 }
 
-// Original user state management (fallback if Auth0 is disabled)
-function checkUserState() {
-    // Original implementation
-    const userToken = localStorage.getItem('userToken');
-    const userName = localStorage.getItem('userName');
+// Setup Auth0 login buttons
+function setupAuth0Buttons() {
+    console.log("Setting up Auth0 buttons...");
     
-    if (userToken && userName) {
-        // User is logged in, show dashboard access
-        document.getElementById('login-form').style.display = 'none';
-        document.querySelector('.auth0-login-panel').style.display = 'none';
-        document.getElementById('dashboard-access').style.display = 'block';
-        document.getElementById('user-name').textContent = userName;
-    } else {
-        // User is not logged in, show login form
-        document.getElementById('login-form').style.display = 'block';
-        document.getElementById('dashboard-access').style.display = 'none';
-    }
-}
-
-// Predefined test user accounts (keep for backward compatibility)
-const TEST_USERS = [
-    { email: 'test1@example.com', password: 'testuser123', name: 'Test User 1' },
-    { email: 'test2@example.com', password: 'testuser123', name: 'Test User 2' },
-    { email: 'test3@example.com', password: 'testuser123', name: 'Test User 3' },
-    { email: 'test4@example.com', password: 'testuser123', name: 'Test User 4' },
-    { email: 'test5@example.com', password: 'testuser123', name: 'Test User 5' },
-    { email: 'test6@example.com', password: 'testuser123', name: 'Test User 6' },
-    { email: 'test7@example.com', password: 'testuser123', name: 'Test User 7' },
-    { email: 'test8@example.com', password: 'testuser123', name: 'Test User 8' },
-    { email: 'test9@example.com', password: 'testuser123', name: 'Test User 9' },
-    { email: 'test10@example.com', password: 'testuser123', name: 'Test User 10' }
-];
-
-// Validate test user credentials (for backward compatibility)
-function validateTestUser(email, password) {
-    return TEST_USERS.some(user => user.email === email && user.password === password);
-}
-
-// Login functionality (for backward compatibility)
-function setupLoginForm() {
-    const loginForm = document.getElementById('login');
-    if (loginForm) {
-        loginForm.addEventListener('submit', async function(e) {
+    // Main login button
+    const loginButton = document.getElementById('auth0-login-button');
+    if (loginButton) {
+        loginButton.addEventListener('click', async function(e) {
             e.preventDefault();
+            console.log("Auth0 login button clicked");
             
-            // If using Auth0, handle login with Auth0
-            if (useAuth0) {
-                try {
-                    console.log("Using Auth0 for login");
-                    
-                    // Redirect to Auth0 login page
-                    await auth0Client.loginWithRedirect({
-                        redirect_uri: AUTH0_CONFIG.redirectUri
-                    });
-                    
-                    // The page will redirect to Auth0, so code after this point won't execute
-                } catch (error) {
-                    console.error('Error during Auth0 login:', error);
-                    alert('Login error. Please try again.');
-                }
-                
-                return;
-            }
-            
-            // Original implementation (if Auth0 is disabled)
-            console.log("Using original login mechanism");
-            
-            // Get form values
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            
-            // Simple validation
-            if (email && password) {
-                // Create a demo token with user identifier
-                const userId = email.split('@')[0];
-                const demoToken = `user-${userId}-${Date.now()}`;
-                
-                // Check if admin access
-                if (password === 'admin123') { 
-                    // Admin gets special privileges
-                    localStorage.setItem('isAdmin', 'true');
-                    localStorage.setItem('userToken', demoToken);
-                    localStorage.setItem('userName', userId);
-                    
-                    // Admin gets normal URL (existing setup without fresh workspace)
-                    window.location.href = 'https://ui-production-b574.up.railway.app';
-                    return;
-                }
-                
-                // Check if this is one of our test users
-                if (validateTestUser(email, password)) {
-                    // Store test user info
-                    localStorage.setItem('isTestUser', 'true');
-                    localStorage.setItem('userToken', demoToken);
-                    localStorage.setItem('userName', userId);
-                    
-                    // Update UI
-                    checkUserState();
-                    
-                    // Redirect test user to Streamlit frontend with fresh workspace
-                    window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${demoToken}&t=${Date.now()}`;
-                    return;
-                }
-                
-                // Regular user login
-                localStorage.setItem('userToken', demoToken);
-                localStorage.setItem('userName', userId);
-                
-                // Update UI
-                checkUserState();
-                
-                // Give regular users a fresh workspace too
-                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${demoToken}&t=${Date.now()}`;
+            try {
+                await auth0Client.loginWithRedirect();
+            } catch (error) {
+                console.error("Error during Auth0 login:", error);
+                alert("Login error: " + error.message);
             }
         });
     }
     
-    // Account creation link
-    const createAccountLink = document.getElementById('create-account-link');
-    if (createAccountLink) {
-        createAccountLink.addEventListener('click', async function(e) {
+    // Google login button
+    const googleButton = document.getElementById('auth0-google-login');
+    if (googleButton) {
+        googleButton.addEventListener('click', async function(e) {
             e.preventDefault();
+            console.log("Google login button clicked");
             
-            // If using Auth0, redirect to signup page
-            if (useAuth0) {
-                try {
-                    console.log("Using Auth0 for signup");
-                    
-                    // Redirect to Auth0 signup page
-                    await auth0Client.loginWithRedirect({
-                        redirect_uri: AUTH0_CONFIG.redirectUri,
-                        screen_hint: 'signup'
-                    });
-                    
-                    // The page will redirect to Auth0, so code after this point won't execute
-                } catch (error) {
-                    console.error('Error during Auth0 signup:', error);
-                    alert('Signup error. Please try again.');
-                }
-                
-                return;
+            try {
+                await auth0Client.loginWithRedirect({
+                    connection: 'google-oauth2'
+                });
+            } catch (error) {
+                console.error("Error during Google login:", error);
+                alert("Google login error: " + error.message);
             }
-            
-            // Original implementation (if Auth0 is disabled)
-            // Show test user information
-            const testUserInfo = TEST_USERS.map(user => `${user.email}: password = ${user.password}`).join('\n');
-            alert(`Account creation will be implemented with Auth0 in the full version.\n\nFor testing, you can use one of these test accounts:\n\n${testUserInfo}`);
         });
     }
     
-    // Admin access link
-    const adminLink = document.getElementById('admin-link');
-    if (adminLink) {
-        adminLink.addEventListener('click', function(e) {
+    // Signup button
+    const signupButton = document.getElementById('auth0-signup-button');
+    if (signupButton) {
+        signupButton.addEventListener('click', async function(e) {
             e.preventDefault();
-            const adminCode = prompt('Enter admin access code:');
-            if (adminCode === 'admin123') { // Simple demo code
-                localStorage.setItem('isAdmin', 'true');
-                alert('Admin access granted. You now have access to all features.');
+            console.log("Signup button clicked");
+            
+            try {
+                await auth0Client.loginWithRedirect({
+                    screen_hint: 'signup'
+                });
+            } catch (error) {
+                console.error("Error during Auth0 signup:", error);
+                alert("Signup error: " + error.message);
             }
         });
     }
-}
-
-// Navigation buttons
-function setupNavigationButtons() {
-    // Dashboard button - add token to URL for Streamlit authentication
+    
+    // Dashboard button
     const dashboardButton = document.querySelector('.dashboard-button');
     if (dashboardButton) {
         dashboardButton.addEventListener('click', async function(e) {
             e.preventDefault();
             
-            // Check for direct Auth0 authentication first
-            if (directAuth0Client) {
-                try {
-                    const isAuthenticated = await directAuth0Client.isAuthenticated();
-                    
-                    if (isAuthenticated) {
-                        console.log("Using direct Auth0 token for dashboard access");
-                        
-                        // Get token and user info
-                        const token = await directAuth0Client.getTokenSilently();
-                        const user = await directAuth0Client.getUser();
-                        const userId = user.sub || user.email.split('@')[0];
-                        
-                        // Redirect to dashboard with token
-                        window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&auth0=true&t=${Date.now()}`;
-                        return;
-                    }
-                } catch (error) {
-                    console.error('Error checking direct Auth0 authentication:', error);
-                }
-            }
-            
-            // If using Auth0, use Auth0 token
-            if (useAuth0 && auth0Client) {
-                try {
+            try {
+                const isAuthenticated = await auth0Client.isAuthenticated();
+                
+                if (isAuthenticated) {
                     console.log("Using Auth0 token for dashboard access");
                     
                     // Get token and user info
@@ -469,28 +165,12 @@ function setupNavigationButtons() {
                     
                     // Redirect to dashboard with token
                     window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&auth0=true&t=${Date.now()}`;
-                } catch (error) {
-                    console.error('Error getting Auth0 token:', error);
-                    alert('Error accessing dashboard. Please try logging in again.');
+                } else {
+                    alert('You need to be logged in to access the dashboard.');
                 }
-                
-                return;
-            }
-            
-            // Original implementation
-            console.log("Using original token for dashboard access");
-            
-            // Get user info
-            const userToken = localStorage.getItem('userToken');
-            const userName = localStorage.getItem('userName');
-            const isAdmin = localStorage.getItem('isAdmin') === 'true';
-            
-            if (isAdmin) {
-                // Admin users go to admin dashboard
-                window.location.href = 'https://ui-production-b574.up.railway.app';
-            } else {
-                // All other users (test and regular) get their own workspace
-                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userName}&token=${userToken}&t=${Date.now()}`;
+            } catch (error) {
+                console.error('Error accessing dashboard:', error);
+                alert('Error accessing dashboard. Please try logging in again.');
             }
         });
     }
@@ -499,110 +179,37 @@ function setupNavigationButtons() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', async function() {
-            // Check for direct Auth0 client first
-            if (directAuth0Client) {
-                try {
-                    const isAuthenticated = await directAuth0Client.isAuthenticated();
-                    
-                    if (isAuthenticated) {
-                        console.log("Using direct Auth0 for logout");
-                        
-                        // Log out of Auth0
-                        await directAuth0Client.logout({
-                            returnTo: window.location.origin
-                        });
-                        
-                        // Clear local storage
-                        localStorage.removeItem('userToken');
-                        localStorage.removeItem('userName');
-                        localStorage.removeItem('userEmail');
-                        localStorage.removeItem('isAdmin');
-                        localStorage.removeItem('isTestUser');
-                        
-                        return;
-                    }
-                } catch (error) {
-                    console.error('Error during direct Auth0 logout:', error);
-                }
-            }
-            
-            // If using Auth0, use Auth0 logout
-            if (useAuth0 && auth0Client) {
-                try {
-                    console.log("Using Auth0 for logout");
-                    
-                    // Log out of Auth0
-                    await auth0Client.logout({
-                        returnTo: window.location.origin
-                    });
-                    
-                    // Clear local storage (Auth0 will also redirect the page)
-                    localStorage.removeItem('userToken');
-                    localStorage.removeItem('userName');
-                    localStorage.removeItem('userEmail');
-                    localStorage.removeItem('isAdmin');
-                    localStorage.removeItem('isTestUser');
-                } catch (error) {
-                    console.error('Error during Auth0 logout:', error);
-                    
-                    // Fall back to original logout
-                    localStorage.removeItem('userToken');
-                    localStorage.removeItem('userName');
-                    localStorage.removeItem('isAdmin');
-                    localStorage.removeItem('isTestUser');
-                    
-                    // Update UI
-                    checkUserState();
-                }
+            try {
+                console.log("Logout button clicked");
                 
-                return;
+                // Log out of Auth0
+                await auth0Client.logout({
+                    returnTo: window.location.origin
+                });
+                
+                // Clear local storage
+                localStorage.removeItem('userToken');
+                localStorage.removeItem('userName');
+                localStorage.removeItem('userEmail');
+                
+            } catch (error) {
+                console.error('Error during logout:', error);
+                
+                // Fallback logout - just clear localStorage and refresh
+                localStorage.removeItem('userToken');
+                localStorage.removeItem('userName');
+                localStorage.removeItem('userEmail');
+                
+                window.location.reload();
             }
-            
-            // Original implementation
-            console.log("Using original logout mechanism");
-            
-            // Clear auth data
-            localStorage.removeItem('userToken');
-            localStorage.removeItem('userName');
-            localStorage.removeItem('isAdmin');
-            localStorage.removeItem('isTestUser');
-            
-            // Update UI
-            checkUserState();
         });
-    }
-}
-
-// Direct dashboard access function - simplified approach
-function accessDashboard() {
-    const accessCode = prompt('Enter direct access code:');
-    if (accessCode === 'sanctus2025') {
-        window.location.href = 'https://app.sanctusvidere.com';
-    } else {
-        alert('Invalid access code.');
-    }
-}
-
-// Setup direct dashboard access link in footer
-function setupDirectAccess() {
-    const directAccessLink = document.getElementById('admin-access-direct');
-    console.log("Direct access link element:", directAccessLink);
-    
-    if (directAccessLink) {
-        directAccessLink.addEventListener('click', function(e) {
-            console.log("Direct access link clicked");
-            e.preventDefault();
-            
-            // Call the simpler function
-            accessDashboard();
-        });
-    } else {
-        console.log("Direct access link not found in the document");
     }
 }
 
 // Review system functionality
 function setupReviewForm() {
+    console.log("Setting up review form...");
+    
     // Show review form buttons
     const reviewButton = document.getElementById('review-button');
     const submitReviewButton = document.getElementById('submit-review-button');
@@ -677,14 +284,21 @@ function saveReview(rating, text) {
     localStorage.setItem('reviews', JSON.stringify(reviews));
 }
 
-// Toggle Auth0 functionality for testing (will be removed in production)
-function toggleAuth0() {
-    useAuth0 = !useAuth0;
-    localStorage.setItem('useAuth0', useAuth0.toString());
-    alert(`Auth0 integration is now ${useAuth0 ? 'ENABLED' : 'DISABLED'}`);
-    window.location.reload();
+// Direct dashboard access function (emergency backup access)
+function setupDirectAccess() {
+    console.log("Setting up direct access link...");
+    
+    const directAccessLink = document.getElementById('admin-access-direct');
+    if (directAccessLink) {
+        directAccessLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const accessCode = prompt('Enter direct access code:');
+            if (accessCode === 'sanctus2025') {
+                window.location.href = 'https://app.sanctusvidere.com';
+            } else {
+                alert('Invalid access code.');
+            }
+        });
+    }
 }
-
-// Add a hidden function to enable/disable Auth0 for testing
-// You can call this from the browser console with toggleAuth0()
-window.toggleAuth0 = toggleAuth0;
