@@ -18,25 +18,29 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 });
 
+
 // Initialize Auth0 client
 async function initializeAuth0() {
     try {
         // Config from auth_config.json - hardcoded for simplicity
         const config = {
             "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
-            "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU" 
+            "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
         };
         
         console.log("Creating Auth0 client with config:", config);
         
-        // Create the Auth0 client - UPDATED FOR V2 SDK
-        // Notice we removed "auth0." before createAuth0Client
+        // Create the Auth0 client with ALL required parameters
         auth0Client = await createAuth0Client({
             domain: config.domain,
             clientId: config.clientId,
             authorizationParams: {
-                redirect_uri: window.location.origin
-            }
+                redirect_uri: "https://sanctusvidere.com",
+                response_type: "code",
+                scope: "openid profile email"
+            },
+            cacheLocation: "localstorage",
+            useRefreshTokens: true
         });
         
         console.log("Auth0 client created successfully");
@@ -47,20 +51,22 @@ async function initializeAuth0() {
             
             console.log("Auth callback detected in URL, handling redirect...");
             
-            // Handle the redirect callback - UPDATED FOR V2 SDK
-            const result = await auth0Client.handleRedirectCallback();
-            
-            // Clear the URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-            
-            console.log("Logged in successfully!");
+            try {
+                const result = await auth0Client.handleRedirectCallback();
+                console.log("Redirect handled successfully:", result);
+                
+                // Clear the URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+                
+                console.log("Logged in successfully!");
+            } catch (callbackError) {
+                console.error("Error handling redirect:", callbackError);
+                throw callbackError;
+            }
         }
         
     } catch (err) {
         console.error("Error initializing Auth0:", err);
-        if (err.message) {
-            console.error("Error message:", err.message);
-        }
         throw err;
     }
 }
