@@ -11,25 +11,11 @@
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- REMOVE ASYNC from tracking.js to prevent script loading race conditions -->
+    <!-- Tracking script -->
     <script src="js/tracking.js"></script>
     
-    <!-- Auth0 SPA JS SDK - IMPORTANT: Load this first -->
+    <!-- Auth0 SPA JS SDK -->
     <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
-    
-    <!-- Test script to verify Auth0 SDK loaded properly -->
-    <script>
-        console.log("Auth0 script tag loaded");
-        console.log("createAuth0Client exists:", typeof createAuth0Client === 'function');
-        
-        // Add global error handler to catch script loading issues
-        window.addEventListener('error', function(event) {
-            console.error('Global error caught:', event.error);
-            if (event.filename && event.filename.includes('auth0')) {
-                console.error('Auth0 script error detected!');
-            }
-        });
-    </script>
     
     <!-- Your main JS - Load after Auth0 -->
     <script src="js/main.js"></script>
@@ -44,56 +30,149 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         
-        .social-login-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        
-        .social-login-button {
+        .primary-button {
+            background-color: #4285F4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 12px 20px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 10px;
-            border-radius: 4px;
-            border: none;
-            cursor: pointer;
-            font-weight: 500;
-            transition: background-color 0.3s;
-            color: #fff;
-            text-decoration: none;
         }
         
-        .social-login-button i {
-            margin-right: 10px;
-            font-size: 18px;
-        }
-        
-        .google-button {
-            background-color: #4285F4;
-        }
-        
-        .google-button:hover {
+        .primary-button:hover {
             background-color: #3367D6;
         }
         
-        .auth0-divider {
-            display: flex;
-            align-items: center;
-            margin: 15px 0;
-            color: #888;
+        .primary-button i {
+            margin-right: 10px;
         }
         
-        .auth0-divider::before, .auth0-divider::after {
-            content: "";
-            flex: 1;
-            border-bottom: 1px solid #444;
-        }
-        
-        .auth0-divider span {
-            padding: 0 10px;
+        .login-info {
+            color: #aaa;
             font-size: 14px;
+            text-align: center;
+            margin-top: 10px;
+        }
+        
+        .secondary-button {
+            background-color: transparent;
+            color: #4285F4;
+            border: 1px solid #4285F4;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            display: inline-block;
+            text-decoration: none;
+        }
+        
+        .secondary-button:hover {
+            background-color: rgba(66, 133, 244, 0.1);
+        }
+        
+        .secondary-button i {
+            margin-right: 8px;
+        }
+        
+        .text-button {
+            background-color: transparent;
+            color: #aaa;
+            border: none;
+            padding: 8px 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        
+        .text-button:hover {
+            color: white;
+        }
+        
+        .text-button i {
+            margin-right: 8px;
+        }
+        
+        /* Review form styles */
+        .review-form-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .review-form {
+            background-color: #1e2124;
+            border-radius: 8px;
+            padding: 30px;
+            width: 90%;
+            max-width: 500px;
+        }
+        
+        .review-form h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ddd;
+        }
+        
+        .star-rating {
+            display: flex;
+            flex-direction: row-reverse;
+            justify-content: flex-end;
+        }
+        
+        .star-rating input {
+            display: none;
+        }
+        
+        .star-rating label {
+            cursor: pointer;
+            font-size: 30px;
+            color: #444;
+            transition: color 0.3s;
+        }
+        
+        .star-rating label:hover,
+        .star-rating label:hover ~ label,
+        .star-rating input:checked ~ label {
+            color: #ffcc00;
+        }
+        
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border-radius: 4px;
+            background-color: #2a2d31;
+            border: 1px solid #444;
+            color: white;
+            resize: vertical;
+        }
+        
+        .form-buttons {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -178,48 +257,17 @@
                 </div>
             </div>
 
-            <!-- Right Column: Login and Dashboard Access -->
+            <!-- Right Column: Simplified Login Section -->
             <div class="column right-column">
-                <!-- Auth0 Login Section -->
+                <!-- Simplified Auth0 Login Panel -->
                 <div class="auth0-login-panel" id="login-panel">
-                    <h2><i class="fas fa-user-circle icon-header"></i> Account Access</h2>
-                    
-                    <!-- Social Login Buttons -->
-                    <div class="social-login-buttons">
-                        <button class="social-login-button google-button" id="auth0-google-login">
-                            <i class="fab fa-google"></i> Sign in with Google
-                        </button>
-                    </div>
-                    
-                    <div class="auth0-divider">
-                        <span>OR</span>
-                    </div>
+                    <h2><i class="fas fa-user-circle icon-header"></i> Dashboard Access</h2>
                     
                     <button class="button primary-button" id="auth0-login-button" style="width: 100%; margin-bottom: 10px;">
-                        <i class="fas fa-sign-in-alt"></i> Login
+                        <i class="fas fa-sign-in-alt"></i> Login / Create Account
                     </button>
                     
-                    <p class="create-account">
-                        New user? <a href="#" id="auth0-signup-button">Create an account</a>
-                    </p>
-                </div>
-                
-                <!-- Post-login dashboard access panel (hidden by default) -->
-                <div class="dashboard-panel" id="dashboard-access" style="display: none;">
-                    <h2>Welcome, <span id="user-name">User</span>!</h2>
-                    <p>You're now logged in to Sanctus Videre.</p>
-                    
-                    <a href="#" class="button primary-button dashboard-button">
-                        <i class="fas fa-tachometer-alt"></i> Go to Dashboard
-                    </a>
-                    
-                    <a href="#" class="button secondary-button" id="submit-review-button">
-                        <i class="fas fa-star"></i> Submit Review
-                    </a>
-                    
-                    <button class="button text-button" id="logout-button">
-                        <i class="fas fa-sign-out-alt"></i> Logout
-                    </button>
+                    <p class="login-info">Access our AI-powered drawing analysis dashboard</p>
                 </div>
             </div>
         </div>
@@ -260,65 +308,5 @@
             </div>
         </footer>
     </div>
-    
-    <!-- Additional auth0 test - place at the end of body -->
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log("DOM content loaded - final check");
-            console.log("createAuth0Client available:", typeof createAuth0Client === 'function');
-            
-            // Check if login button exists
-            const loginButton = document.getElementById('auth0-login-button');
-            console.log("Login button exists:", !!loginButton);
-            
-            // Add a manual test button
-            const testDiv = document.createElement('div');
-            testDiv.style.position = 'fixed';
-            testDiv.style.bottom = '10px';
-            testDiv.style.left = '10px';
-            testDiv.style.zIndex = '9999';
-            testDiv.style.background = '#333';
-            testDiv.style.padding = '5px';
-            testDiv.style.borderRadius = '3px';
-            testDiv.style.fontSize = '12px';
-            testDiv.style.display = 'none'; // Hidden by default
-            
-            const testButton = document.createElement('button');
-            testButton.textContent = 'Test Auth0';
-            testButton.style.padding = '5px 10px';
-            testButton.style.cursor = 'pointer';
-            
-            testButton.addEventListener('click', function() {
-                console.log("Testing Auth0 manually");
-                if (typeof createAuth0Client === 'function') {
-                    console.log("Auth0 SDK is available");
-                    try {
-                        createAuth0Client({
-                            domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
-                            clientId: 'BAXPcs4GZAZodDtErS0UxTmugyxbEcZU'
-                        }).then(client => {
-                            console.log("Auth0 client created successfully");
-                        }).catch(err => {
-                            console.error("Error creating Auth0 client:", err);
-                        });
-                    } catch (err) {
-                        console.error("Exception creating Auth0 client:", err);
-                    }
-                } else {
-                    console.error("Auth0 SDK is NOT available");
-                }
-            });
-            
-            testDiv.appendChild(testButton);
-            document.body.appendChild(testDiv);
-            
-            // Show test button with Alt+T
-            window.addEventListener('keydown', function(e) {
-                if (e.altKey && e.key === 't') {
-                    testDiv.style.display = testDiv.style.display === 'none' ? 'block' : 'none';
-                }
-            });
-        });
-    </script>
 </body>
 </html>
