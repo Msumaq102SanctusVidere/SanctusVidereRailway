@@ -1,31 +1,185 @@
 // main.js - Core functionality for Sanctus Videre HTML service with Auth0 integration
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize Auth0 first
-    initAuth0();
+    // Initialize Auth0 directly (no toggle)
+    initDirectAuth0();
     
     // Other event listeners will be set up after authentication state is checked
     setupReviewForm();
     setupDirectAccess();
+    
+    // Set up the new Auth0 login buttons
+    setupAuth0Buttons();
+    
+    // Keep the original login form functionality
+    setupLoginForm();
+    setupNavigationButtons();
 });
 
 // Auth0 configuration - Updated with your actual values
 const AUTH0_CONFIG = {
     domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
-    client_id: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
+    clientId: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
     redirectUri: 'https://sanctusvidere.com/callback.html',
-    audience: 'https://your-api-identifier', // Optional - only needed if using an API
+    // audience parameter removed as it may cause issues
     responseType: 'token id_token',
     scope: 'openid profile email'
 };
 
-// Flag to control which authentication method to use
+// Auth0 client instance for direct login
+let directAuth0Client = null;
+
+// Initialize Auth0 directly (no toggle needed)
+async function initDirectAuth0() {
+    try {
+        console.log("Initializing direct Auth0 client...");
+        
+        // Check if auth0 is available as a global object
+        if (typeof auth0 === 'undefined') {
+            console.error("Auth0 SDK not loaded properly!");
+            return;
+        }
+        
+        // Create Auth0 client
+        directAuth0Client = await auth0.createAuth0Client({
+            domain: AUTH0_CONFIG.domain,
+            client_id: AUTH0_CONFIG.clientId,
+            redirect_uri: AUTH0_CONFIG.redirectUri,
+            cacheLocation: 'localstorage'
+        });
+        
+        // Check for authentication callback
+        if (window.location.search.includes('code=') || 
+            window.location.search.includes('error=') ||
+            window.location.hash.includes('access_token=')) {
+            
+            console.log("Auth0 callback detected, handling redirect");
+            
+            // Handle the redirect
+            await directAuth0Client.handleRedirectCallback();
+            
+            // Clear the URL
+            window.history.replaceState({}, document.title, '/');
+        }
+        
+        // Check if authenticated
+        const isAuthenticated = await directAuth0Client.isAuthenticated();
+        
+        if (isAuthenticated) {
+            console.log("User is authenticated with Auth0");
+            
+            // Get user info
+            const user = await directAuth0Client.getUser();
+            
+            // Store user info in localStorage for easy access
+            localStorage.setItem('userToken', await directAuth0Client.getTokenSilently());
+            localStorage.setItem('userName', user.name || user.email.split('@')[0]);
+            localStorage.setItem('userEmail', user.email);
+            
+            // Update UI
+            document.getElementById('login-form').style.display = 'none';
+            document.querySelector('.auth0-login-panel').style.display = 'none';
+            document.getElementById('dashboard-access').style.display = 'block';
+            document.getElementById('user-name').textContent = user.name || user.email.split('@')[0];
+        } else {
+            console.log("User is not authenticated with Auth0");
+        }
+        
+    } catch (error) {
+        console.error('Error initializing direct Auth0:', error);
+    }
+}
+
+// Setup the new Auth0 login buttons
+function setupAuth0Buttons() {
+    // Main login button
+    const auth0LoginButton = document.getElementById('auth0-login-button');
+    if (auth0LoginButton) {
+        auth0LoginButton.addEventListener('click', async function(e) {
+            e.preventDefault();
+            
+            try {
+                console.log("Using direct Auth0 for login");
+                
+                if (!directAuth0Client) {
+                    console.error("Auth0 client not initialized");
+                    return;
+                }
+                
+                // Redirect to Auth0 login page
+                await directAuth0Client.loginWithRedirect({
+                    redirect_uri: AUTH0_CONFIG.redirectUri
+                });
+                
+            } catch (error) {
+                console.error('Error during direct Auth0 login:', error);
+                alert('Login error. Please try again.');
+            }
+        });
+    }
+    
+    // Google login button
+    const auth0GoogleButton = document.getElementById('auth0-google-login');
+    if (auth0GoogleButton) {
+        auth0GoogleButton.addEventListener('click', async function(e) {
+            e.preventDefault();
+            
+            try {
+                console.log("Using direct Auth0 for Google login");
+                
+                if (!directAuth0Client) {
+                    console.error("Auth0 client not initialized");
+                    return;
+                }
+                
+                // Redirect to Auth0 login page with Google as the connection
+                await directAuth0Client.loginWithRedirect({
+                    redirect_uri: AUTH0_CONFIG.redirectUri,
+                    connection: 'google-oauth2'
+                });
+                
+            } catch (error) {
+                console.error('Error during direct Auth0 Google login:', error);
+                alert('Google login error. Please try again.');
+            }
+        });
+    }
+    
+    // Signup button
+    const auth0SignupButton = document.getElementById('auth0-signup-button');
+    if (auth0SignupButton) {
+        auth0SignupButton.addEventListener('click', async function(e) {
+            e.preventDefault();
+            
+            try {
+                console.log("Using direct Auth0 for signup");
+                
+                if (!directAuth0Client) {
+                    console.error("Auth0 client not initialized");
+                    return;
+                }
+                
+                // Redirect to Auth0 signup page
+                await directAuth0Client.loginWithRedirect({
+                    redirect_uri: AUTH0_CONFIG.redirectUri,
+                    screen_hint: 'signup'
+                });
+                
+            } catch (error) {
+                console.error('Error during direct Auth0 signup:', error);
+                alert('Signup error. Please try again.');
+            }
+        });
+    }
+}
+
+// Flag to control which authentication method to use (kept for backwards compatibility)
 // Set this to true to enable Auth0
 let useAuth0 = localStorage.getItem('useAuth0') === 'true';
 
-// Auth0 client instance
+// Auth0 client instance (kept for backwards compatibility)
 let auth0Client = null;
 
-// Initialize Auth0
+// Initialize Auth0 if enabled (kept for backwards compatibility)
 async function initAuth0() {
     try {
         // Only proceed if using Auth0
@@ -48,9 +202,8 @@ async function initAuth0() {
         // Create Auth0 client
         auth0Client = await auth0.createAuth0Client({
             domain: AUTH0_CONFIG.domain,
-            clientId: AUTH0_CONFIG.clientId,
-            redirectUri: AUTH0_CONFIG.redirectUri,
-            audience: AUTH0_CONFIG.audience,
+            client_id: AUTH0_CONFIG.clientId,
+            redirect_uri: AUTH0_CONFIG.redirectUri,
             cacheLocation: 'localstorage'
         });
         
@@ -120,6 +273,7 @@ function checkUserState() {
     if (userToken && userName) {
         // User is logged in, show dashboard access
         document.getElementById('login-form').style.display = 'none';
+        document.querySelector('.auth0-login-panel').style.display = 'none';
         document.getElementById('dashboard-access').style.display = 'block';
         document.getElementById('user-name').textContent = userName;
     } else {
@@ -148,7 +302,7 @@ function validateTestUser(email, password) {
     return TEST_USERS.some(user => user.email === email && user.password === password);
 }
 
-// Login functionality
+// Login functionality (for backward compatibility)
 function setupLoginForm() {
     const loginForm = document.getElementById('login');
     if (loginForm) {
@@ -282,8 +436,30 @@ function setupNavigationButtons() {
         dashboardButton.addEventListener('click', async function(e) {
             e.preventDefault();
             
+            // Check for direct Auth0 authentication first
+            if (directAuth0Client) {
+                try {
+                    const isAuthenticated = await directAuth0Client.isAuthenticated();
+                    
+                    if (isAuthenticated) {
+                        console.log("Using direct Auth0 token for dashboard access");
+                        
+                        // Get token and user info
+                        const token = await directAuth0Client.getTokenSilently();
+                        const user = await directAuth0Client.getUser();
+                        const userId = user.sub || user.email.split('@')[0];
+                        
+                        // Redirect to dashboard with token
+                        window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&auth0=true&t=${Date.now()}`;
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Error checking direct Auth0 authentication:', error);
+                }
+            }
+            
             // If using Auth0, use Auth0 token
-            if (useAuth0) {
+            if (useAuth0 && auth0Client) {
                 try {
                     console.log("Using Auth0 token for dashboard access");
                     
@@ -324,8 +500,35 @@ function setupNavigationButtons() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', async function() {
+            // Check for direct Auth0 client first
+            if (directAuth0Client) {
+                try {
+                    const isAuthenticated = await directAuth0Client.isAuthenticated();
+                    
+                    if (isAuthenticated) {
+                        console.log("Using direct Auth0 for logout");
+                        
+                        // Log out of Auth0
+                        await directAuth0Client.logout({
+                            returnTo: window.location.origin
+                        });
+                        
+                        // Clear local storage
+                        localStorage.removeItem('userToken');
+                        localStorage.removeItem('userName');
+                        localStorage.removeItem('userEmail');
+                        localStorage.removeItem('isAdmin');
+                        localStorage.removeItem('isTestUser');
+                        
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Error during direct Auth0 logout:', error);
+                }
+            }
+            
             // If using Auth0, use Auth0 logout
-            if (useAuth0) {
+            if (useAuth0 && auth0Client) {
                 try {
                     console.log("Using Auth0 for logout");
                     
