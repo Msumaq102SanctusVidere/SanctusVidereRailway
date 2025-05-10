@@ -146,7 +146,7 @@ function setupLoginForm() {
                     checkUserState();
                     
                     // Redirect test user to Streamlit frontend with fresh workspace
-                    window.location.href = `https://web-production-044b.up.railway.app?user=new&userid=${userId}&token=${demoToken}&t=${Date.now()}`;
+                    window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${demoToken}&t=${Date.now()}`;
                     return;
                 }
                 
@@ -158,7 +158,7 @@ function setupLoginForm() {
                 checkUserState();
                 
                 // Give regular users a fresh workspace too
-                window.location.href = `https://web-production-044b.up.railway.app?user=new&userid=${userId}&token=${demoToken}&t=${Date.now()}`;
+                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${demoToken}&t=${Date.now()}`;
             }
         });
     }
@@ -200,7 +200,7 @@ function setupLoginForm() {
 function accessDashboard() {
     const accessCode = prompt('Enter direct access code:');
     if (accessCode === 'sanctus2025') {
-        window.location.href = 'https://web-production-044b.up.railway.app';
+        window.location.href = 'https://app.sanctusvidere.com';
     } else {
         alert('Invalid access code.');
     }
@@ -326,7 +326,7 @@ function setupNavigationButtons() {
                 window.location.href = 'https://ui-production-b574.up.railway.app';
             } else {
                 // All other users (test and regular) get their own workspace
-                window.location.href = `https://web-production-044b.up.railway.app?user=new&userid=${userName}&token=${userToken}&t=${Date.now()}`;
+                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userName}&token=${userToken}&t=${Date.now()}`;
             }
         });
     }
