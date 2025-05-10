@@ -44,13 +44,14 @@ async function initializeAuth0() {
         };
         
         console.log("Creating Auth0 client with config:", config);
+        console.log("Current URL origin:", window.location.origin);
         
         // Create the Auth0 client with cookie-friendly settings
         auth0Client = await createAuth0Client({
             domain: config.domain,
             clientId: config.clientId,
             authorizationParams: {
-                redirect_uri: window.location.origin,
+                redirect_uri: window.location.origin, // Use dynamic origin instead of hardcoded URL
                 response_type: "code",
                 scope: "openid profile email"
             },
@@ -87,7 +88,7 @@ async function initializeAuth0() {
     }
 }
 
-// Login function - UPDATED FOR V2 SDK with origin-based URI
+// Login function - UPDATED FOR V2 SDK with dynamic origin
 async function login() {
     try {
         console.log("Logging in... Current origin:", window.location.origin);
@@ -345,6 +346,7 @@ function setupDirectAccess() {
 window.checkAuth0Status = function() {
     console.log("=== Auth0 Status Check ===");
     console.log("Auth0 client initialized:", !!auth0Client);
+    console.log("Auth0 SDK available:", typeof createAuth0Client === 'function');
     console.log("Current URL:", window.location.href);
     console.log("Origin:", window.location.origin);
     
@@ -366,9 +368,3 @@ window.checkAuth0Status = function() {
     
     return "Auth0 status check complete - see console for details";
 };
-
-// Check HTML elements after a delay to ensure they're loaded
-setTimeout(() => {
-    console.log("Running delayed HTML element check");
-    window.checkAuth0Status();
-}, 3000);
