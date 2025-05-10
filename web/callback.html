@@ -2,11 +2,33 @@
 <html>
 <head>
   <title>Authenticating...</title>
+  <script src="https://cdn.auth0.com/js/auth0-spa-js/2.1.0/auth0-spa-js.production.js"></script>
 </head>
 <body>
+  <div style="display: flex; justify-content: center; align-items: center; height: 100vh;">
+    <p>Processing login, please wait...</p>
+  </div>
+
   <script>
-    window.onload = function() {
-      window.location.href = '/';
+    window.onload = async function() {
+      try {
+        // Create Auth0 client with the same config as your main page
+        const auth0Client = await createAuth0Client({
+          domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
+          client_id: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
+          redirect_uri: window.location.origin + '/callback.html'
+        });
+        
+        // Handle the redirect callback
+        await auth0Client.handleRedirectCallback();
+        
+        // Redirect back to the main page
+        window.location.href = '/';
+      } catch (error) {
+        console.error('Error handling Auth0 callback:', error);
+        // Still redirect to home page even on error
+        window.location.href = '/';
+      }
     };
   </script>
 </body>
