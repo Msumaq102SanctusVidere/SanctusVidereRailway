@@ -13,10 +13,10 @@ document.addEventListener('DOMContentLoaded', function() {
     updateUIBasedOnLoginState();
 });
 
-// Auth0 configuration
+// Auth0 configuration - UPDATED WITH NEW CLIENT ID
 const config = {
     domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
-    clientId: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
+    clientId: 'aaJU2JexuNeaLvFpvIEVmgfcHeVNRsCT', // NEW CLIENT ID
     redirectUri: window.location.origin,
 };
 
