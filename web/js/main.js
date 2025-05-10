@@ -27,19 +27,28 @@ async function initializeAuth0() {
             "clientId": "aaJU2JexuNeaLvFpvIEVmgfcHeVNRsCT"
         };
         
-        // Create the Auth0 client
-        auth0Client = await auth0.createAuth0Client({
+        console.log("Creating Auth0 client with config:", config);
+        
+        // Create the Auth0 client - UPDATED FOR V2 SDK
+        // Notice we removed "auth0." before createAuth0Client
+        auth0Client = await createAuth0Client({
             domain: config.domain,
-            clientId: config.clientId
+            clientId: config.clientId,
+            authorizationParams: {
+                redirect_uri: window.location.origin
+            }
         });
         
+        console.log("Auth0 client created successfully");
+        
         // Handle the authentication callback
-        // (when returning from Auth0 after login)
         if (window.location.search.includes("code=") && 
             window.location.search.includes("state=")) {
             
-            // Handle the redirect callback
-            await auth0Client.handleRedirectCallback();
+            console.log("Auth callback detected in URL, handling redirect...");
+            
+            // Handle the redirect callback - UPDATED FOR V2 SDK
+            const result = await auth0Client.handleRedirectCallback();
             
             // Clear the URL
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -49,20 +58,20 @@ async function initializeAuth0() {
         
     } catch (err) {
         console.error("Error initializing Auth0:", err);
+        if (err.message) {
+            console.error("Error message:", err.message);
+        }
         throw err;
     }
 }
 
-// Login function
+// Login function - UPDATED FOR V2 SDK
 async function login() {
     try {
         console.log("Logging in...");
         
-        await auth0Client.loginWithRedirect({
-            authorizationParams: {
-                redirect_uri: window.location.origin
-            }
-        });
+        // Updated syntax for v2 - removed authorizationParams object
+        await auth0Client.loginWithRedirect();
         
         // Note: The page will redirect to Auth0, so code after this point won't execute
     } catch (err) {
@@ -70,12 +79,13 @@ async function login() {
     }
 }
 
-// Logout function
+// Logout function - UPDATED FOR V2 SDK
 async function logout() {
     try {
         console.log("Logging out...");
         
-        await auth0Client.logout({
+        // Updated syntax for v2
+        auth0Client.logout({
             logoutParams: {
                 returnTo: window.location.origin
             }
