@@ -1,10 +1,10 @@
-// main.js - Core functionality for Sanctus Videre HTML service with Auth0 integration
+// main.js - Clean implementation with only Auth0 integration
 
 // Auth0 configuration
 const AUTH0_CONFIG = {
     domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
     clientId: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
-    redirectUri: window.location.origin + '/callback.html',
+    redirectUri: 'https://sanctusvidere.com/callback.html',
     responseType: 'token id_token',
     scope: 'openid profile email',
     cacheLocation: 'localstorage'
@@ -17,12 +17,21 @@ let auth0Client = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM loaded, initializing application...");
     
+    // Check if Auth0 SDK is loaded
+    if (typeof auth0 === 'undefined') {
+        console.error("AUTH0 SDK NOT LOADED! Check script tag.");
+        alert("Auth0 SDK failed to load. Please check your internet connection and try again.");
+        return;
+    }
+    
     // Initialize Auth0 first
     initAuth0().then(() => {
         // Set up the other components after Auth0 is initialized
         setupReviewForm();
         setupDirectAccess();
         setupAuth0Buttons();
+    }).catch(error => {
+        console.error("Failed to initialize Auth0:", error);
     });
 });
 
@@ -30,12 +39,6 @@ document.addEventListener('DOMContentLoaded', function() {
 async function initAuth0() {
     try {
         console.log("Initializing Auth0 client...");
-        
-        // Check if auth0 is available as a global object
-        if (typeof auth0 === 'undefined') {
-            console.error("Auth0 SDK not loaded properly!");
-            return;
-        }
         
         // Create Auth0 client
         auth0Client = await auth0.createAuth0Client({
@@ -52,15 +55,21 @@ async function initAuth0() {
             
             console.log("Auth0 callback detected, handling redirect");
             
-            // Handle the redirect
-            await auth0Client.handleRedirectCallback();
-            
-            // Clear the URL
-            window.history.replaceState({}, document.title, '/');
+            try {
+                // Handle the redirect
+                await auth0Client.handleRedirectCallback();
+                console.log("Redirect handled successfully");
+                
+                // Clear the URL
+                window.history.replaceState({}, document.title, '/');
+            } catch (callbackError) {
+                console.error("Error handling callback:", callbackError);
+            }
         }
         
         // Check if authenticated
         const isAuthenticated = await auth0Client.isAuthenticated();
+        console.log("isAuthenticated:", isAuthenticated);
         
         if (isAuthenticated) {
             console.log("User is authenticated with Auth0");
@@ -85,8 +94,11 @@ async function initAuth0() {
             document.getElementById('dashboard-access').style.display = 'none';
         }
         
+        return auth0Client;
+        
     } catch (error) {
         console.error('Error initializing Auth0:', error);
+        throw error;
     }
 }
 
@@ -102,10 +114,20 @@ function setupAuth0Buttons() {
             console.log("Auth0 login button clicked");
             
             try {
-                await auth0Client.loginWithRedirect();
+                // Show loading indicator
+                this.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Connecting...';
+                this.disabled = true;
+                
+                await auth0Client.loginWithRedirect({
+                    redirect_uri: AUTH0_CONFIG.redirectUri
+                });
+                // Note: Page will redirect, so code after this won't execute
             } catch (error) {
                 console.error("Error during Auth0 login:", error);
                 alert("Login error: " + error.message);
+                // Reset button
+                this.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
+                this.disabled = false;
             }
         });
     }
@@ -118,12 +140,21 @@ function setupAuth0Buttons() {
             console.log("Google login button clicked");
             
             try {
+                // Show loading indicator
+                this.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Connecting...';
+                this.disabled = true;
+                
                 await auth0Client.loginWithRedirect({
-                    connection: 'google-oauth2'
+                    connection: 'google-oauth2',
+                    redirect_uri: AUTH0_CONFIG.redirectUri
                 });
+                // Note: Page will redirect, so code after this won't execute
             } catch (error) {
                 console.error("Error during Google login:", error);
                 alert("Google login error: " + error.message);
+                // Reset button
+                this.innerHTML = '<i class="fab fa-google"></i> Sign in with Google';
+                this.disabled = false;
             }
         });
     }
@@ -137,8 +168,10 @@ function setupAuth0Buttons() {
             
             try {
                 await auth0Client.loginWithRedirect({
-                    screen_hint: 'signup'
+                    screen_hint: 'signup',
+                    redirect_uri: AUTH0_CONFIG.redirectUri
                 });
+                // Note: Page will redirect, so code after this won't execute
             } catch (error) {
                 console.error("Error during Auth0 signup:", error);
                 alert("Signup error: " + error.message);
@@ -208,8 +241,6 @@ function setupAuth0Buttons() {
 
 // Review system functionality
 function setupReviewForm() {
-    console.log("Setting up review form...");
-    
     // Show review form buttons
     const reviewButton = document.getElementById('review-button');
     const submitReviewButton = document.getElementById('submit-review-button');
@@ -286,8 +317,6 @@ function saveReview(rating, text) {
 
 // Direct dashboard access function (emergency backup access)
 function setupDirectAccess() {
-    console.log("Setting up direct access link...");
-    
     const directAccessLink = document.getElementById('admin-access-direct');
     if (directAccessLink) {
         directAccessLink.addEventListener('click', function(e) {
