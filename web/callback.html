@@ -13,7 +13,7 @@
     window.onload = async function() {
       try {
         // Create Auth0 client with the same config as your main page
-        const auth0Client = await createAuth0Client({
+        const auth0Client = await auth0.createAuth0Client({
           domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
           client_id: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
           redirect_uri: window.location.origin + '/callback.html'
