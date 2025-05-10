@@ -49,7 +49,7 @@ async function initializeAuth0() {
                 const token = await auth0Client.getTokenSilently();
                 const userId = user.name || user.email.split('@')[0];
                 
-                // Redirect to Streamlit app
+                // FIXED: Redirect to Streamlit app with user=new parameter to ensure fresh instance
                 window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
             } catch (error) {
                 console.error("Error handling authentication:", error);
