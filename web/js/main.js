@@ -4,8 +4,9 @@
 const AUTH0_CONFIG = {
     domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
     clientId: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
+    client_secret: 'v7jTmzE6fnPxuFyguFLjIBIMDiwDmEyCV-xXkIyIOuDTb5SHltLfU9h55CjOgauc',
     redirectUri: 'https://sanctusvidere.com/callback.html',
-    responseType: 'code',,
+    responseType: 'code',
     scope: 'openid profile email',
     cacheLocation: 'localstorage'
 };
@@ -44,7 +45,10 @@ async function initAuth0() {
         auth0Client = await auth0.createAuth0Client({
             domain: AUTH0_CONFIG.domain,
             client_id: AUTH0_CONFIG.clientId,
+            client_secret: AUTH0_CONFIG.client_secret,
             redirect_uri: AUTH0_CONFIG.redirectUri,
+            response_type: AUTH0_CONFIG.responseType,
+            scope: AUTH0_CONFIG.scope,
             cacheLocation: AUTH0_CONFIG.cacheLocation
         });
         
@@ -119,7 +123,8 @@ function setupAuth0Buttons() {
                 this.disabled = true;
                 
                 await auth0Client.loginWithRedirect({
-                    redirect_uri: AUTH0_CONFIG.redirectUri
+                    redirect_uri: AUTH0_CONFIG.redirectUri,
+                    response_type: AUTH0_CONFIG.responseType
                 });
                 // Note: Page will redirect, so code after this won't execute
             } catch (error) {
@@ -146,7 +151,8 @@ function setupAuth0Buttons() {
                 
                 await auth0Client.loginWithRedirect({
                     connection: 'google-oauth2',
-                    redirect_uri: AUTH0_CONFIG.redirectUri
+                    redirect_uri: AUTH0_CONFIG.redirectUri,
+                    response_type: AUTH0_CONFIG.responseType
                 });
                 // Note: Page will redirect, so code after this won't execute
             } catch (error) {
@@ -169,7 +175,8 @@ function setupAuth0Buttons() {
             try {
                 await auth0Client.loginWithRedirect({
                     screen_hint: 'signup',
-                    redirect_uri: AUTH0_CONFIG.redirectUri
+                    redirect_uri: AUTH0_CONFIG.redirectUri,
+                    response_type: AUTH0_CONFIG.responseType
                 });
                 // Note: Page will redirect, so code after this won't execute
             } catch (error) {
