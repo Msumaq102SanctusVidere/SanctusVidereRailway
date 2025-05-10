@@ -30,7 +30,7 @@ async function initializeAuth0() {
         
         console.log("Creating Auth0 client with config:", config);
         
-        // Create the Auth0 client with ALL required parameters
+        // Create the Auth0 client with cookie-friendly settings
         auth0Client = await createAuth0Client({
             domain: config.domain,
             clientId: config.clientId,
@@ -39,32 +39,13 @@ async function initializeAuth0() {
                 response_type: "code",
                 scope: "openid profile email"
             },
-            cacheLocation: "localstorage",
-            useRefreshTokens: true
+            cacheLocation: "localstorage", // Use localStorage instead of cookies
+            useRefreshTokens: true,
+            useFormData: true // Important for newer Chrome versions
         });
         
-        console.log("Auth0 client created successfully");
-        
-        // Handle the authentication callback
-        if (window.location.search.includes("code=") && 
-            window.location.search.includes("state=")) {
-            
-            console.log("Auth callback detected in URL, handling redirect...");
-            
-            try {
-                const result = await auth0Client.handleRedirectCallback();
-                console.log("Redirect handled successfully:", result);
-                
-                // Clear the URL
-                window.history.replaceState({}, document.title, window.location.pathname);
-                
-                console.log("Logged in successfully!");
-            } catch (callbackError) {
-                console.error("Error handling redirect:", callbackError);
-                throw callbackError;
-            }
-        }
-        
+        // Rest of your function remains the same
+        // ...
     } catch (err) {
         console.error("Error initializing Auth0:", err);
         throw err;
