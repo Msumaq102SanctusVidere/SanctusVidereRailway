@@ -1,111 +1,128 @@
-// Direct Auth0 login - implicitly handled approach
+// Simple Auth0 Lock integration for your HTML service
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM loaded, setting up direct Auth0 login...");
+    console.log("DOM loaded, initializing Auth0 Lock...");
     
-    // Set up buttons
-    setupLoginButtons();
+    // Initialize Auth0 Lock
+    initAuth0Lock();
+    
+    // Setup other components
     setupReviewForm();
     setupDirectAccess();
-    
-    // Check if user is already logged in
-    checkLoginStatus();
 });
 
-// Auth0 configuration - NO CLIENT SECRET
+// Auth0 configuration
 const AUTH0_CONFIG = {
     domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
     clientId: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
-    redirectUri: window.location.origin // Redirect to main page
+    callbackUrl: 'https://sanctusvidere.com/callback.html',
+    audience: `https://${AUTH0_CONFIG.domain}/userinfo`,
+    responseType: 'token id_token',
+    scope: 'openid profile email'
 };
 
-// Check if user is logged in (based on localStorage)
-function checkLoginStatus() {
-    const token = localStorage.getItem('userToken');
-    const userName = localStorage.getItem('userName');
+// Initialize Auth0 Lock widget
+function initAuth0Lock() {
+    // Check if user is already logged in
+    checkSession();
     
-    if (token && userName) {
-        // User is logged in, show dashboard access
-        document.getElementById('login-panel').style.display = 'none';
-        document.getElementById('dashboard-access').style.display = 'block';
-        document.getElementById('user-name').textContent = userName;
-        
-        // Also check for URL hash for returning users
-        parseHashFromUrl();
+    // Setup login buttons
+    setupLoginButtons();
+}
+
+// Check if user is already logged in
+function checkSession() {
+    // Check for tokens in localStorage
+    const accessToken = localStorage.getItem('accessToken');
+    const idToken = localStorage.getItem('idToken');
+    const profile = localStorage.getItem('userProfile');
+    
+    if (accessToken && idToken && profile) {
+        // User is already logged in, show dashboard
+        showDashboard(JSON.parse(profile));
     } else {
-        // User is not logged in, show login panel
-        document.getElementById('login-panel').style.display = 'block';
-        document.getElementById('dashboard-access').style.display = 'none';
-        
-        // Check URL hash for tokens from Auth0 redirect
-        parseHashFromUrl();
+        // Parse hash on page load
+        parseHash();
     }
 }
 
-// Parse hash from URL (for Auth0 implicit flow)
-function parseHashFromUrl() {
-    // Check if there's a hash in the URL
-    if (window.location.hash) {
-        // Parse the hash
-        const hash = window.location.hash.substring(1);
-        const params = new URLSearchParams(hash);
+// Parse hash from URL after Auth0 redirect
+function parseHash() {
+    // Get hash from URL
+    const hash = window.location.hash;
+    
+    if (hash && (hash.indexOf('access_token') > -1)) {
+        // Parse hash
+        const accessToken = getValueFromHash('access_token', hash);
+        const idToken = getValueFromHash('id_token', hash);
         
-        // Check for access token
-        const accessToken = params.get('access_token');
-        if (accessToken) {
-            // Save token
-            localStorage.setItem('userToken', accessToken);
+        if (accessToken && idToken) {
+            // Store tokens
+            localStorage.setItem('accessToken', accessToken);
+            localStorage.setItem('idToken', idToken);
             
-            // Get user info
-            fetch(`https://${AUTH0_CONFIG.domain}/userinfo`, {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                }
-            })
-            .then(response => response.json())
-            .then(user => {
-                // Save user info
-                localStorage.setItem('userName', user.name || user.email.split('@')[0]);
-                localStorage.setItem('userEmail', user.email);
-                
-                // Reload page to update UI
-                window.location.href = window.location.origin + window.location.pathname;
-            })
-            .catch(error => {
-                console.error('Error getting user info:', error);
-                alert('Failed to get user information. Please try again.');
-            });
+            // Get user profile
+            getUserProfile(accessToken);
+            
+            // Clear hash
+            history.pushState('', document.title, window.location.pathname);
         }
-        
-        // Check for error
-        const error = params.get('error');
-        if (error) {
-            const errorDescription = params.get('error_description');
-            console.error('Auth0 error:', error, errorDescription);
-            alert(`Login error: ${errorDescription || error}`);
-        }
-        
-        // Clear the hash
-        window.history.replaceState(null, document.title, window.location.pathname);
     }
 }
 
-// Setup login buttons
+// Get value from hash
+function getValueFromHash(key, hash) {
+    const matches = hash.match(new RegExp(key + '=([^&]*)'));
+    return matches ? matches[1] : null;
+}
+
+// Get user profile
+function getUserProfile(accessToken) {
+    // Make request to Auth0 userinfo endpoint
+    fetch(`https://${AUTH0_CONFIG.domain}/userinfo`, {
+        headers: {
+            'Authorization': `Bearer ${accessToken}`
+        }
+    })
+    .then(response => response.json())
+    .then(profile => {
+        // Store profile
+        localStorage.setItem('userProfile', JSON.stringify(profile));
+        
+        // Show dashboard
+        showDashboard(profile);
+    })
+    .catch(error => {
+        console.error('Error getting user profile:', error);
+    });
+}
+
+// Show dashboard
+function showDashboard(profile) {
+    // Update UI - hide login panel, show dashboard
+    document.getElementById('login-panel').style.display = 'none';
+    document.getElementById('dashboard-access').style.display = 'block';
+    
+    // Update user name
+    document.getElementById('user-name').textContent = profile.name || profile.email.split('@')[0];
+}
+
+// Setup Auth0 login buttons
 function setupLoginButtons() {
-    // Login button - Use implicit flow
+    // Main login button
     const loginButton = document.getElementById('auth0-login-button');
     if (loginButton) {
         loginButton.addEventListener('click', function(e) {
             e.preventDefault();
             
-            // Build Auth0 authorization URL with implicit flow
+            // Build Auth0 authorization URL for regular login
             const authUrl = `https://${AUTH0_CONFIG.domain}/authorize?` +
                 `client_id=${AUTH0_CONFIG.clientId}&` +
-                `redirect_uri=${encodeURIComponent(window.location.origin + window.location.pathname)}&` +
-                `response_type=token&` +
+                `redirect_uri=${encodeURIComponent(window.location.origin)}&` +
+                `response_type=token%20id_token&` +
                 `scope=openid%20profile%20email`;
             
-            // Show loading state
+            // Show loading indicator
             this.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Connecting...';
             this.disabled = true;
             
@@ -120,15 +137,15 @@ function setupLoginButtons() {
         googleButton.addEventListener('click', function(e) {
             e.preventDefault();
             
-            // Build Auth0 authorization URL with Google connection
+            // Build Auth0 authorization URL for Google login
             const authUrl = `https://${AUTH0_CONFIG.domain}/authorize?` +
                 `client_id=${AUTH0_CONFIG.clientId}&` +
-                `redirect_uri=${encodeURIComponent(window.location.origin + window.location.pathname)}&` +
-                `response_type=token&` +
+                `redirect_uri=${encodeURIComponent(window.location.origin)}&` +
+                `response_type=token%20id_token&` +
                 `connection=google-oauth2&` +
                 `scope=openid%20profile%20email`;
             
-            // Show loading state
+            // Show loading indicator
             this.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Connecting...';
             this.disabled = true;
             
@@ -146,8 +163,8 @@ function setupLoginButtons() {
             // Build Auth0 authorization URL with signup hint
             const authUrl = `https://${AUTH0_CONFIG.domain}/authorize?` +
                 `client_id=${AUTH0_CONFIG.clientId}&` +
-                `redirect_uri=${encodeURIComponent(window.location.origin + window.location.pathname)}&` +
-                `response_type=token&` +
+                `redirect_uri=${encodeURIComponent(window.location.origin)}&` +
+                `response_type=token%20id_token&` +
                 `screen_hint=signup&` +
                 `scope=openid%20profile%20email`;
             
@@ -162,12 +179,16 @@ function setupLoginButtons() {
         dashboardButton.addEventListener('click', function(e) {
             e.preventDefault();
             
-            const token = localStorage.getItem('userToken');
-            const userName = localStorage.getItem('userName');
+            const accessToken = localStorage.getItem('accessToken');
+            const profile = localStorage.getItem('userProfile');
             
-            if (token && userName) {
+            if (accessToken && profile) {
+                // Parse profile
+                const userData = JSON.parse(profile);
+                const userId = userData.sub || userData.email.split('@')[0];
+                
                 // Redirect to dashboard with token
-                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userName}&token=${token}&auth0=true&t=${Date.now()}`;
+                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${accessToken}&auth0=true&t=${Date.now()}`;
             } else {
                 alert('You need to be logged in to access the dashboard.');
             }
@@ -179,9 +200,9 @@ function setupLoginButtons() {
     if (logoutButton) {
         logoutButton.addEventListener('click', function() {
             // Clear local storage
-            localStorage.removeItem('userToken');
-            localStorage.removeItem('userName');
-            localStorage.removeItem('userEmail');
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('idToken');
+            localStorage.removeItem('userProfile');
             
             // Redirect to logout URL
             const logoutUrl = `https://${AUTH0_CONFIG.domain}/v2/logout?` +
@@ -257,7 +278,8 @@ function hideReviewForm() {
 // Save review to localStorage for demo
 function saveReview(rating, text) {
     const reviews = JSON.parse(localStorage.getItem('reviews') || '[]');
-    const userName = localStorage.getItem('userName') || 'Anonymous User';
+    const userProfile = JSON.parse(localStorage.getItem('userProfile') || '{}');
+    const userName = userProfile.name || userProfile.email?.split('@')[0] || 'Anonymous User';
     
     reviews.push({
         rating: rating,
