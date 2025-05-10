@@ -8,7 +8,6 @@
   <div style="display: flex; justify-content: center; align-items: center; height: 100vh;">
     <p>Processing login, please wait...</p>
   </div>
-
   <script>
     window.onload = async function() {
       try {
@@ -16,7 +15,7 @@
         const auth0Client = await auth0.createAuth0Client({
           domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
           client_id: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
-          redirect_uri: window.location.origin + '/callback.html'
+          redirect_uri: 'https://sanctusvidere.com/callback.html'
         });
         
         // Handle the redirect callback
