@@ -5,7 +5,7 @@ const AUTH0_CONFIG = {
     domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
     clientId: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
     redirectUri: 'https://sanctusvidere.com/callback.html',
-    responseType: 'token id_token',
+    responseType: 'code',,
     scope: 'openid profile email',
     cacheLocation: 'localstorage'
 };
