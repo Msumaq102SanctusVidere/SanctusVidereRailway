@@ -11,9 +11,71 @@
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script async src="js/tracking.js"></script>
-    <!-- Auth0 SDK - Updated to latest version -->
+    <!-- Auth0 SDK -->
     <script src="https://cdn.auth0.com/js/auth0-spa-js/2.1.0/auth0-spa-js.production.js"></script>
     <script src="js/main.js"></script>
+    <style>
+        /* Additional styles for Auth0 login section */
+        .auth0-login-panel {
+            background-color: #1e2124;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .social-login-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .social-login-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.3s;
+            color: #fff;
+            text-decoration: none;
+        }
+        
+        .social-login-button i {
+            margin-right: 10px;
+            font-size: 18px;
+        }
+        
+        .google-button {
+            background-color: #4285F4;
+        }
+        
+        .google-button:hover {
+            background-color: #3367D6;
+        }
+        
+        .auth0-divider {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+            color: #888;
+        }
+        
+        .auth0-divider::before, .auth0-divider::after {
+            content: "";
+            flex: 1;
+            border-bottom: 1px solid #444;
+        }
+        
+        .auth0-divider span {
+            padding: 0 10px;
+            font-size: 14px;
+        }
+    </style>
 </head>
 <body>
     <!-- Logo in absolute position -->
@@ -98,9 +160,33 @@
 
             <!-- Right Column: Login and Dashboard Access -->
             <div class="column right-column">
-                <!-- Login form with improved styling -->
-                <div class="login-panel" id="login-form">
+                <!-- New Auth0 Login Section -->
+                <div class="auth0-login-panel">
                     <h2><i class="fas fa-user-circle icon-header"></i> Account Access</h2>
+                    
+                    <!-- Social Login Buttons -->
+                    <div class="social-login-buttons">
+                        <button class="social-login-button google-button" id="auth0-google-login">
+                            <i class="fab fa-google"></i> Sign in with Google
+                        </button>
+                    </div>
+                    
+                    <div class="auth0-divider">
+                        <span>OR</span>
+                    </div>
+                    
+                    <button class="button primary-button" id="auth0-login-button" style="width: 100%; margin-bottom: 10px;">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                    
+                    <p class="create-account">
+                        New user? <a href="#" id="auth0-signup-button">Create an account</a>
+                    </p>
+                </div>
+                
+                <!-- Original Login form (kept as fallback) -->
+                <div class="login-panel" id="login-form">
+                    <h2><i class="fas fa-user-circle icon-header"></i> Legacy Account Access</h2>
                     <form id="login">
                         <div class="form-group">
                             <label for="email">Email</label>
