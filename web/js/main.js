@@ -89,85 +89,84 @@ async function initDirectAuth0() {
     }
 }
 
-// Setup the new Auth0 login buttons
+// Setup the new Auth0 login buttons - FIXED VERSION
 function setupAuth0Buttons() {
     // Main login button
     const auth0LoginButton = document.getElementById('auth0-login-button');
     if (auth0LoginButton) {
-        auth0LoginButton.addEventListener('click', async function(e) {
+        auth0LoginButton.addEventListener('click', function(e) {
             e.preventDefault();
+            console.log("Auth0 login button clicked");
             
-            try {
-                console.log("Using direct Auth0 for login");
-                
-                if (!directAuth0Client) {
-                    console.error("Auth0 client not initialized");
-                    return;
-                }
-                
-                // Redirect to Auth0 login page
-                await directAuth0Client.loginWithRedirect({
+            // Create a new Auth0 client directly when button is clicked
+            auth0
+                .createAuth0Client({
+                    domain: AUTH0_CONFIG.domain,
+                    client_id: AUTH0_CONFIG.clientId,
                     redirect_uri: AUTH0_CONFIG.redirectUri
+                })
+                .then(client => {
+                    console.log("Auth0 client created successfully for login");
+                    return client.loginWithRedirect();
+                })
+                .catch(error => {
+                    console.error("Error during Auth0 login:", error);
+                    alert("Login error: " + error.message);
                 });
-                
-            } catch (error) {
-                console.error('Error during direct Auth0 login:', error);
-                alert('Login error. Please try again.');
-            }
         });
     }
     
     // Google login button
     const auth0GoogleButton = document.getElementById('auth0-google-login');
     if (auth0GoogleButton) {
-        auth0GoogleButton.addEventListener('click', async function(e) {
+        auth0GoogleButton.addEventListener('click', function(e) {
             e.preventDefault();
+            console.log("Google login button clicked");
             
-            try {
-                console.log("Using direct Auth0 for Google login");
-                
-                if (!directAuth0Client) {
-                    console.error("Auth0 client not initialized");
-                    return;
-                }
-                
-                // Redirect to Auth0 login page with Google as the connection
-                await directAuth0Client.loginWithRedirect({
-                    redirect_uri: AUTH0_CONFIG.redirectUri,
-                    connection: 'google-oauth2'
+            // Create a new Auth0 client directly when button is clicked
+            auth0
+                .createAuth0Client({
+                    domain: AUTH0_CONFIG.domain,
+                    client_id: AUTH0_CONFIG.clientId,
+                    redirect_uri: AUTH0_CONFIG.redirectUri
+                })
+                .then(client => {
+                    console.log("Auth0 client created successfully for Google login");
+                    return client.loginWithRedirect({
+                        connection: 'google-oauth2'
+                    });
+                })
+                .catch(error => {
+                    console.error("Error during Google login:", error);
+                    alert("Google login error: " + error.message);
                 });
-                
-            } catch (error) {
-                console.error('Error during direct Auth0 Google login:', error);
-                alert('Google login error. Please try again.');
-            }
         });
     }
     
     // Signup button
     const auth0SignupButton = document.getElementById('auth0-signup-button');
     if (auth0SignupButton) {
-        auth0SignupButton.addEventListener('click', async function(e) {
+        auth0SignupButton.addEventListener('click', function(e) {
             e.preventDefault();
+            console.log("Signup button clicked");
             
-            try {
-                console.log("Using direct Auth0 for signup");
-                
-                if (!directAuth0Client) {
-                    console.error("Auth0 client not initialized");
-                    return;
-                }
-                
-                // Redirect to Auth0 signup page
-                await directAuth0Client.loginWithRedirect({
-                    redirect_uri: AUTH0_CONFIG.redirectUri,
-                    screen_hint: 'signup'
+            // Create a new Auth0 client directly when button is clicked
+            auth0
+                .createAuth0Client({
+                    domain: AUTH0_CONFIG.domain,
+                    client_id: AUTH0_CONFIG.clientId,
+                    redirect_uri: AUTH0_CONFIG.redirectUri
+                })
+                .then(client => {
+                    console.log("Auth0 client created successfully for signup");
+                    return client.loginWithRedirect({
+                        screen_hint: 'signup'
+                    });
+                })
+                .catch(error => {
+                    console.error("Error during Auth0 signup:", error);
+                    alert("Signup error: " + error.message);
                 });
-                
-            } catch (error) {
-                console.error('Error during direct Auth0 signup:', error);
-                alert('Signup error. Please try again.');
-            }
         });
     }
 }
