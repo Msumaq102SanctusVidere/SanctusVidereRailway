@@ -48,15 +48,15 @@ async function initializeAuth0() {
         };
         
         console.log("Creating Auth0 client with config:", config);
-        console.log("Current URL origin:", window.location.origin);
         
         // Create the Auth0 client with cookie-friendly settings
         // IMPORTANT: Using auth0.createAuth0Client instead of createAuth0Client
+        // IMPORTANT: Setting redirect_uri to Streamlit app
         auth0Client = await auth0.createAuth0Client({
             domain: config.domain,
             clientId: config.clientId,
             authorizationParams: {
-                redirect_uri: window.location.origin, // Use dynamic origin instead of hardcoded URL
+                redirect_uri: "https://app.sanctusvidere.com", // Redirect to Streamlit app
                 response_type: "code",
                 scope: "openid profile email"
             },
@@ -81,38 +81,49 @@ async function initializeAuth0() {
                 window.history.replaceState({}, document.title, window.location.pathname);
                 
                 console.log("Logged in successfully!");
+                
+                // After successful login, get user info & token
+                const user = await auth0Client.getUser();
+                const token = await auth0Client.getTokenSilently();
+                const userId = user.name || user.email.split('@')[0];
+                
+                // Redirect to Streamlit app
+                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
             } catch (callbackError) {
                 console.error("Error handling redirect:", callbackError);
+                console.error("Error details:", JSON.stringify(callbackError, null, 2));
                 throw callbackError;
             }
         }
         
     } catch (err) {
         console.error("Error initializing Auth0:", err);
+        console.error("Error details:", JSON.stringify(err, null, 2));
         throw err;
     }
 }
 
-// Login function - UPDATED FOR V2 SDK with dynamic origin
+// Login function - UPDATED to redirect to Streamlit app after Auth0 login
 async function login() {
     try {
-        console.log("Logging in... Current origin:", window.location.origin);
+        console.log("Logging in...");
         
-        // Updated syntax for v2 - using window.location.origin
+        // Redirect to Auth0's login page, then to Streamlit app after success
         await auth0Client.loginWithRedirect({
             authorizationParams: {
-                redirect_uri: window.location.origin
+                redirect_uri: "https://app.sanctusvidere.com" // Redirect to Streamlit app
             }
         });
         
         // Note: The page will redirect to Auth0, so code after this point won't execute
     } catch (err) {
         console.error("Login failed:", err);
+        console.error("Error details:", JSON.stringify(err, null, 2));
         alert("Login failed: " + (err.message || "Unknown error"));
     }
 }
 
-// Logout function - UPDATED FOR V2 SDK
+// Logout function - UPDATED to redirect back to homepage
 async function logout() {
     try {
         console.log("Logging out...");
@@ -120,7 +131,7 @@ async function logout() {
         // Updated syntax for v2
         auth0Client.logout({
             logoutParams: {
-                returnTo: window.location.origin
+                returnTo: "https://sanctusvidere.com" // Redirect back to homepage
             }
         });
         
@@ -155,6 +166,10 @@ async function updateUI() {
             localStorage.setItem('userName', user.name || user.email.split('@')[0]);
             localStorage.setItem('userEmail', user.email);
             console.log("User info stored in localStorage");
+            
+            // Auto-redirect to Streamlit app if user is already authenticated
+            const user_id = user.name || user.email.split('@')[0];
+            window.location.href = `https://app.sanctusvidere.com?user=new&userid=${user_id}&token=${token}&t=${Date.now()}`;
         } else {
             // User is not logged in
             console.log("User is not authenticated");
@@ -214,7 +229,7 @@ function setupLoginButtons() {
         console.warn("Signup button not found with ID: auth0-signup-button");
     }
     
-    // Dashboard button
+    // Dashboard button 
     const dashboardButton = document.querySelector('.dashboard-button');
     if (dashboardButton) {
         console.log("Dashboard button found");
