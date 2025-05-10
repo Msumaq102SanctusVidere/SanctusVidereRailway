@@ -65,13 +65,18 @@ async function initializeAuth0() {
     }
 }
 
-// Login function - UPDATED FOR V2 SDK
+
+// Login function - UPDATED FOR V2 SDK with explicit URI
 async function login() {
     try {
         console.log("Logging in...");
         
-        // Updated syntax for v2 - removed authorizationParams object
-        await auth0Client.loginWithRedirect();
+        // Updated syntax for v2 - added explicit redirect_uri
+        await auth0Client.loginWithRedirect({
+            authorizationParams: {
+                redirect_uri: "https://sanctusvidere.com"
+            }
+        });
         
         // Note: The page will redirect to Auth0, so code after this point won't execute
     } catch (err) {
