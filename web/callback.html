@@ -1,34 +1,113 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Authenticating...</title>
-  <script src="https://cdn.auth0.com/js/auth0-spa-js/2.1.0/auth0-spa-js.production.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanctus Videre - Authentication Callback</title>
+    <style>
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: #121418;
+            color: #e1e1e1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .loading-container {
+            text-align: center;
+            padding: 2rem;
+            background-color: #1e2124;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+        }
+        
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid #3e67b9;
+            width: 40px;
+            height: 40px;
+            margin: 1rem auto;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        h1 {
+            margin-top: 0;
+            font-size: 1.5rem;
+        }
+        
+        p {
+            margin-bottom: 0;
+            color: #aaa;
+        }
+    </style>
+    <!-- Auth0 SDK -->
+    <script src="https://cdn.auth0.com/js/auth0-spa-js/2.1.0/auth0-spa-js.production.js"></script>
 </head>
 <body>
-  <div style="display: flex; justify-content: center; align-items: center; height: 100vh;">
-    <p>Processing login, please wait...</p>
-  </div>
-  <script>
-    window.onload = async function() {
-      try {
-        // Create Auth0 client with the same config as your main page
-        const auth0Client = await auth0.createAuth0Client({
-          domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
-          client_id: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
-          redirect_uri: 'https://sanctusvidere.com/callback.html'
-        });
-        
-        // Handle the redirect callback
-        await auth0Client.handleRedirectCallback();
-        
-        // Redirect back to the main page
-        window.location.href = '/';
-      } catch (error) {
-        console.error('Error handling Auth0 callback:', error);
-        // Still redirect to home page even on error
-        window.location.href = '/';
-      }
-    };
-  </script>
+    <div class="loading-container">
+        <h1>Sanctus Videre</h1>
+        <div class="loading-spinner"></div>
+        <p>Completing authentication, please wait...</p>
+    </div>
+    
+    <script>
+        // Execute as soon as page loads
+        window.onload = async function() {
+            try {
+                // Create Auth0 client with the same config as main.js
+                const auth0Client = await auth0.createAuth0Client({
+                    domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
+                    client_id: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
+                    redirect_uri: window.location.origin + '/callback.html',
+                    cacheLocation: 'localstorage'
+                });
+                
+                // Handle the authentication callback
+                await auth0Client.handleRedirectCallback();
+                
+                // Get user information after successful authentication
+                const isAuthenticated = await auth0Client.isAuthenticated();
+                
+                if (isAuthenticated) {
+                    console.log("Authentication successful!");
+                    
+                    // Get user info
+                    const user = await auth0Client.getUser();
+                    const token = await auth0Client.getTokenSilently();
+                    
+                    // Store in localStorage for use in main application
+                    localStorage.setItem('userToken', token);
+                    localStorage.setItem('userName', user.name || user.email.split('@')[0]);
+                    localStorage.setItem('userEmail', user.email);
+                } else {
+                    console.error("Authentication callback processed but user is not authenticated");
+                }
+                
+                // Redirect back to the main page
+                window.location.href = '/';
+                
+            } catch (error) {
+                console.error('Error handling Auth0 callback:', error);
+                
+                // Show error message to user
+                document.querySelector('.loading-container').innerHTML = `
+                    <h1>Authentication Error</h1>
+                    <p>There was a problem logging you in. Please try again.</p>
+                    <button onclick="window.location.href='/'">Return to Home</button>
+                `;
+            }
+        };
+    </script>
 </body>
 </html>
