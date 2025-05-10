@@ -10,10 +10,26 @@
     <link rel="stylesheet" href="css/style.css">
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script async src="js/tracking.js"></script>
+    
+    <!-- REMOVE ASYNC from tracking.js to prevent script loading race conditions -->
+    <script src="js/tracking.js"></script>
     
     <!-- Auth0 SPA JS SDK - IMPORTANT: Load this first -->
     <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+    
+    <!-- Test script to verify Auth0 SDK loaded properly -->
+    <script>
+        console.log("Auth0 script tag loaded");
+        console.log("createAuth0Client exists:", typeof createAuth0Client === 'function');
+        
+        // Add global error handler to catch script loading issues
+        window.addEventListener('error', function(event) {
+            console.error('Global error caught:', event.error);
+            if (event.filename && event.filename.includes('auth0')) {
+                console.error('Auth0 script error detected!');
+            }
+        });
+    </script>
     
     <!-- Your main JS - Load after Auth0 -->
     <script src="js/main.js"></script>
@@ -244,5 +260,65 @@
             </div>
         </footer>
     </div>
+    
+    <!-- Additional auth0 test - place at the end of body -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOM content loaded - final check");
+            console.log("createAuth0Client available:", typeof createAuth0Client === 'function');
+            
+            // Check if login button exists
+            const loginButton = document.getElementById('auth0-login-button');
+            console.log("Login button exists:", !!loginButton);
+            
+            // Add a manual test button
+            const testDiv = document.createElement('div');
+            testDiv.style.position = 'fixed';
+            testDiv.style.bottom = '10px';
+            testDiv.style.left = '10px';
+            testDiv.style.zIndex = '9999';
+            testDiv.style.background = '#333';
+            testDiv.style.padding = '5px';
+            testDiv.style.borderRadius = '3px';
+            testDiv.style.fontSize = '12px';
+            testDiv.style.display = 'none'; // Hidden by default
+            
+            const testButton = document.createElement('button');
+            testButton.textContent = 'Test Auth0';
+            testButton.style.padding = '5px 10px';
+            testButton.style.cursor = 'pointer';
+            
+            testButton.addEventListener('click', function() {
+                console.log("Testing Auth0 manually");
+                if (typeof createAuth0Client === 'function') {
+                    console.log("Auth0 SDK is available");
+                    try {
+                        createAuth0Client({
+                            domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
+                            clientId: 'BAXPcs4GZAZodDtErS0UxTmugyxbEcZU'
+                        }).then(client => {
+                            console.log("Auth0 client created successfully");
+                        }).catch(err => {
+                            console.error("Error creating Auth0 client:", err);
+                        });
+                    } catch (err) {
+                        console.error("Exception creating Auth0 client:", err);
+                    }
+                } else {
+                    console.error("Auth0 SDK is NOT available");
+                }
+            });
+            
+            testDiv.appendChild(testButton);
+            document.body.appendChild(testDiv);
+            
+            // Show test button with Alt+T
+            window.addEventListener('keydown', function(e) {
+                if (e.altKey && e.key === 't') {
+                    testDiv.style.display = testDiv.style.display === 'none' ? 'block' : 'none';
+                }
+            });
+        });
+    </script>
 </body>
 </html>
