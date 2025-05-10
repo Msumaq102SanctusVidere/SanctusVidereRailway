@@ -24,7 +24,7 @@ async function initializeAuth0() {
         // Config from auth_config.json - hardcoded for simplicity
         const config = {
             "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
-            "clientId": "aaJU2JexuNeaLvFpvIEVmgfcHeVNRsCT"
+            "clientId": "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU" 
         };
         
         console.log("Creating Auth0 client with config:", config);
