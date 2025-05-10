@@ -5,9 +5,18 @@ let auth0Client = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM loaded, initializing application...");
     
+    // Check if Auth0 SDK is loaded
+    if (typeof createAuth0Client !== 'function') {
+        console.error("Auth0 SDK not loaded! Make sure the script tag is before main.js");
+        return;
+    } else {
+        console.log("Auth0 SDK detected");
+    }
+    
     // Initialize Auth0
     initializeAuth0()
         .then(() => {
+            console.log("Auth0 initialized successfully");
             // Set up other components after Auth0 is initialized
             setupReviewForm();
             setupDirectAccess();
@@ -15,6 +24,13 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(err => {
             console.error("Failed to initialize Auth0:", err);
+            // Show a more user-friendly error message
+            document.getElementById('login-panel').innerHTML += `
+                <div style="background-color: #ffdddd; padding: 10px; border-radius: 4px; margin-top: 10px;">
+                    <p>There was a problem connecting to the authentication service. Please try again later.</p>
+                    <p><small>Error: ${err.message || 'Unknown error'}</small></p>
+                </div>
+            `;
         });
 });
 
@@ -34,7 +50,7 @@ async function initializeAuth0() {
             domain: config.domain,
             clientId: config.clientId,
             authorizationParams: {
-                redirect_uri: "https://sanctusvidere.com",
+                redirect_uri: window.location.origin,
                 response_type: "code",
                 scope: "openid profile email"
             },
@@ -42,6 +58,8 @@ async function initializeAuth0() {
             useRefreshTokens: true,
             useFormData: true // Important for newer Chrome versions
         });
+        
+        console.log("Auth0 client created successfully");
         
         // Handle the authentication callback
         if (window.location.search.includes("code=") && 
@@ -69,21 +87,22 @@ async function initializeAuth0() {
     }
 }
 
-// Login function - UPDATED FOR V2 SDK with explicit URI
+// Login function - UPDATED FOR V2 SDK with origin-based URI
 async function login() {
     try {
-        console.log("Logging in...");
+        console.log("Logging in... Current origin:", window.location.origin);
         
-        // Updated syntax for v2 - added explicit redirect_uri
+        // Updated syntax for v2 - using window.location.origin
         await auth0Client.loginWithRedirect({
             authorizationParams: {
-                redirect_uri: "https://sanctusvidere.com"
+                redirect_uri: window.location.origin
             }
         });
         
         // Note: The page will redirect to Auth0, so code after this point won't execute
     } catch (err) {
         console.error("Login failed:", err);
+        alert("Login failed: " + (err.message || "Unknown error"));
     }
 }
 
@@ -109,6 +128,7 @@ async function logout() {
 async function updateUI() {
     try {
         const isAuthenticated = await auth0Client.isAuthenticated();
+        console.log("Authentication check result:", isAuthenticated);
         
         if (isAuthenticated) {
             // User is logged in
@@ -116,6 +136,7 @@ async function updateUI() {
             
             // Get user info
             const user = await auth0Client.getUser();
+            console.log("User info retrieved:", user);
             
             // Update UI - show dashboard, hide login
             document.getElementById('login-panel').style.display = 'none';
@@ -123,9 +144,11 @@ async function updateUI() {
             document.getElementById('user-name').textContent = user.name || user.email;
             
             // Store user info for Streamlit
-            localStorage.setItem('userToken', await auth0Client.getTokenSilently());
+            const token = await auth0Client.getTokenSilently();
+            localStorage.setItem('userToken', token);
             localStorage.setItem('userName', user.name || user.email.split('@')[0]);
             localStorage.setItem('userEmail', user.email);
+            console.log("User info stored in localStorage");
         } else {
             // User is not logged in
             console.log("User is not authenticated");
@@ -144,37 +167,53 @@ async function updateUI() {
 
 // Setup login buttons
 function setupLoginButtons() {
+    console.log("Setting up login buttons");
+    
     // Login button
     const loginButton = document.getElementById('auth0-login-button');
     if (loginButton) {
+        console.log("Login button found");
         loginButton.addEventListener('click', function(e) {
+            console.log("Login button clicked");
             e.preventDefault();
             login();
         });
+    } else {
+        console.warn("Login button not found with ID: auth0-login-button");
     }
     
     // Google login button
     const googleButton = document.getElementById('auth0-google-login');
     if (googleButton) {
+        console.log("Google login button found");
         googleButton.addEventListener('click', function(e) {
+            console.log("Google login button clicked");
             e.preventDefault();
             login();
         });
+    } else {
+        console.warn("Google login button not found with ID: auth0-google-login");
     }
     
     // Signup button
     const signupButton = document.getElementById('auth0-signup-button');
     if (signupButton) {
+        console.log("Signup button found");
         signupButton.addEventListener('click', function(e) {
+            console.log("Signup button clicked");
             e.preventDefault();
             login();
         });
+    } else {
+        console.warn("Signup button not found with ID: auth0-signup-button");
     }
     
     // Dashboard button
     const dashboardButton = document.querySelector('.dashboard-button');
     if (dashboardButton) {
+        console.log("Dashboard button found");
         dashboardButton.addEventListener('click', async function(e) {
+            console.log("Dashboard button clicked");
             e.preventDefault();
             
             const isAuthenticated = await auth0Client.isAuthenticated();
@@ -190,16 +229,24 @@ function setupLoginButtons() {
                 alert('You need to be logged in to access the dashboard.');
             }
         });
+    } else {
+        console.warn("Dashboard button not found with class: dashboard-button");
     }
     
     // Logout button
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
+        console.log("Logout button found");
         logoutButton.addEventListener('click', function(e) {
+            console.log("Logout button clicked");
             e.preventDefault();
             logout();
         });
+    } else {
+        console.warn("Logout button not found with ID: logout-button");
     }
+    
+    console.log("Login buttons setup complete");
 }
 
 // Review system functionality
@@ -293,3 +340,35 @@ function setupDirectAccess() {
         });
     }
 }
+
+// Add debugging helper function
+window.checkAuth0Status = function() {
+    console.log("=== Auth0 Status Check ===");
+    console.log("Auth0 client initialized:", !!auth0Client);
+    console.log("Current URL:", window.location.href);
+    console.log("Origin:", window.location.origin);
+    
+    const loginButton = document.getElementById('auth0-login-button');
+    console.log("Login button exists:", !!loginButton);
+    
+    const googleButton = document.getElementById('auth0-google-login');
+    console.log("Google login button exists:", !!googleButton);
+    
+    console.log("Current DOM structure of login panel:");
+    const loginPanel = document.getElementById('login-panel');
+    if (loginPanel) {
+        console.log(loginPanel.innerHTML);
+    } else {
+        console.log("Login panel not found");
+    }
+    
+    console.log("=== End Status Check ===");
+    
+    return "Auth0 status check complete - see console for details";
+};
+
+// Check HTML elements after a delay to ensure they're loaded
+setTimeout(() => {
+    console.log("Running delayed HTML element check");
+    window.checkAuth0Status();
+}, 3000);
