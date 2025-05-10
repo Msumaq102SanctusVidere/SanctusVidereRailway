@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', function() {
 const AUTH0_CONFIG = {
     domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
     clientId: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
-    redirectUri: window.location.origin + '/callback.html',
+    redirectUri: 'https://sanctusvidere.com/callback.html',
     audience: 'https://your-api-identifier', // Optional - only needed if using an API
     responseType: 'token id_token',
     scope: 'openid profile email'
