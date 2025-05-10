@@ -39,11 +39,17 @@ async function initAuth0() {
         
         console.log("Initializing Auth0...");
         
+        // Check if auth0 is available as a global object
+        if (typeof auth0 === 'undefined') {
+            console.error("Auth0 SDK not loaded properly!");
+            throw new Error("Auth0 SDK not available");
+        }
+        
         // Create Auth0 client
-        auth0Client = await createAuth0Client({
+        auth0Client = await auth0.createAuth0Client({
             domain: AUTH0_CONFIG.domain,
-            client_id: AUTH0_CONFIG.clientId,
-            redirect_uri: AUTH0_CONFIG.redirectUri,
+            clientId: AUTH0_CONFIG.clientId,
+            redirectUri: AUTH0_CONFIG.redirectUri,
             audience: AUTH0_CONFIG.audience,
             cacheLocation: 'localstorage'
         });
