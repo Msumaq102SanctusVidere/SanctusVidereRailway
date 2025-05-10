@@ -18,7 +18,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 });
 
-
 // Initialize Auth0 client
 async function initializeAuth0() {
     try {
@@ -44,14 +43,31 @@ async function initializeAuth0() {
             useFormData: true // Important for newer Chrome versions
         });
         
-        // Rest of your function remains the same
-        // ...
+        // Handle the authentication callback
+        if (window.location.search.includes("code=") && 
+            window.location.search.includes("state=")) {
+            
+            console.log("Auth callback detected in URL, handling redirect...");
+            
+            try {
+                const result = await auth0Client.handleRedirectCallback();
+                console.log("Redirect handled successfully:", result);
+                
+                // Clear the URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+                
+                console.log("Logged in successfully!");
+            } catch (callbackError) {
+                console.error("Error handling redirect:", callbackError);
+                throw callbackError;
+            }
+        }
+        
     } catch (err) {
         console.error("Error initializing Auth0:", err);
         throw err;
     }
 }
-
 
 // Login function - UPDATED FOR V2 SDK with explicit URI
 async function login() {
