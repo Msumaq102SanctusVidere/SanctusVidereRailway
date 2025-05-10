@@ -6,11 +6,15 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM loaded, initializing application...");
     
     // Check if Auth0 SDK is loaded
-    if (typeof createAuth0Client !== 'function') {
-        console.error("Auth0 SDK not loaded! Make sure the script tag is before main.js");
+    if (typeof auth0 === 'undefined' || typeof auth0.createAuth0Client !== 'function') {
+        console.error("Auth0 SDK not loaded properly!");
+        console.log("typeof auth0:", typeof auth0);
+        if (typeof auth0 !== 'undefined') {
+            console.log("typeof auth0.createAuth0Client:", typeof auth0.createAuth0Client);
+        }
         return;
     } else {
-        console.log("Auth0 SDK detected");
+        console.log("Auth0 SDK detected correctly");
     }
     
     // Initialize Auth0
@@ -47,7 +51,8 @@ async function initializeAuth0() {
         console.log("Current URL origin:", window.location.origin);
         
         // Create the Auth0 client with cookie-friendly settings
-        auth0Client = await createAuth0Client({
+        // IMPORTANT: Using auth0.createAuth0Client instead of createAuth0Client
+        auth0Client = await auth0.createAuth0Client({
             domain: config.domain,
             clientId: config.clientId,
             authorizationParams: {
@@ -346,7 +351,8 @@ function setupDirectAccess() {
 window.checkAuth0Status = function() {
     console.log("=== Auth0 Status Check ===");
     console.log("Auth0 client initialized:", !!auth0Client);
-    console.log("Auth0 SDK available:", typeof createAuth0Client === 'function');
+    console.log("Auth0 global object exists:", typeof auth0 !== 'undefined');
+    console.log("Auth0 createAuth0Client exists:", typeof auth0 !== 'undefined' && typeof auth0.createAuth0Client === 'function');
     console.log("Current URL:", window.location.href);
     console.log("Origin:", window.location.origin);
     
