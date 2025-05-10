@@ -1,216 +1,121 @@
-// main.js - Clean implementation with only Auth0 integration
+// Simple direct Auth0 integration - No SDK dependencies
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM loaded, setting up direct Auth0 login...");
+    
+    // Setup direct login buttons
+    setupDirectAuth0Buttons();
+    setupReviewForm();
+    setupDirectAccess();
+    
+    // Check for successful login return
+    checkLoginStatus();
+});
 
 // Auth0 configuration
 const AUTH0_CONFIG = {
     domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
     clientId: 'BAXPcs4GZAZodDtErS8UxTmugyxbEcZU',
-    client_secret: 'v7jTmzE6fnPxuFyguFLjIBIMDiwDmEyCV-xXkIyIOuDTb5SHltLfU9h55CjOgauc',
-    redirectUri: 'https://sanctusvidere.com/callback.html',
-    responseType: 'code',
-    scope: 'openid profile email',
-    cacheLocation: 'localstorage'
+    redirectUri: 'https://sanctusvidere.com/callback-simple.html'
 };
 
-// Global Auth0 client instance
-let auth0Client = null;
-
-// Initialize everything when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM loaded, initializing application...");
+// Check if user is logged in
+function checkLoginStatus() {
+    const token = localStorage.getItem('userToken');
+    const userName = localStorage.getItem('userName');
     
-    // Check if Auth0 SDK is loaded
-    if (typeof auth0 === 'undefined') {
-        console.error("AUTH0 SDK NOT LOADED! Check script tag.");
-        alert("Auth0 SDK failed to load. Please check your internet connection and try again.");
-        return;
-    }
-    
-    // Initialize Auth0 first
-    initAuth0().then(() => {
-        // Set up the other components after Auth0 is initialized
-        setupReviewForm();
-        setupDirectAccess();
-        setupAuth0Buttons();
-    }).catch(error => {
-        console.error("Failed to initialize Auth0:", error);
-    });
-});
-
-// Initialize Auth0
-async function initAuth0() {
-    try {
-        console.log("Initializing Auth0 client...");
-        
-        // Create Auth0 client
-        auth0Client = await auth0.createAuth0Client({
-            domain: AUTH0_CONFIG.domain,
-            client_id: AUTH0_CONFIG.clientId,
-            client_secret: AUTH0_CONFIG.client_secret,
-            redirect_uri: AUTH0_CONFIG.redirectUri,
-            response_type: AUTH0_CONFIG.responseType,
-            scope: AUTH0_CONFIG.scope,
-            cacheLocation: AUTH0_CONFIG.cacheLocation
-        });
-        
-        // Check for authentication callback
-        if (window.location.search.includes('code=') || 
-            window.location.search.includes('error=') ||
-            window.location.hash.includes('access_token=')) {
-            
-            console.log("Auth0 callback detected, handling redirect");
-            
-            try {
-                // Handle the redirect
-                await auth0Client.handleRedirectCallback();
-                console.log("Redirect handled successfully");
-                
-                // Clear the URL
-                window.history.replaceState({}, document.title, '/');
-            } catch (callbackError) {
-                console.error("Error handling callback:", callbackError);
-            }
-        }
-        
-        // Check if authenticated
-        const isAuthenticated = await auth0Client.isAuthenticated();
-        console.log("isAuthenticated:", isAuthenticated);
-        
-        if (isAuthenticated) {
-            console.log("User is authenticated with Auth0");
-            
-            // Get user info
-            const user = await auth0Client.getUser();
-            
-            // Store user info in localStorage for easy access
-            localStorage.setItem('userToken', await auth0Client.getTokenSilently());
-            localStorage.setItem('userName', user.name || user.email.split('@')[0]);
-            localStorage.setItem('userEmail', user.email);
-            
-            // Update UI to show dashboard access
-            document.getElementById('login-panel').style.display = 'none';
-            document.getElementById('dashboard-access').style.display = 'block';
-            document.getElementById('user-name').textContent = user.name || user.email.split('@')[0];
-        } else {
-            console.log("User is not authenticated with Auth0");
-            
-            // Show login panel
-            document.getElementById('login-panel').style.display = 'block';
-            document.getElementById('dashboard-access').style.display = 'none';
-        }
-        
-        return auth0Client;
-        
-    } catch (error) {
-        console.error('Error initializing Auth0:', error);
-        throw error;
+    if (token && userName) {
+        // User is logged in, show dashboard access
+        document.getElementById('login-panel').style.display = 'none';
+        document.getElementById('dashboard-access').style.display = 'block';
+        document.getElementById('user-name').textContent = userName;
+    } else {
+        // User is not logged in, show login panel
+        document.getElementById('login-panel').style.display = 'block';
+        document.getElementById('dashboard-access').style.display = 'none';
     }
 }
 
-// Setup Auth0 login buttons
-function setupAuth0Buttons() {
-    console.log("Setting up Auth0 buttons...");
-    
-    // Main login button
+// Setup direct Auth0 login buttons
+function setupDirectAuth0Buttons() {
+    // Login button
     const loginButton = document.getElementById('auth0-login-button');
     if (loginButton) {
-        loginButton.addEventListener('click', async function(e) {
+        loginButton.addEventListener('click', function(e) {
             e.preventDefault();
-            console.log("Auth0 login button clicked");
             
-            try {
-                // Show loading indicator
-                this.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Connecting...';
-                this.disabled = true;
-                
-                await auth0Client.loginWithRedirect({
-                    redirect_uri: AUTH0_CONFIG.redirectUri,
-                    response_type: AUTH0_CONFIG.responseType
-                });
-                // Note: Page will redirect, so code after this won't execute
-            } catch (error) {
-                console.error("Error during Auth0 login:", error);
-                alert("Login error: " + error.message);
-                // Reset button
-                this.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
-                this.disabled = false;
-            }
+            // Direct Auth0 authorization URL
+            const authUrl = `https://${AUTH0_CONFIG.domain}/authorize?` +
+                `client_id=${AUTH0_CONFIG.clientId}&` +
+                `redirect_uri=${encodeURIComponent(AUTH0_CONFIG.redirectUri)}&` +
+                `response_type=code&` +
+                `scope=openid%20profile%20email`;
+            
+            // Show loading indicator
+            this.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Connecting...';
+            this.disabled = true;
+            
+            // Redirect to Auth0
+            window.location.href = authUrl;
         });
     }
     
     // Google login button
     const googleButton = document.getElementById('auth0-google-login');
     if (googleButton) {
-        googleButton.addEventListener('click', async function(e) {
+        googleButton.addEventListener('click', function(e) {
             e.preventDefault();
-            console.log("Google login button clicked");
             
-            try {
-                // Show loading indicator
-                this.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Connecting...';
-                this.disabled = true;
-                
-                await auth0Client.loginWithRedirect({
-                    connection: 'google-oauth2',
-                    redirect_uri: AUTH0_CONFIG.redirectUri,
-                    response_type: AUTH0_CONFIG.responseType
-                });
-                // Note: Page will redirect, so code after this won't execute
-            } catch (error) {
-                console.error("Error during Google login:", error);
-                alert("Google login error: " + error.message);
-                // Reset button
-                this.innerHTML = '<i class="fab fa-google"></i> Sign in with Google';
-                this.disabled = false;
-            }
+            // Direct Auth0 authorization URL with Google connection
+            const authUrl = `https://${AUTH0_CONFIG.domain}/authorize?` +
+                `client_id=${AUTH0_CONFIG.clientId}&` +
+                `redirect_uri=${encodeURIComponent(AUTH0_CONFIG.redirectUri)}&` +
+                `response_type=code&` +
+                `connection=google-oauth2&` +
+                `scope=openid%20profile%20email`;
+            
+            // Show loading indicator
+            this.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Connecting...';
+            this.disabled = true;
+            
+            // Redirect to Auth0
+            window.location.href = authUrl;
         });
     }
     
     // Signup button
     const signupButton = document.getElementById('auth0-signup-button');
     if (signupButton) {
-        signupButton.addEventListener('click', async function(e) {
+        signupButton.addEventListener('click', function(e) {
             e.preventDefault();
-            console.log("Signup button clicked");
             
-            try {
-                await auth0Client.loginWithRedirect({
-                    screen_hint: 'signup',
-                    redirect_uri: AUTH0_CONFIG.redirectUri,
-                    response_type: AUTH0_CONFIG.responseType
-                });
-                // Note: Page will redirect, so code after this won't execute
-            } catch (error) {
-                console.error("Error during Auth0 signup:", error);
-                alert("Signup error: " + error.message);
-            }
+            // Direct Auth0 authorization URL with signup hint
+            const authUrl = `https://${AUTH0_CONFIG.domain}/authorize?` +
+                `client_id=${AUTH0_CONFIG.clientId}&` +
+                `redirect_uri=${encodeURIComponent(AUTH0_CONFIG.redirectUri)}&` +
+                `response_type=code&` +
+                `screen_hint=signup&` +
+                `scope=openid%20profile%20email`;
+            
+            // Redirect to Auth0
+            window.location.href = authUrl;
         });
     }
     
     // Dashboard button
     const dashboardButton = document.querySelector('.dashboard-button');
     if (dashboardButton) {
-        dashboardButton.addEventListener('click', async function(e) {
+        dashboardButton.addEventListener('click', function(e) {
             e.preventDefault();
             
-            try {
-                const isAuthenticated = await auth0Client.isAuthenticated();
-                
-                if (isAuthenticated) {
-                    console.log("Using Auth0 token for dashboard access");
-                    
-                    // Get token and user info
-                    const token = await auth0Client.getTokenSilently();
-                    const user = await auth0Client.getUser();
-                    const userId = user.sub || user.email.split('@')[0];
-                    
-                    // Redirect to dashboard with token
-                    window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&auth0=true&t=${Date.now()}`;
-                } else {
-                    alert('You need to be logged in to access the dashboard.');
-                }
-            } catch (error) {
-                console.error('Error accessing dashboard:', error);
-                alert('Error accessing dashboard. Please try logging in again.');
+            const token = localStorage.getItem('userToken');
+            const userName = localStorage.getItem('userName');
+            
+            if (token && userName) {
+                // Redirect to dashboard with token
+                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userName}&token=${token}&auth0=true&t=${Date.now()}`;
+            } else {
+                alert('You need to be logged in to access the dashboard.');
             }
         });
     }
@@ -218,30 +123,18 @@ function setupAuth0Buttons() {
     // Logout button
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
-        logoutButton.addEventListener('click', async function() {
-            try {
-                console.log("Logout button clicked");
-                
-                // Log out of Auth0
-                await auth0Client.logout({
-                    returnTo: window.location.origin
-                });
-                
-                // Clear local storage
-                localStorage.removeItem('userToken');
-                localStorage.removeItem('userName');
-                localStorage.removeItem('userEmail');
-                
-            } catch (error) {
-                console.error('Error during logout:', error);
-                
-                // Fallback logout - just clear localStorage and refresh
-                localStorage.removeItem('userToken');
-                localStorage.removeItem('userName');
-                localStorage.removeItem('userEmail');
-                
-                window.location.reload();
-            }
+        logoutButton.addEventListener('click', function() {
+            // Clear local storage
+            localStorage.removeItem('userToken');
+            localStorage.removeItem('userName');
+            localStorage.removeItem('userEmail');
+            
+            // Redirect to logout URL
+            const logoutUrl = `https://${AUTH0_CONFIG.domain}/v2/logout?` +
+                `client_id=${AUTH0_CONFIG.clientId}&` +
+                `returnTo=${encodeURIComponent(window.location.origin)}`;
+            
+            window.location.href = logoutUrl;
         });
     }
 }
