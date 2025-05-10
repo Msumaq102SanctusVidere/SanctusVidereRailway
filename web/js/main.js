@@ -1,90 +1,126 @@
-// Super simple Auth0 integration - no dependencies, minimal code
+// Auth0 client
+let auth0Client = null;
 
+// Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    // Set up buttons
-    setupLoginButtons();
-    setupReviewForm();
-    setupDirectAccess();
+    console.log("DOM loaded, initializing application...");
     
-    // Check for auth0 hash on page load (for returning from auth0)
-    checkAuth0Hash();
-    
-    // Check if user is already logged in
-    updateUIBasedOnLoginState();
+    // Initialize Auth0
+    initializeAuth0()
+        .then(() => {
+            // Set up other components after Auth0 is initialized
+            setupReviewForm();
+            setupDirectAccess();
+            updateUI();
+        })
+        .catch(err => {
+            console.error("Failed to initialize Auth0:", err);
+        });
 });
 
-// Auth0 configuration - UPDATED WITH NEW CLIENT ID
-const config = {
-    domain: 'dev-wl2dxopsswbbvkcb.us.auth0.com',
-    clientId: 'aaJU2JexuNeaLvFpvIEVmgfcHeVNRsCT', // NEW CLIENT ID
-    redirectUri: window.location.origin,
-};
-
-// Check for Auth0 hash on page load
-function checkAuth0Hash() {
-    if (window.location.hash) {
-        // Parse hash
-        const hash = window.location.hash.substring(1);
-        const params = new URLSearchParams(hash);
+// Initialize Auth0 client
+async function initializeAuth0() {
+    try {
+        // Config from auth_config.json - hardcoded for simplicity
+        const config = {
+            "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
+            "clientId": "aaJU2JexuNeaLvFpvIEVmgfcHeVNRsCT"
+        };
         
-        // Get tokens
-        const accessToken = params.get('access_token');
-        const idToken = params.get('id_token');
+        // Create the Auth0 client
+        auth0Client = await auth0.createAuth0Client({
+            domain: config.domain,
+            clientId: config.clientId
+        });
         
-        if (accessToken && idToken) {
-            // Store tokens
-            localStorage.setItem('accessToken', accessToken);
-            localStorage.setItem('idToken', idToken);
+        // Handle the authentication callback
+        // (when returning from Auth0 after login)
+        if (window.location.search.includes("code=") && 
+            window.location.search.includes("state=")) {
             
-            // Get user info
-            getUserInfo(accessToken);
+            // Handle the redirect callback
+            await auth0Client.handleRedirectCallback();
             
-            // Clear hash
-            window.history.replaceState(null, null, window.location.pathname);
+            // Clear the URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            console.log("Logged in successfully!");
         }
+        
+    } catch (err) {
+        console.error("Error initializing Auth0:", err);
+        throw err;
     }
 }
 
-// Get user info from Auth0
-function getUserInfo(accessToken) {
-    fetch(`https://${config.domain}/userinfo`, {
-        headers: {
-            'Authorization': `Bearer ${accessToken}`
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        return response.json();
-    })
-    .then(user => {
-        // Store user info
-        localStorage.setItem('userName', user.name || user.email.split('@')[0]);
-        localStorage.setItem('userEmail', user.email);
+// Login function
+async function login() {
+    try {
+        console.log("Logging in...");
         
-        // Update UI
-        updateUIBasedOnLoginState();
-    })
-    .catch(error => {
-        console.error('Error getting user info:', error);
-    });
+        await auth0Client.loginWithRedirect({
+            authorizationParams: {
+                redirect_uri: window.location.origin
+            }
+        });
+        
+        // Note: The page will redirect to Auth0, so code after this point won't execute
+    } catch (err) {
+        console.error("Login failed:", err);
+    }
 }
 
-// Update UI based on login state
-function updateUIBasedOnLoginState() {
-    const accessToken = localStorage.getItem('accessToken');
-    const userName = localStorage.getItem('userName');
-    
-    if (accessToken && userName) {
-        // User is logged in, show dashboard
-        document.getElementById('login-panel').style.display = 'none';
-        document.getElementById('dashboard-access').style.display = 'block';
-        document.getElementById('user-name').textContent = userName;
-    } else {
-        // User is not logged in, show login panel
-        document.getElementById('login-panel').style.display = 'block';
-        document.getElementById('dashboard-access').style.display = 'none';
+// Logout function
+async function logout() {
+    try {
+        console.log("Logging out...");
+        
+        await auth0Client.logout({
+            logoutParams: {
+                returnTo: window.location.origin
+            }
+        });
+        
+        // Note: The page will redirect to logout URL, so code after this point won't execute
+    } catch (err) {
+        console.error("Logout failed:", err);
+    }
+}
+
+// Update UI based on authentication state
+async function updateUI() {
+    try {
+        const isAuthenticated = await auth0Client.isAuthenticated();
+        
+        if (isAuthenticated) {
+            // User is logged in
+            console.log("User is authenticated");
+            
+            // Get user info
+            const user = await auth0Client.getUser();
+            
+            // Update UI - show dashboard, hide login
+            document.getElementById('login-panel').style.display = 'none';
+            document.getElementById('dashboard-access').style.display = 'block';
+            document.getElementById('user-name').textContent = user.name || user.email;
+            
+            // Store user info for Streamlit
+            localStorage.setItem('userToken', await auth0Client.getTokenSilently());
+            localStorage.setItem('userName', user.name || user.email.split('@')[0]);
+            localStorage.setItem('userEmail', user.email);
+        } else {
+            // User is not logged in
+            console.log("User is not authenticated");
+            
+            // Update UI - hide dashboard, show login
+            document.getElementById('login-panel').style.display = 'block';
+            document.getElementById('dashboard-access').style.display = 'none';
+            
+            // Setup login buttons
+            setupLoginButtons();
+        }
+    } catch (err) {
+        console.error("Error updating UI:", err);
     }
 }
 
@@ -95,7 +131,7 @@ function setupLoginButtons() {
     if (loginButton) {
         loginButton.addEventListener('click', function(e) {
             e.preventDefault();
-            redirectToAuth0('login');
+            login();
         });
     }
     
@@ -104,7 +140,7 @@ function setupLoginButtons() {
     if (googleButton) {
         googleButton.addEventListener('click', function(e) {
             e.preventDefault();
-            redirectToAuth0('login', 'google-oauth2');
+            login();
         });
     }
     
@@ -113,24 +149,27 @@ function setupLoginButtons() {
     if (signupButton) {
         signupButton.addEventListener('click', function(e) {
             e.preventDefault();
-            redirectToAuth0('signup');
+            login();
         });
     }
     
     // Dashboard button
     const dashboardButton = document.querySelector('.dashboard-button');
     if (dashboardButton) {
-        dashboardButton.addEventListener('click', function(e) {
+        dashboardButton.addEventListener('click', async function(e) {
             e.preventDefault();
             
-            const userId = localStorage.getItem('userName');
-            const token = localStorage.getItem('accessToken');
+            const isAuthenticated = await auth0Client.isAuthenticated();
             
-            if (userId && token) {
-                // Redirect to Streamlit with auth parameters
+            if (isAuthenticated) {
+                const token = await auth0Client.getTokenSilently();
+                const user = await auth0Client.getUser();
+                const userId = user.name || user.email.split('@')[0];
+                
+                // Redirect to Streamlit app with token and user ID
                 window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
             } else {
-                alert('Please log in first.');
+                alert('You need to be logged in to access the dashboard.');
             }
         });
     }
@@ -138,39 +177,11 @@ function setupLoginButtons() {
     // Logout button
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
-        logoutButton.addEventListener('click', function() {
-            // Clear local storage
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('idToken');
-            localStorage.removeItem('userName');
-            localStorage.removeItem('userEmail');
-            
-            // Redirect to Auth0 logout
-            window.location.href = `https://${config.domain}/v2/logout?client_id=${config.clientId}&returnTo=${encodeURIComponent(window.location.origin)}`;
+        logoutButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            logout();
         });
     }
-}
-
-// Redirect to Auth0 login or signup
-function redirectToAuth0(action, connection = null) {
-    let url = `https://${config.domain}/authorize?` +
-        `client_id=${config.clientId}&` +
-        `redirect_uri=${encodeURIComponent(config.redirectUri)}&` +
-        `response_type=token%20id_token&` +
-        `scope=openid%20profile%20email`;
-    
-    // Add connection for social login
-    if (connection) {
-        url += `&connection=${connection}`;
-    }
-    
-    // Add screen_hint for signup
-    if (action === 'signup') {
-        url += `&screen_hint=signup`;
-    }
-    
-    // Redirect to Auth0
-    window.location.href = url;
 }
 
 // Review system functionality
@@ -213,7 +224,6 @@ function setupReviewForm() {
             
             if (reviewText) {
                 // Store review in localStorage for demo purposes
-                // In production, this would be sent to your API
                 saveReview(rating, reviewText);
                 
                 // Hide form and show confirmation
