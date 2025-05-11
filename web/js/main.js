@@ -18,7 +18,7 @@ async function waitForAuth0SDK() {
 document.addEventListener('DOMContentLoaded', async function() {
     try {
         await waitForAuth0SDK();
-        initializeAuth0();
+        await initializeAuth0();
     } catch (err) {
         console.error(err.message);
     }
@@ -71,11 +71,22 @@ async function login() {
         if (!auth0Client) {
             throw new Error("Authentication service not available");
         }
-        await auth0Client.loginWithRedirect({
-            authorizationParams: {
-                redirect_uri: "https://app.sanctusvidere.com"
-            }
-        });
+        // Check if user is already logged in
+        const isAuthenticated = await auth0Client.isAuthenticated();
+        if (isAuthenticated) {
+            // If logged in, get user info and token, then redirect to Streamlit app
+            const user = await auth0Client.getUser();
+            const token = await auth0Client.getTokenSilently();
+            const userId = user.name || user.email.split('@')[0];
+            window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+        } else {
+            // If not logged in, redirect to Auth0 login form
+            await auth0Client.loginWithRedirect({
+                authorizationParams: {
+                    redirect_uri: "https://sanctusvidere.com" // Redirect back to homepage after login
+                }
+            });
+        }
     } catch (err) {
         console.error("Login failed:", err);
     }
@@ -87,9 +98,16 @@ async function logout() {
         if (!auth0Client) {
             throw new Error("Authentication service not available");
         }
+        // Log out from Auth0
         await auth0Client.logout({
             logoutParams: {
-                returnTo: "https://sanctusvidere.com"
+                returnTo: "https://sanctusvidere.com" // Temporarily redirect to homepage
+            }
+        });
+        // Immediately initiate a new login redirect to show the Auth0 login form
+        await auth0Client.loginWithRedirect({
+            authorizationParams: {
+                redirect_uri: "https://sanctusvidere.com"
             }
         });
     } catch (err) {
