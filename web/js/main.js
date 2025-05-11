@@ -1,5 +1,78 @@
 // The Auth0 client, initialized in initializeAuth0()
 let auth0Client = null;
+let isAuthenticated = false;
+
+// Global login function - must be available in global scope for HTML
+async function login() {
+    try {
+        // Show loading state
+        const loginButton = document.getElementById('login-button');
+        if (loginButton) {
+            loginButton.textContent = "Logging in...";
+            loginButton.disabled = true;
+        }
+        
+        // Update status
+        updateAuthStatus("Redirecting to login...");
+        
+        console.log("Logging in...");
+        await auth0Client.loginWithRedirect({
+            authorizationParams: {
+                redirect_uri: "https://app.sanctusvidere.com"
+            }
+        });
+    } catch (err) {
+        console.error("Login failed:", err);
+        updateAuthStatus("Login failed: " + err.message);
+        
+        // Reset button
+        const loginButton = document.getElementById('login-button');
+        if (loginButton) {
+            loginButton.textContent = "Login / Create Account";
+            loginButton.disabled = false;
+        }
+    }
+}
+
+// Global logout function - must be available in global scope for HTML
+async function logout() {
+    try {
+        // Show loading state
+        const logoutButton = document.getElementById('logout-button');
+        if (logoutButton) {
+            logoutButton.textContent = "Logging out...";
+            logoutButton.disabled = true;
+        }
+        
+        // Update status
+        updateAuthStatus("Logging out...");
+        
+        console.log("Logging out...");
+        await auth0Client.logout({
+            logoutParams: {
+                returnTo: "https://sanctusvidere.com"
+            }
+        });
+    } catch (err) {
+        console.log("Log out failed", err);
+        updateAuthStatus("Logout failed: " + err.message);
+        
+        // Reset button
+        const logoutButton = document.getElementById('logout-button');
+        if (logoutButton) {
+            logoutButton.textContent = "Logout";
+            logoutButton.disabled = false;
+        }
+    }
+}
+
+// Helper function to update authentication status display
+function updateAuthStatus(message) {
+    const statusElement = document.getElementById('auth-status');
+    if (statusElement) {
+        statusElement.innerHTML = `<p>${message}</p>`;
+    }
+}
 
 // Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -11,11 +84,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up other components
     setupReviewForm();
     setupDirectAccess();
+    
+    // Set up the click handlers for login/logout buttons
+    setupAuthButtons();
 });
 
 // Initialize Auth0 client
 async function initializeAuth0() {
     try {
+        updateAuthStatus("Initializing authentication...");
+        
         // Config for Auth0
         const config = {
             "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
@@ -30,11 +108,12 @@ async function initializeAuth0() {
         
         console.log("Auth0 client created successfully");
         
-        // Handle authentication callback
+        // Check if we need to handle a redirect callback
         if (window.location.search.includes("code=") && 
             window.location.search.includes("state=")) {
             
             try {
+                updateAuthStatus("Completing authentication...");
                 await auth0Client.handleRedirectCallback();
                 window.history.replaceState({}, document.title, window.location.pathname);
                 
@@ -47,38 +126,54 @@ async function initializeAuth0() {
                 window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
             } catch (error) {
                 console.error("Error handling authentication:", error);
+                updateAuthStatus("Authentication error: " + error.message);
+            }
+        } else {
+            // Check if user is authenticated
+            isAuthenticated = await auth0Client.isAuthenticated();
+            
+            // Enable the auth buttons now that we've initialized
+            enableAuthButtons();
+            
+            if (isAuthenticated) {
+                updateAuthStatus("You are logged in");
+            } else {
+                updateAuthStatus("Ready to log in");
             }
         }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
+        updateAuthStatus("Failed to initialize authentication: " + err.message);
     }
 }
 
-// Login with Auth0 - GLOBAL FUNCTION as in Auth0 sample
-async function login() {
-    try {
-        console.log("Logging in...");
-        await auth0Client.loginWithRedirect({
-            authorizationParams: {
-                redirect_uri: "https://app.sanctusvidere.com"
-            }
-        });
-    } catch (err) {
-        console.error("Login failed:", err);
+// Set up the click handlers for login/logout buttons
+function setupAuthButtons() {
+    const loginButton = document.getElementById('login-button');
+    const logoutButton = document.getElementById('logout-button');
+    
+    if (loginButton) {
+        loginButton.addEventListener('click', login);
+    }
+    
+    if (logoutButton) {
+        logoutButton.addEventListener('click', logout);
     }
 }
 
-// Logout function - GLOBAL FUNCTION as in Auth0 sample
-async function logout() {
-    try {
-        console.log("Logging out...");
-        await auth0Client.logout({
-            logoutParams: {
-                returnTo: "https://sanctusvidere.com"
-            }
-        });
-    } catch (err) {
-        console.log("Log out failed", err);
+// Enable auth buttons once Auth0 is initialized
+function enableAuthButtons() {
+    const loginButton = document.getElementById('login-button');
+    const logoutButton = document.getElementById('logout-button');
+    
+    if (loginButton) {
+        loginButton.disabled = false;
+        loginButton.textContent = "Login / Create Account";
+    }
+    
+    if (logoutButton) {
+        logoutButton.disabled = false;
+        logoutButton.textContent = "Logout";
     }
 }
 
