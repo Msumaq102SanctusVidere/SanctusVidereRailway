@@ -110,10 +110,15 @@ async function logout() {
         }
         // Clear local storage to ensure clean state
         localStorage.removeItem('auth0:cache');
-        // Redirect to Auth0 Universal Login page after logout
-        const loginUrl = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/authorize?response_type=code&client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&redirect_uri=https://sanctusvidere.com&scope=openid%20profile%20email`;
-        const logoutUrl = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=${encodeURIComponent(loginUrl)}&federated`;
-        window.location.href = logoutUrl;
+        // Clear client-side session
+        await auth0Client.logout({
+            logoutParams: {
+                returnTo: "https://sanctusvidere.com",
+                federated: true
+            }
+        });
+        // Immediately show the widget to force re-login
+        lock.show();
     } catch (err) {
         console.error("Log out failed:", err);
     }
