@@ -53,15 +53,9 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 Lock with simplified styling
+// Initialize Auth0 Lock with minimal styling
 function initializeLock() {
-    // Simple theme configuration
-    const customTheme = {
-        primaryColor: '#64B5F6',  // Blue accent color
-        logo: 'https://sanctusvidere.com/images/sanctus-videre-logo.png'  // Absolute URL
-    };
-    
-    // Simplified Lock widget configuration
+    // Minimal configuration - just changing the title and primary color
     lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
         auth: {
             redirectUrl: AUTH0_CONFIG.mainUrl,
@@ -70,15 +64,15 @@ function initializeLock() {
                 scope: 'openid profile email'
             }
         },
-        theme: customTheme,
+        theme: {
+            primaryColor: '#5956E9'  // Purple color matching your third image
+        },
         languageDictionary: {
-            title: 'Sanctus Videre'
+            title: 'Sanctus Videre'  // Custom title
         },
         autoclose: true,
         closable: true,
-        allowSignUp: true,
-        allowForgotPassword: true,
-        avatar: null
+        avatar: null  // Disable Gravatar
     });
     
     // Set up the authenticated event handler
@@ -112,7 +106,7 @@ function initializeLock() {
         });
     });
     
-    console.log("Auth0 Lock initialized with simplified styling");
+    console.log("Auth0 Lock initialized with minimal styling");
 }
 
 // Login with Auth0 Lock only
