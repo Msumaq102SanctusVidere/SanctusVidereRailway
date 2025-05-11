@@ -98,6 +98,11 @@
             margin-right: 8px;
         }
         
+        /* Auth state classes */
+        .auth-invisible {
+            display: none;
+        }
+        
         /* Review form styles */
         .review-form-container {
             position: fixed;
@@ -263,11 +268,13 @@
                 <div class="auth0-login-panel" id="login-panel">
                     <h2><i class="fas fa-user-circle icon-header"></i> Dashboard Access</h2>
                     
-                    <button class="button primary-button" id="auth0-login-button" style="width: 100%; margin-bottom: 10px;">
+                    <!-- Login button (shown when logged out) -->
+                    <button class="button primary-button auth-invisible" id="auth0-login-button" style="width: 100%; margin-bottom: 10px;">
                         <i class="fas fa-sign-in-alt"></i> Login / Create Account
                     </button>
                     
-                    <button class="button primary-button" id="auth0-logout-button" style="width: 100%;">
+                    <!-- Logout button (shown when logged in) -->
+                    <button class="button primary-button auth-invisible" id="auth0-logout-button" style="width: 100%;">
                         <i class="fas fa-sign-out-alt"></i> Logout
                     </button>
                     
