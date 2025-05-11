@@ -110,14 +110,9 @@ async function logout() {
         }
         // Clear local storage to ensure clean state
         localStorage.removeItem('auth0:cache');
-        // Clear client-side session
-        await auth0Client.logout({
-            logoutParams: {
-                returnTo: "https://sanctusvidere.com",
-                federated: true
-            }
-        });
-        // Immediately show the widget to force re-login
+        // Invalidate client-side session
+        auth0Client = null;
+        // Immediately show the widget without redirect
         lock.show();
     } catch (err) {
         console.error("Log out failed:", err);
