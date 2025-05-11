@@ -62,8 +62,7 @@ function initializeLock() {
             redirectUrl: AUTH0_CONFIG.appUrl, // Redirect directly to Streamlit
             responseType: 'token id_token',
             params: {
-                scope: 'openid profile email',
-                user: 'new'
+                scope: 'openid profile email'
             }
         },
         autoclose: true,
@@ -73,7 +72,30 @@ function initializeLock() {
         }
     });
     
-    console.log("Auth0 Lock initialized");
+    // Set up additional parameters for fresh workspace
+    lock.on('authenticated', function(authResult) {
+        // Create the redirect URL with all parameters for a fresh workspace
+        const token = authResult.idToken;
+        const accessToken = authResult.accessToken;
+        
+        lock.getUserInfo(accessToken, function(error, profile) {
+            if (error) {
+                console.error("Error getting user info:", error);
+                return;
+            }
+            
+            // Get user ID
+            const userId = profile.name || profile.email.split('@')[0];
+            
+            // Create URL with fresh parameter
+            const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
+            
+            // Redirect manually
+            window.location.replace(redirectUrl);
+        });
+    });
+    
+    console.log("Auth0 Lock initialized with fresh workspace parameters");
 }
 
 // Login with Auth0 Lock only
