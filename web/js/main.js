@@ -15,57 +15,11 @@ async function waitForAuth0SDK() {
     }
 }
 
-// Log authentication state for debugging
-async function logAuthState() {
-    console.log("=== Auth State Debug ===");
-    
-    // Check Auth0 client
-    console.log("Auth0 client exists:", auth0Client !== null);
-    
-    // Check if authenticated
-    if (auth0Client) {
-        try {
-            const isAuthenticated = await auth0Client.isAuthenticated();
-            console.log("Is authenticated:", isAuthenticated);
-            
-            if (isAuthenticated) {
-                const user = await auth0Client.getUser();
-                console.log("User info:", user ? "Found" : "Not found");
-            }
-        } catch (e) {
-            console.error("Error checking auth state:", e);
-        }
-    }
-    
-    // Check localStorage
-    console.log("Auth0 localStorage items:");
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.includes('auth0') || key.includes('Auth0'))) {
-            console.log(" - " + key);
-        }
-    }
-    
-    console.log("========================");
-}
-
 // Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', async function() {
     try {
         await waitForAuth0SDK();
         await initializeAuth0();
-        
-        // Check if we've just returned from logout page
-        const referrer = document.referrer;
-        if (referrer && referrer.includes('logged-out.html')) {
-            console.log("Returned from logout page - reinitializing Auth0");
-            // Clear any remaining data
-            clearAuthData();
-            // Reinitialize Auth0 from scratch
-            await initializeAuth0();
-        }
-        
-        await logAuthState(); // Debug auth state
         
         // Check if we're on the logged-out page and need to show login
         if (window.location.pathname.includes('logged-out.html')) {
@@ -90,7 +44,7 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 client
+// Initialize Auth0 client - ORIGINAL VERSION
 async function initializeAuth0() {
     try {
         // Config for Auth0
@@ -132,7 +86,7 @@ async function initializeAuth0() {
             const userId = user.name || user.email.split('@')[0];
             
             // Redirect to Streamlit app with user=new parameter to ensure fresh instance
-            window.location.href = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
+            window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
         }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
@@ -140,183 +94,30 @@ async function initializeAuth0() {
     }
 }
 
-// Login with Auth0 - DIRECT APPROACH
+// Login with Auth0 - ORIGINAL VERSION
 async function login() {
     try {
-        console.log("Login function called");
-        
-        // If Auth0 client doesn't exist, initialize it
-        if (!auth0Client) {
-            console.log("Auth0 client doesn't exist, initializing...");
-            await initializeAuth0();
+        if (!auth0Client || !lock) {
+            throw new Error("Authentication service not available");
         }
-        
-        // First check if user is already authenticated
-        try {
-            const isAuthenticated = await auth0Client.isAuthenticated();
-            console.log("Is authenticated:", isAuthenticated);
-            
-            if (isAuthenticated) {
-                console.log("User is already authenticated, redirecting to Streamlit...");
-                
-                // Get user info and token
-                const user = await auth0Client.getUser();
-                const token = await auth0Client.getTokenSilently();
-                const userId = user.name || user.email.split('@')[0];
-                
-                // Create redirect URL
-                const redirectUrl = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
-                console.log("Redirecting to:", redirectUrl);
-                
-                // Try multiple redirect methods
-                try {
-                    // Method 1: window.location.replace
-                    window.location.replace(redirectUrl);
-                    
-                    // Method 2: setTimeout with window.location.href (fallback)
-                    setTimeout(function() {
-                        console.log("Trying fallback redirect...");
-                        window.location.href = redirectUrl;
-                    }, 500);
-                } catch (e) {
-                    console.error("Redirect error:", e);
-                    alert("Redirect failed. Please go to: " + redirectUrl);
-                }
-                
-                return;
-            }
-        } catch (e) {
-            console.error("Error checking authentication:", e);
-            // Continue to show login widget
+        // Check if user is already logged in
+        const isAuthenticated = await auth0Client.isAuthenticated();
+        if (isAuthenticated) {
+            // If logged in, get user info and token, then redirect to Streamlit app
+            const user = await auth0Client.getUser();
+            const token = await auth0Client.getTokenSilently();
+            const userId = user.name || user.email.split('@')[0];
+            window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+        } else {
+            // Show the Auth0 Lock widget
+            lock.show();
         }
-        
-        // The user is not authenticated, show the login widget
-        console.log("Showing login widget...");
-        
-        // Clear any existing event listeners and recreate the lock
-        if (lock) {
-            lock.off('authenticated');
-        }
-        
-        // Create a fresh Lock instance
-        const config = {
-            domain: "dev-wl2dxopsswbbvkcb.us.auth0.com",
-            clientId: "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
-        };
-        
-        lock = new Auth0Lock(config.clientId, config.domain, {
-            auth: {
-                redirectUrl: "https://sanctusvidere.com",
-                responseType: 'code',
-                params: {
-                    scope: 'openid profile email'
-                }
-            },
-            autoclose: true,
-            allowSignUp: true
-        });
-        
-        // Set up a strong authenticated handler
-        lock.on('authenticated', function(authResult) {
-            console.log("Authenticated event triggered:", authResult);
-            
-            // Save the tokens in localStorage
-            localStorage.setItem('auth0_access_token', authResult.accessToken);
-            localStorage.setItem('auth0_id_token', authResult.idToken);
-            
-            // Get user profile
-            lock.getUserInfo(authResult.accessToken, function(error, profile) {
-                if (error) {
-                    console.error("Error getting user info:", error);
-                    return;
-                }
-                
-                console.log("Got user profile:", profile);
-                const userId = profile.name || profile.email.split('@')[0];
-                
-                // Stored for direct access
-                localStorage.setItem('auth0_user_id', userId);
-                
-                // Create redirect URL
-                const redirectUrl = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(authResult.idToken)}&t=${Date.now()}`;
-                console.log("Redirecting to:", redirectUrl);
-                
-                // Force redirect with form submission
-                const form = document.createElement('form');
-                form.method = 'GET';
-                form.action = 'https://app.sanctusvidere.com';
-                
-                // Add the parameters
-                const params = {
-                    user: 'new',
-                    userid: userId,
-                    token: authResult.idToken,
-                    t: Date.now()
-                };
-                
-                for (const key in params) {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = key;
-                    input.value = params[key];
-                    form.appendChild(input);
-                }
-                
-                // Append form to body and submit
-                document.body.appendChild(form);
-                form.submit();
-            });
-        });
-        
-        // Show the widget
-        lock.show();
-        
-        // Start polling for authentication changes
-        startAuthPolling();
     } catch (err) {
-        console.error("Login function error:", err);
-        alert("Authentication service unavailable. Please try again later.");
+        console.error("Login failed:", err);
     }
 }
 
-// Poll for authentication changes
-function startAuthPolling() {
-    console.log("Starting auth polling...");
-    
-    // Check for tokens directly
-    const pollInterval = setInterval(function() {
-        console.log("Polling for auth changes...");
-        
-        const accessToken = localStorage.getItem('auth0_access_token');
-        const idToken = localStorage.getItem('auth0_id_token');
-        const userId = localStorage.getItem('auth0_user_id');
-        
-        if (accessToken && idToken && userId) {
-            console.log("Found tokens in localStorage, redirecting...");
-            clearInterval(pollInterval);
-            
-            // Create redirect URL
-            const redirectUrl = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(idToken)}&t=${Date.now()}`;
-            console.log("Redirecting to:", redirectUrl);
-            
-            // Redirect with all available methods
-            try {
-                window.location.replace(redirectUrl);
-            } catch (e) {
-                console.error("Redirect error:", e);
-                window.location.href = redirectUrl;
-            }
-        }
-    }, 1000); // Check every second
-    
-    // Stop polling after 30 seconds (if not redirected)
-    setTimeout(function() {
-        clearInterval(pollInterval);
-        console.log("Auth polling stopped after timeout");
-    }, 30000);
-}
-
-// Logout function - GLOBAL FUNCTION using Auth0's server-side logout
+// Logout function - IMPROVED VERSION
 function logout() {
     // Clear local storage and cookies
     clearAuthData();
@@ -338,11 +139,6 @@ function clearAuthData() {
     localStorage.removeItem('access_token');
     localStorage.removeItem('id_token');
     localStorage.removeItem('expires_at');
-    
-    // Clear our custom items
-    localStorage.removeItem('auth0_access_token');
-    localStorage.removeItem('auth0_id_token');
-    localStorage.removeItem('auth0_user_id');
     
     // Find and clear any Auth0-related items
     for (let i = 0; i < localStorage.length; i++) {
@@ -462,10 +258,10 @@ function setupDirectAccess() {
                         const user = await auth0Client.getUser();
                         const token = await auth0Client.getTokenSilently();
                         const userId = user.name || user.email.split('@')[0];
-                        window.location.href = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
+                        window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
                     } else {
                         alert('You must be logged in to access the dashboard.');
-                        login();
+                        lock.show();
                     }
                 } catch (err) {
                     console.error("Direct access failed:", err);
