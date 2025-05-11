@@ -105,17 +105,30 @@ async function login() {
 // Logout function - GLOBAL FUNCTION as in Auth0 sample
 async function logout() {
     try {
-        if (!auth0Client || !lock) {
-            throw new Error("Authentication service not available");
-        }
         // Clear local storage to ensure clean state
         localStorage.removeItem('auth0:cache');
-        // Invalidate client-side session
-        auth0Client = null;
-        // Immediately show the widget without redirect
-        lock.show();
+        
+        // If auth0Client exists, try to log out, but don't wait for it
+        if (auth0Client) {
+            // Attempt to clear session but don't await it
+            auth0Client.logout({
+                localOnly: true  // Don't redirect to Auth0 logout page
+            }).catch(e => console.error("Session clearance error:", e));
+            
+            // Invalidate client-side session
+            auth0Client = null;
+        }
     } catch (err) {
         console.error("Log out failed:", err);
+    } finally {
+        // ALWAYS show the lock widget regardless of what happened above
+        if (lock) {
+            lock.show();
+        } else {
+            console.error("Auth0 Lock widget not available");
+            // If lock isn't available, we might need to reinitialize Auth0
+            waitForAuth0SDK().then(initializeAuth0).catch(console.error);
+        }
     }
 }
 
