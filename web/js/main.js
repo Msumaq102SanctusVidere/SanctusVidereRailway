@@ -116,46 +116,115 @@ function showLoginWidget() {
     lock.show();
 }
 
-// Get Streamlit App URL
+// Get Streamlit App URL - Ensuring proper encoding of parameters
 function getStreamlitAppUrl(userId, token) {
     // This function centralizes the streamlit app URL to ensure consistency
-    return `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+    const baseUrl = 'https://app.sanctusvidere.com';
+    const params = new URLSearchParams({
+        user: 'new',
+        userid: userId,
+        token: token,
+        t: Date.now()
+    });
+    console.log('Generated Streamlit URL:', `${baseUrl}?${params.toString()}`);
+    return `${baseUrl}?${params.toString()}`;
 }
 
-// Set up Auth0 Lock authentication events
+// Set up Auth0 Lock authentication events with additional debugging
 function setupLockEvents() {
-    if (!lock) return;
+    if (!lock) {
+        console.error('Lock not initialized in setupLockEvents');
+        return;
+    }
+    
+    console.log('Setting up Lock event handlers');
     
     // Remove any existing event listeners to prevent duplicates
     lock.off('authenticated');
+    lock.off('authorization_error');
     
     // Add authenticated event handler
     lock.on('authenticated', function(authResult) {
-        console.log('Lock authenticated event fired');
+        console.log('✅ Lock authenticated event fired', authResult);
         
         // Store authentication data if needed
         if (authResult && authResult.accessToken && authResult.idToken) {
+            console.log('✅ Got accessToken and idToken');
+            
             // Get user info
             lock.getUserInfo(authResult.accessToken, function(error, profile) {
                 if (error) {
-                    console.error('Error getting user info:', error);
+                    console.error('❌ Error getting user info:', error);
                     return;
                 }
                 
+                console.log('✅ Got user profile:', profile);
+                
                 // Get user ID for redirection
                 const userId = profile.name || profile.email.split('@')[0];
+                console.log('✅ Using userId:', userId);
                 
-                // Redirect to Streamlit app
-                console.log('Redirecting to Streamlit app...');
-                window.location.href = getStreamlitAppUrl(userId, authResult.idToken);
+                // Create redirect URL
+                const redirectUrl = getStreamlitAppUrl(userId, authResult.idToken);
+                console.log('✅ About to redirect to:', redirectUrl);
+                
+                // Try multiple redirection approaches
+                try {
+                    // Approach 1: Simple location redirect with delay
+                    console.log('Attempting redirect with window.location.href');
+                    setTimeout(function() {
+                        window.location.href = redirectUrl;
+                    }, 100);
+                    
+                    // Approach 2: If that doesn't work, try form submission after delay
+                    setTimeout(function() {
+                        console.log('Simple redirect may have failed, trying form submission');
+                        const form = document.createElement('form');
+                        form.method = 'GET';
+                        form.action = 'https://app.sanctusvidere.com';
+                        
+                        // Add the parameters
+                        const params = {
+                            user: 'new',
+                            userid: userId,
+                            token: authResult.idToken,
+                            t: Date.now()
+                        };
+                        
+                        for (const key in params) {
+                            const input = document.createElement('input');
+                            input.type = 'hidden';
+                            input.name = key;
+                            input.value = params[key];
+                            form.appendChild(input);
+                        }
+                        
+                        document.body.appendChild(form);
+                        form.submit();
+                    }, 500);
+                } catch (e) {
+                    console.error('❌ Redirect error:', e);
+                    
+                    // Last resort - alert with manual copy-paste URL
+                    alert('Automatic redirect failed. Please copy and paste the following URL into your browser: ' + redirectUrl);
+                }
             });
+        } else {
+            console.error('❌ Missing tokens in authResult', authResult);
         }
     });
     
     // Add authentication error event handler
     lock.on('authorization_error', function(err) {
-        console.error('Lock authorization error:', err);
+        console.error('❌ Lock authorization error:', err);
     });
+    
+    // Add hide event handler to monitor when widget closes
+    lock.on('hide', function() {
+        console.log('⚠️ Lock widget closed without authentication');
+    });
+    
+    console.log('✅ Lock event handlers setup complete');
 }
 
 // Initialize Auth0 client
@@ -203,7 +272,9 @@ async function initializeAuth0() {
             const userId = user.name || user.email.split('@')[0];
             
             // Redirect to Streamlit app with user=new parameter to ensure fresh instance
-            window.location.href = getStreamlitAppUrl(userId, token);
+            const redirectUrl = getStreamlitAppUrl(userId, token);
+            console.log('✅ SPA SDK: Redirecting to Streamlit app:', redirectUrl);
+            window.location.href = redirectUrl;
         }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
@@ -261,7 +332,9 @@ async function login() {
                 const user = await auth0Client.getUser();
                 const token = await auth0Client.getTokenSilently();
                 const userId = user.name || user.email.split('@')[0];
-                window.location.href = getStreamlitAppUrl(userId, token);
+                const redirectUrl = getStreamlitAppUrl(userId, token);
+                console.log('✅ Already logged in: Redirecting to Streamlit app:', redirectUrl);
+                window.location.href = redirectUrl;
             } else {
                 // Show the Auth0 Lock widget
                 setupLockEvents(); // Ensure event handlers are set up
@@ -422,7 +495,9 @@ function setupDirectAccess() {
                         const user = await auth0Client.getUser();
                         const token = await auth0Client.getTokenSilently();
                         const userId = user.name || user.email.split('@')[0];
-                        window.location.href = getStreamlitAppUrl(userId, token);
+                        const redirectUrl = getStreamlitAppUrl(userId, token);
+                        console.log('✅ Direct access: Redirecting to Streamlit app:', redirectUrl);
+                        window.location.href = redirectUrl;
                     } else {
                         alert('You must be logged in to access the dashboard.');
                         lock.show();
