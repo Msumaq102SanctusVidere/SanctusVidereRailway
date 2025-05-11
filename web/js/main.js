@@ -28,6 +28,7 @@ async function initializeAuth0() {
         auth0Client = await auth0.createAuth0Client({
             domain: config.domain,
             clientId: config.clientId,
+            cacheLocation: "localstorage",
             authorizationParams: {
                 redirect_uri: "https://app.sanctusvidere.com",
                 response_type: "code",
@@ -72,14 +73,14 @@ function setupLoginButton() {
     }
 }
 
-// Setup logout button
+// Setup logout button - using Auth0 sample's logout implementation
 function setupLogoutButton() {
     const logoutButton = document.getElementById('auth0-logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', function(e) {
             console.log("Logout button clicked");
             e.preventDefault();
-            logout();  // Using Auth0 sample's logout function
+            logout();
         });
     }
 }
@@ -97,7 +98,7 @@ async function loginWithAuth0() {
     }
 }
 
-// Logout function from Auth0 sample
+// Logout function directly from Auth0 sample code
 const logout = async () => {
     try {
         console.log("Logging out");
