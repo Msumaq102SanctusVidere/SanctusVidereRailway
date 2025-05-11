@@ -53,23 +53,15 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 Lock with enhanced styling
+// Initialize Auth0 Lock with simplified styling
 function initializeLock() {
-    // Define custom theme colors to match your site's aesthetic
+    // Simple theme configuration
     const customTheme = {
-        logo: 'images/sanctus-videre-logo.png',  // Using the exact path from your repo
-        primaryColor: '#64B5F6',                 // Blue accent color from your CSS
-        authButtons: {
-            "google-oauth2": {
-                displayName: "Google",
-                primaryColor: "#4285F4",
-                foregroundColor: "#ffffff",
-                icon: "https://cdn.auth0.com/website/new-homepage/dark-auth0-logo.png"
-            }
-        }
+        primaryColor: '#64B5F6',  // Blue accent color
+        logo: 'https://sanctusvidere.com/images/sanctus-videre-logo.png'  // Absolute URL
     };
     
-    // Enhanced Lock widget configuration
+    // Simplified Lock widget configuration
     lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
         auth: {
             redirectUrl: AUTH0_CONFIG.mainUrl,
@@ -78,27 +70,15 @@ function initializeLock() {
                 scope: 'openid profile email'
             }
         },
-        autoclose: true,
-        allowSignUp: true,
-        allowForgotPassword: true,
-        allowShowPassword: true,
-        closable: true,
         theme: customTheme,
         languageDictionary: {
-            title: 'Sanctus Videre',
-            emailInputPlaceholder: 'Your email address',
-            passwordInputPlaceholder: 'Your secure password',
-            loginSubmitLabel: 'Sign In',
-            signUpSubmitLabel: 'Create Account',
-            signUpLabel: "Don't have an account? Sign Up",
-            forgotPasswordTitle: 'Reset Your Password',
-            forgotPasswordAction: 'Forgot password?'
+            title: 'Sanctus Videre'
         },
-        container: 'auth0-login-container',
-        avatar: null,
-        rememberLastLogin: true,
-        socialButtonStyle: 'big',
-        initialScreen: 'login'
+        autoclose: true,
+        closable: true,
+        allowSignUp: true,
+        allowForgotPassword: true,
+        avatar: null
     });
     
     // Set up the authenticated event handler
@@ -132,7 +112,7 @@ function initializeLock() {
         });
     });
     
-    console.log("Auth0 Lock initialized with enhanced styling and your logo");
+    console.log("Auth0 Lock initialized with simplified styling");
 }
 
 // Login with Auth0 Lock only
