@@ -90,7 +90,7 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 client - HYBRID approach
+// Initialize Auth0 client
 async function initializeAuth0() {
     try {
         // Config for Auth0
@@ -99,7 +99,7 @@ async function initializeAuth0() {
             "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
         };
         
-        // Initialize Auth0 Lock widget (back to the original approach)
+        // Initialize Auth0 Lock widget
         lock = new Auth0Lock(config.clientId, config.domain, {
             auth: {
                 redirectUrl: "https://sanctusvidere.com",
@@ -110,34 +110,6 @@ async function initializeAuth0() {
             },
             autoclose: true,
             allowSignUp: true
-        });
-
-        // Set up Lock events with enhanced handling
-        lock.on('authenticated', async function(authResult) {
-            console.log('Authentication successful', authResult);
-            
-            try {
-                // Get user info from the authResult
-                if (authResult && authResult.accessToken) {
-                    lock.getUserInfo(authResult.accessToken, function(error, profile) {
-                        if (error) {
-                            console.error('Error getting user info:', error);
-                            return;
-                        }
-                        
-                        // Create the redirect URL
-                        const userId = profile.name || profile.email.split('@')[0];
-                        const redirectUrl = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(authResult.idToken)}&t=${Date.now()}`;
-                        
-                        console.log('Redirecting to:', redirectUrl);
-                        
-                        // Hard redirect to Streamlit
-                        window.location.replace(redirectUrl);
-                    });
-                }
-            } catch (error) {
-                console.error('Error during post-authentication:', error);
-            }
         });
 
         // Create the Auth0 client for session management
@@ -168,91 +140,180 @@ async function initializeAuth0() {
     }
 }
 
-// Login with Auth0 - Back to event-based approach
+// Login with Auth0 - DIRECT APPROACH
 async function login() {
     try {
-        // If client doesn't exist, attempt to reinitialize
-        if (!auth0Client || !lock) {
-            try {
-                await initializeAuth0();
-                if (!auth0Client || !lock) {
-                    throw new Error("Failed to initialize Auth0");
-                }
-            } catch (e) {
-                console.error("Error reinitializing Auth0:", e);
-                
-                // Recreate lock directly if needed
-                if (!lock) {
-                    const config = {
-                        "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
-                        "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
-                    };
-                    
-                    lock = new Auth0Lock(config.clientId, config.domain, {
-                        auth: {
-                            redirectUrl: "https://sanctusvidere.com",
-                            responseType: 'code',
-                            params: {
-                                scope: 'openid profile email'
-                            }
-                        },
-                        autoclose: true,
-                        allowSignUp: true
-                    });
-                    
-                    // Set up the authenticated event handler
-                    lock.on('authenticated', function(authResult) {
-                        console.log('Authentication successful');
-                        
-                        // Get user info from the authResult
-                        if (authResult && authResult.accessToken) {
-                            lock.getUserInfo(authResult.accessToken, function(error, profile) {
-                                if (error) {
-                                    console.error('Error getting user info:', error);
-                                    return;
-                                }
-                                
-                                // Create the redirect URL
-                                const userId = profile.name || profile.email.split('@')[0];
-                                const redirectUrl = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(authResult.idToken)}&t=${Date.now()}`;
-                                
-                                console.log('Redirecting to:', redirectUrl);
-                                
-                                // Hard redirect to Streamlit
-                                window.location.replace(redirectUrl);
-                            });
-                        }
-                    });
-                }
-            }
+        console.log("Login function called");
+        
+        // If Auth0 client doesn't exist, initialize it
+        if (!auth0Client) {
+            console.log("Auth0 client doesn't exist, initializing...");
+            await initializeAuth0();
         }
         
-        // Check if user is already logged in
+        // First check if user is already authenticated
         try {
             const isAuthenticated = await auth0Client.isAuthenticated();
+            console.log("Is authenticated:", isAuthenticated);
+            
             if (isAuthenticated) {
-                // If logged in, get user info and token, then redirect to Streamlit app
+                console.log("User is already authenticated, redirecting to Streamlit...");
+                
+                // Get user info and token
                 const user = await auth0Client.getUser();
                 const token = await auth0Client.getTokenSilently();
                 const userId = user.name || user.email.split('@')[0];
                 
-                // Redirect directly to Streamlit app
-                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
-            } else {
-                // Show the Auth0 Lock widget
-                lock.show();
+                // Create redirect URL
+                const redirectUrl = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
+                console.log("Redirecting to:", redirectUrl);
+                
+                // Try multiple redirect methods
+                try {
+                    // Method 1: window.location.replace
+                    window.location.replace(redirectUrl);
+                    
+                    // Method 2: setTimeout with window.location.href (fallback)
+                    setTimeout(function() {
+                        console.log("Trying fallback redirect...");
+                        window.location.href = redirectUrl;
+                    }, 500);
+                } catch (e) {
+                    console.error("Redirect error:", e);
+                    alert("Redirect failed. Please go to: " + redirectUrl);
+                }
+                
+                return;
             }
-        } catch (err) {
-            // If there's an error checking auth state, just show the lock widget
-            console.error("Error checking auth state:", err);
-            if (lock) {
-                lock.show();
+        } catch (e) {
+            console.error("Error checking authentication:", e);
+            // Continue to show login widget
+        }
+        
+        // The user is not authenticated, show the login widget
+        console.log("Showing login widget...");
+        
+        // Clear any existing event listeners and recreate the lock
+        if (lock) {
+            lock.off('authenticated');
+        }
+        
+        // Create a fresh Lock instance
+        const config = {
+            domain: "dev-wl2dxopsswbbvkcb.us.auth0.com",
+            clientId: "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
+        };
+        
+        lock = new Auth0Lock(config.clientId, config.domain, {
+            auth: {
+                redirectUrl: "https://sanctusvidere.com",
+                responseType: 'code',
+                params: {
+                    scope: 'openid profile email'
+                }
+            },
+            autoclose: true,
+            allowSignUp: true
+        });
+        
+        // Set up a strong authenticated handler
+        lock.on('authenticated', function(authResult) {
+            console.log("Authenticated event triggered:", authResult);
+            
+            // Save the tokens in localStorage
+            localStorage.setItem('auth0_access_token', authResult.accessToken);
+            localStorage.setItem('auth0_id_token', authResult.idToken);
+            
+            // Get user profile
+            lock.getUserInfo(authResult.accessToken, function(error, profile) {
+                if (error) {
+                    console.error("Error getting user info:", error);
+                    return;
+                }
+                
+                console.log("Got user profile:", profile);
+                const userId = profile.name || profile.email.split('@')[0];
+                
+                // Stored for direct access
+                localStorage.setItem('auth0_user_id', userId);
+                
+                // Create redirect URL
+                const redirectUrl = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(authResult.idToken)}&t=${Date.now()}`;
+                console.log("Redirecting to:", redirectUrl);
+                
+                // Force redirect with form submission
+                const form = document.createElement('form');
+                form.method = 'GET';
+                form.action = 'https://app.sanctusvidere.com';
+                
+                // Add the parameters
+                const params = {
+                    user: 'new',
+                    userid: userId,
+                    token: authResult.idToken,
+                    t: Date.now()
+                };
+                
+                for (const key in params) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = key;
+                    input.value = params[key];
+                    form.appendChild(input);
+                }
+                
+                // Append form to body and submit
+                document.body.appendChild(form);
+                form.submit();
+            });
+        });
+        
+        // Show the widget
+        lock.show();
+        
+        // Start polling for authentication changes
+        startAuthPolling();
+    } catch (err) {
+        console.error("Login function error:", err);
+        alert("Authentication service unavailable. Please try again later.");
+    }
+}
+
+// Poll for authentication changes
+function startAuthPolling() {
+    console.log("Starting auth polling...");
+    
+    // Check for tokens directly
+    const pollInterval = setInterval(function() {
+        console.log("Polling for auth changes...");
+        
+        const accessToken = localStorage.getItem('auth0_access_token');
+        const idToken = localStorage.getItem('auth0_id_token');
+        const userId = localStorage.getItem('auth0_user_id');
+        
+        if (accessToken && idToken && userId) {
+            console.log("Found tokens in localStorage, redirecting...");
+            clearInterval(pollInterval);
+            
+            // Create redirect URL
+            const redirectUrl = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(idToken)}&t=${Date.now()}`;
+            console.log("Redirecting to:", redirectUrl);
+            
+            // Redirect with all available methods
+            try {
+                window.location.replace(redirectUrl);
+            } catch (e) {
+                console.error("Redirect error:", e);
+                window.location.href = redirectUrl;
             }
         }
-    } catch (err) {
-        console.error("Login failed:", err);
-        alert("Authentication service is unavailable. Please try again later.");
-    }
+    }, 1000); // Check every second
+    
+    // Stop polling after 30 seconds (if not redirected)
+    setTimeout(function() {
+        clearInterval(pollInterval);
+        console.log("Auth polling stopped after timeout");
+    }, 30000);
 }
 
 // Logout function - GLOBAL FUNCTION using Auth0's server-side logout
@@ -277,6 +338,11 @@ function clearAuthData() {
     localStorage.removeItem('access_token');
     localStorage.removeItem('id_token');
     localStorage.removeItem('expires_at');
+    
+    // Clear our custom items
+    localStorage.removeItem('auth0_access_token');
+    localStorage.removeItem('auth0_id_token');
+    localStorage.removeItem('auth0_user_id');
     
     // Find and clear any Auth0-related items
     for (let i = 0; i < localStorage.length; i++) {
@@ -399,7 +465,7 @@ function setupDirectAccess() {
                         window.location.href = `https://app.sanctusvidere.com?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
                     } else {
                         alert('You must be logged in to access the dashboard.');
-                        lock.show();
+                        login();
                     }
                 } catch (err) {
                     console.error("Direct access failed:", err);
