@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logged Out - Sanctus Videre</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Auth0 SPA JS SDK -->
+    <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+    
+    <!-- Auth0 Lock SDK -->
+    <script src="https://cdn.auth0.com/js/lock/12.0/lock.min.js"></script>
+    
+    <!-- Your main JS - Load after Auth0 -->
+    <script src="js/main.js"></script>
+    
+    <style>
+        .logout-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 50vh;
+            text-align: center;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+        
+        .logout-message {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: linear-gradient(135deg, rgba(45, 55, 72, 0.7), rgba(35, 45, 62, 0.7));
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Logo in absolute position -->
+    <div class="absolute-logo">
+        <a href="index.html">
+            <img src="images/sanctus-videre-logo.png" alt="Sanctus Videre Logo" class="site-logo">
+        </a>
+    </div>
+    
+    <div class="container">
+        <!-- Header section with title only -->
+        <header class="site-header">
+            <h1 class="big-title">Logged Out</h1>
+            <p class="subtitle"><i>You have been successfully logged out of Sanctus Videre</i></p>
+        </header>
+
+        <div class="logout-container">
+            <div class="logout-message">
+                <h2><i class="fas fa-check-circle icon-header"></i> Successfully Logged Out</h2>
+                <p>Your session has been terminated and you have been securely logged out of your account.</p>
+                <p>Thank you for using Sanctus Videre. We look forward to seeing you again soon!</p>
+            </div>
+            
+            <div class="action-buttons">
+                <button id="login-again-button" class="button primary-button">
+                    <i class="fas fa-sign-in-alt"></i> Login Again
+                </button>
+                
+                <a href="index.html" class="button secondary-button">
+                    <i class="fas fa-home"></i> Return to Home
+                </a>
+            </div>
+        </div>
+        
+        <footer>
+            <div class="footer-content">
+                <p>© 2025 Sanctus Videre. All rights reserved.</p>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>
