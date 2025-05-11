@@ -1,12 +1,27 @@
 // The Auth0 client, initialized in initializeAuth0()
 let auth0Client = null;
 
+// Wait for the Auth0 SDK to load
+async function waitForAuth0SDK() {
+    const maxAttempts = 50; // Wait up to 5 seconds (50 * 100ms)
+    let attempts = 0;
+    while (typeof auth0 === 'undefined' && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+    }
+    if (typeof auth0 === 'undefined') {
+        throw new Error("Auth0 SDK failed to load 'auth0' global within 5 seconds");
+    }
+}
+
 // Initialize everything when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM loaded, initializing application...");
-    
-    // Initialize Auth0
-    initializeAuth0();
+document.addEventListener('DOMContentLoaded', async function() {
+    try {
+        await waitForAuth0SDK();
+        initializeAuth0();
+    } catch (err) {
+        console.error(err.message);
+    }
     
     // Set up other components
     setupReviewForm();
@@ -25,45 +40,37 @@ async function initializeAuth0() {
         // Create the Auth0 client
         auth0Client = await auth0.createAuth0Client({
             domain: config.domain,
-            clientId: config.clientId
+            clientId: config.clientId,
+            cacheLocation: 'localstorage'
         });
-        
-        console.log("Auth0 client created successfully");
         
         // Handle authentication callback
         if (window.location.search.includes("code=") && 
             window.location.search.includes("state=")) {
             
-            try {
-                await auth0Client.handleRedirectCallback();
-                window.history.replaceState({}, document.title, window.location.pathname);
-                
-                // Get user info & token for Streamlit app
-                const user = await auth0Client.getUser();
-                const token = await auth0Client.getTokenSilently();
-                const userId = user.name || user.email.split('@')[0];
-                
-                // Redirect to Streamlit app with user=new parameter to ensure fresh instance
-                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
-            } catch (error) {
-                console.error("Error handling authentication:", error);
-            }
+            await auth0Client.handleRedirectCallback();
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            // Get user info & token for Streamlit app
+            const user = await auth0Client.getUser();
+            const token = await auth0Client.getTokenSilently();
+            const userId = user.name || user.email.split('@')[0];
+            
+            // Redirect to Streamlit app with user=new parameter to ensure fresh instance
+            window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
         }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
+        auth0Client = null;
     }
 }
 
 // Login with Auth0 - GLOBAL FUNCTION as in Auth0 sample
 async function login() {
     try {
-        console.log("Login button clicked");
         if (!auth0Client) {
-            console.error("Auth0 client not initialized");
-            alert("Authentication service is not available. Please try again later.");
-            return;
+            throw new Error("Authentication service not available");
         }
-        console.log("Logging in...");
         await auth0Client.loginWithRedirect({
             authorizationParams: {
                 redirect_uri: "https://app.sanctusvidere.com"
@@ -71,20 +78,15 @@ async function login() {
         });
     } catch (err) {
         console.error("Login failed:", err);
-        alert("Login failed. Please try again.");
     }
 }
 
 // Logout function - GLOBAL FUNCTION as in Auth0 sample
 async function logout() {
     try {
-        console.log("Logout button clicked");
         if (!auth0Client) {
-            console.error("Auth0 client not initialized");
-            alert("Authentication service is not available. Please try again later.");
-            return;
+            throw new Error("Authentication service not available");
         }
-        console.log("Logging out...");
         await auth0Client.logout({
             logoutParams: {
                 returnTo: "https://sanctusvidere.com"
@@ -92,7 +94,6 @@ async function logout() {
         });
     } catch (err) {
         console.error("Log out failed:", err);
-        alert("Logout failed. Please try again.");
     }
 }
 
