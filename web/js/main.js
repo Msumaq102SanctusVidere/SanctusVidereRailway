@@ -1,61 +1,21 @@
-// Global variable for Auth0 client - will be initialized when SDK is ready
+// The Auth0 client, initialized in initializeAuth0()
 let auth0Client = null;
-let auth0Initialized = false;
 
-// VERY IMPORTANT: Window level functions for onclick access
-window.login = async function() {
-    if (!auth0Initialized) {
-        console.log("Auth0 not initialized yet");
-        alert("Authentication is still initializing. Please try again in a moment.");
-        return;
-    }
+// Initialize everything when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM loaded, initializing application...");
     
-    try {
-        console.log("Logging in...");
-        await auth0Client.loginWithRedirect({
-            authorizationParams: {
-                redirect_uri: "https://app.sanctusvidere.com"
-            }
-        });
-    } catch (err) {
-        console.error("Login failed:", err);
-        alert("Login failed: " + err.message);
-    }
-};
-
-window.logout = async function() {
-    if (!auth0Initialized) {
-        console.log("Auth0 not initialized yet");
-        alert("Authentication is still initializing. Please try again in a moment.");
-        return;
-    }
+    // Initialize Auth0
+    initializeAuth0();
     
-    try {
-        console.log("Logging out...");
-        await auth0Client.logout({
-            logoutParams: {
-                returnTo: "https://sanctusvidere.com"
-            }
-        });
-    } catch (err) {
-        console.log("Log out failed", err);
-        alert("Logout failed: " + err.message);
-    }
-};
+    // Set up other components
+    setupReviewForm();
+    setupDirectAccess();
+});
 
-// Initialize Auth0 client - SEPARATED FROM DOM READY
-async function initAuth0() {
+// Initialize Auth0 client
+async function initializeAuth0() {
     try {
-        // Check if Auth0 is available
-        if (typeof auth0 === 'undefined') {
-            console.error("Auth0 SDK not loaded yet");
-            // Try again in a second
-            setTimeout(initAuth0, 1000);
-            return;
-        }
-        
-        console.log("Initializing Auth0...");
-        
         // Config for Auth0
         const config = {
             "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
@@ -68,7 +28,6 @@ async function initAuth0() {
             clientId: config.clientId
         });
         
-        auth0Initialized = true;
         console.log("Auth0 client created successfully");
         
         // Handle authentication callback
@@ -95,17 +54,33 @@ async function initAuth0() {
     }
 }
 
-// Start Auth0 initialization process immediately
-setTimeout(initAuth0, 500);
+// Login with Auth0 - GLOBAL FUNCTION as in Auth0 sample
+async function login() {
+    try {
+        console.log("Logging in...");
+        await auth0Client.loginWithRedirect({
+            authorizationParams: {
+                redirect_uri: "https://app.sanctusvidere.com"
+            }
+        });
+    } catch (err) {
+        console.error("Login failed:", err);
+    }
+}
 
-// Initialize everything when DOM is loaded - KEEP REST OF CODE AS IS
-document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM loaded, initializing application...");
-    
-    // Set up other components
-    setupReviewForm();
-    setupDirectAccess();
-});
+// Logout function - GLOBAL FUNCTION as in Auth0 sample
+async function logout() {
+    try {
+        console.log("Logging out...");
+        await auth0Client.logout({
+            logoutParams: {
+                returnTo: "https://sanctusvidere.com"
+            }
+        });
+    } catch (err) {
+        console.log("Log out failed", err);
+    }
+}
 
 // Review system functionality
 function setupReviewForm() {
