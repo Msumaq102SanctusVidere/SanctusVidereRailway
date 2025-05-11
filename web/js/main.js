@@ -2,6 +2,14 @@
 let auth0Client = null;
 let lock = null;
 
+// Auth0 configuration
+const AUTH0_CONFIG = {
+    domain: "dev-wl2dxopsswbbvkcb.us.auth0.com",
+    clientId: "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU",
+    mainUrl: "https://sanctusvidere.com",
+    appUrl: "https://app.sanctusvidere.com"
+};
+
 // Wait for the Auth0 SDK to load
 async function waitForAuth0SDK() {
     const maxAttempts = 50; // Wait up to 5 seconds (50 * 100ms)
@@ -15,46 +23,13 @@ async function waitForAuth0SDK() {
     }
 }
 
-// Log authentication state for debugging
-async function logAuthState() {
-    console.log("=== Auth State Debug ===");
-    
-    // Check Auth0 client
-    console.log("Auth0 client exists:", auth0Client !== null);
-    
-    // Check if authenticated
-    if (auth0Client) {
-        try {
-            const isAuthenticated = await auth0Client.isAuthenticated();
-            console.log("Is authenticated:", isAuthenticated);
-            
-            if (isAuthenticated) {
-                const user = await auth0Client.getUser();
-                console.log("User info:", user ? "Found" : "Not found");
-            }
-        } catch (e) {
-            console.error("Error checking auth state:", e);
-        }
-    }
-    
-    // Check localStorage
-    console.log("Auth0 localStorage items:");
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.includes('auth0') || key.includes('Auth0'))) {
-            console.log(" - " + key);
-        }
-    }
-    
-    console.log("========================");
-}
-
 // Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', async function() {
     try {
         await waitForAuth0SDK();
-        await initializeAuth0();
-        await logAuthState(); // Debug auth state
+        
+        // Initialize Lock without SPA SDK
+        initializeLock();
         
         // Check if we're on the logged-out page and need to show login
         if (window.location.pathname.includes('logged-out.html')) {
@@ -79,89 +54,41 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 client - WITH ERROR HANDLING FOR REDIRECT
-async function initializeAuth0() {
-    try {
-        // Config for Auth0
-        const config = {
-            "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
-            "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
-        };
-        
-        // Initialize Auth0 Lock widget
-        lock = new Auth0Lock(config.clientId, config.domain, {
-            auth: {
-                redirectUrl: "https://sanctusvidere.com",
-                responseType: 'code',
-                params: {
-                    scope: 'openid profile email'
-                }
-            },
-            autoclose: true,
-            allowSignUp: true
-        });
-
-        // Create the Auth0 client for session management
-        auth0Client = await auth0.createAuth0Client({
-            domain: config.domain,
-            clientId: config.clientId,
-            cacheLocation: 'localstorage'
-        });
-        
-        // Handle authentication callback only after login - WITH ERROR HANDLING
-        if (window.location.search.includes("code=")) {
-            try {
-                await auth0Client.handleRedirectCallback();
-                window.history.replaceState({}, document.title, window.location.pathname);
-                
-                // Get user info & token for Streamlit app
-                const user = await auth0Client.getUser();
-                const token = await auth0Client.getTokenSilently();
-                const userId = user.name || user.email.split('@')[0];
-                
-                // Redirect to Streamlit app with user=new parameter to ensure fresh instance
-                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
-            } catch (redirectError) {
-                console.error("Error handling redirect:", redirectError);
-                
-                // Clean up URL and localStorage if there's an error
-                window.history.replaceState({}, document.title, window.location.pathname);
-                localStorage.removeItem('auth0.is.authenticated');
-                
-                // Recreate the client without handling the callback
-                auth0Client = await auth0.createAuth0Client({
-                    domain: config.domain,
-                    clientId: config.clientId,
-                    cacheLocation: 'localstorage'
-                });
+// Initialize Auth0 Lock without SPA SDK
+function initializeLock() {
+    // Initialize Auth0 Lock widget
+    lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
+        auth: {
+            redirectUrl: AUTH0_CONFIG.appUrl, // Redirect directly to Streamlit
+            responseType: 'token id_token',
+            params: {
+                scope: 'openid profile email',
+                user: 'new'
             }
+        },
+        autoclose: true,
+        allowSignUp: true,
+        languageDictionary: {
+            title: 'Sanctus Videre Login'
         }
-    } catch (err) {
-        console.error("Error initializing Auth0:", err);
-        auth0Client = null;
-    }
+    });
+    
+    console.log("Auth0 Lock initialized");
 }
 
-// Login with Auth0 - ORIGINAL VERSION
-async function login() {
+// Login with Auth0 Lock only
+function login() {
     try {
-        if (!auth0Client || !lock) {
-            throw new Error("Authentication service not available");
+        if (!lock) {
+            // Initialize lock if not already done
+            initializeLock();
         }
-        // Check if user is already logged in
-        const isAuthenticated = await auth0Client.isAuthenticated();
-        if (isAuthenticated) {
-            // If logged in, get user info and token, then redirect to Streamlit app
-            const user = await auth0Client.getUser();
-            const token = await auth0Client.getTokenSilently();
-            const userId = user.name || user.email.split('@')[0];
-            window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
-        } else {
-            // Show the Auth0 Lock widget
-            lock.show();
-        }
+        
+        // Simply show the lock widget
+        lock.show();
     } catch (err) {
         console.error("Login failed:", err);
+        alert("Authentication service unavailable. Please try again later.");
     }
 }
 
@@ -172,7 +99,7 @@ function logout() {
     
     // Use Auth0's official logout endpoint (most reliable method)
     const returnTo = encodeURIComponent(window.location.origin + '/logged-out.html');
-    window.location.href = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=${returnTo}`;
+    window.location.href = `https://${AUTH0_CONFIG.domain}/v2/logout?client_id=${AUTH0_CONFIG.clientId}&returnTo=${returnTo}`;
     
     return false;
 }
@@ -297,24 +224,7 @@ function setupDirectAccess() {
             
             const accessCode = prompt('Enter direct access code:');
             if (accessCode === 'sanctus2025') {
-                try {
-                    if (!auth0Client) {
-                        throw new Error("Authentication service not available");
-                    }
-                    const isAuthenticated = await auth0Client.isAuthenticated();
-                    if (isAuthenticated) {
-                        const user = await auth0Client.getUser();
-                        const token = await auth0Client.getTokenSilently();
-                        const userId = user.name || user.email.split('@')[0];
-                        window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
-                    } else {
-                        alert('You must be logged in to access the dashboard.');
-                        lock.show();
-                    }
-                } catch (err) {
-                    console.error("Direct access failed:", err);
-                    alert('Failed to access dashboard. Please try logging in.');
-                }
+                login();
             } else {
                 alert('Invalid access code.');
             }
