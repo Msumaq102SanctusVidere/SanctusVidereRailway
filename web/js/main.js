@@ -104,14 +104,15 @@ async function logout() {
         }
         // Set flag to prevent Streamlit redirect during logout
         isLoggingOut = true;
-        // Log out from Auth0
-        await auth0Client.logout({
-            logoutParams: {
-                returnTo: "https://sanctusvidere.com" // Redirect to homepage after logout
-            }
-        });
         // Clear local storage to ensure clean state
         localStorage.removeItem('auth0:cache');
+        // Log out from Auth0 with federated logout to clear server-side session
+        await auth0Client.logout({
+            logoutParams: {
+                returnTo: "https://sanctusvidere.com",
+                federated: true // Ensure server-side session is cleared
+            }
+        });
         // Redirect to Auth0 login form by initiating a new login
         await auth0Client.loginWithRedirect({
             authorizationParams: {
