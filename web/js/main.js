@@ -102,86 +102,57 @@ async function login() {
     }
 }
 
-// Logout function - GLOBAL FUNCTION as in Auth0 sample
-function logout(event) {
-    // Prevent any default behavior
-    event?.preventDefault();
-    
+// Logout function - GLOBAL FUNCTION as in Auth0 sample - REVISED VERSION
+function logout() {
     try {
-        // Brute force approach to prevent redirects
+        // Prevent any redirect attempts
         const originalLocation = window.location.href;
         
-        // Block any redirect attempts (we'll restore it in the finally block)
+        // Temporarily block any navigation methods
+        const originalHref = window.location.href;
         const originalAssign = window.location.assign;
         const originalReplace = window.location.replace;
-        const originalHref = Object.getOwnPropertyDescriptor(window.location, 'href');
         
         window.location.assign = function() { console.log("Blocked redirect attempt"); };
         window.location.replace = function() { console.log("Blocked redirect attempt"); };
+        
         Object.defineProperty(window.location, 'href', {
-            set: function() { console.log("Blocked redirect attempt"); },
-            get: function() { return originalLocation; }
+            get: function() { return originalHref; },
+            set: function() { console.log("Blocked redirect attempt"); }
         });
         
-        // Clear local storage to ensure clean state
+        // Clear auth-related data
         localStorage.removeItem('auth0:cache');
         localStorage.removeItem('auth0.is.authenticated');
         
-        // If auth0Client exists, try to clear it without redirects
-        if (auth0Client) {
-            try {
-                // Force client to be in a logged-out state
-                auth0Client = null;
-            } catch (e) {
-                console.error("Client reset error:", e);
-            }
-        }
-
-        // Make sure we have a lock instance
-        if (!lock && typeof Auth0Lock !== 'undefined') {
-            const config = {
-                "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
-                "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
-            };
-            
-            // Recreate lock widget
-            lock = new Auth0Lock(config.clientId, config.domain, {
-                auth: {
-                    redirectUrl: "https://sanctusvidere.com",
-                    responseType: 'code',
-                    params: {
-                        scope: 'openid profile email'
-                    }
-                },
-                autoclose: true,
-                allowSignUp: true
-            });
-        }
-    } catch (err) {
-        console.error("Log out failed:", err);
-    } finally {
-        // Always show the lock widget regardless of what happened above
+        // Nullify the client to force logged-out state
+        auth0Client = null;
+        
+        // Always show the lock widget
         if (lock) {
             lock.show();
         } else {
             console.error("Auth0 Lock widget not available");
-            // Try one more time to initialize
-            waitForAuth0SDK().then(() => {
-                initializeAuth0().then(() => {
-                    if (lock) lock.show();
-                });
-            }).catch(console.error);
         }
         
-        // Restore the original location methods after a short delay
-        setTimeout(() => {
-            if (originalAssign) window.location.assign = originalAssign;
-            if (originalReplace) window.location.replace = originalReplace;
-            if (originalHref) Object.defineProperty(window.location, 'href', originalHref);
+        // Restore navigation functions after a short delay
+        setTimeout(function() {
+            window.location.assign = originalAssign;
+            window.location.replace = originalReplace;
+            
+            Object.defineProperty(window.location, 'href', {
+                get: function() { return originalLocation; },
+                set: originalAssign
+            });
         }, 500);
+        
+    } catch (err) {
+        console.error("Logout failed:", err);
+        // Still try to show the widget even if there's an error
+        if (lock) lock.show();
     }
     
-    // Ensure we don't continue with any default behavior
+    // Prevent any form submission or navigation
     return false;
 }
 
