@@ -103,9 +103,16 @@ async function logout() {
         if (!auth0Client) {
             throw new Error("Authentication service not available");
         }
+        // Clear client-side session first
+        await auth0Client.logout({
+            logoutParams: {
+                returnTo: "https://sanctusvidere.com?logout=true",
+                federated: true
+            }
+        });
         // Clear local storage to ensure clean state
         localStorage.removeItem('auth0:cache');
-        // Log out from Auth0 with federated logout to clear server-side session
+        // Direct logout URL to ensure server-side session is cleared
         window.location.href = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=https://sanctusvidere.com?logout=true&federated`;
     } catch (err) {
         console.error("Log out failed:", err);
