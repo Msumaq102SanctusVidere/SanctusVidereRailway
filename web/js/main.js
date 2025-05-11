@@ -53,7 +53,7 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 Lock - Modified for fresh Streamlit instance
+// Initialize Auth0 Lock - Optimized for Streamlit's fresh workspace parameter
 function initializeLock() {
     // Initialize Auth0 Lock widget with minimal configuration
     lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
@@ -74,44 +74,19 @@ function initializeLock() {
     
     // Set up the authenticated event handler
     lock.on('authenticated', function(authResult) {
-        // Get the tokens and user info
+        // Get the tokens from the authResult
         const idToken = authResult.idToken;
         const accessToken = authResult.accessToken;
         
-        // Get user profile
-        lock.getUserInfo(accessToken, function(error, profile) {
-            if (error) {
-                console.error("Error getting user info:", error);
-                
-                // Fallback: Redirect with just timestamp
-                const timestamp = Date.now();
-                const redirectUrl = `${AUTH0_CONFIG.appUrl}?t=${timestamp}&token=${encodeURIComponent(idToken)}&user=new`;
-                window.location.replace(redirectUrl);
-                return;
-            }
-            
-            // Get user ID for a more personalized experience
-            const userId = profile.name || profile.email || 'user-' + Date.now();
-            
-            // Create a unique session ID for this login
-            const sessionId = Date.now().toString(36) + Math.random().toString(36).substring(2);
-            
-            // Build URL with multiple fresh instance indicators
-            const redirectUrl = `${AUTH0_CONFIG.appUrl}?` + 
-                `user=new` +                                 // Signal for new user session
-                `&session=${sessionId}` +                    // Unique session ID
-                `&userid=${encodeURIComponent(userId)}` +    // User identifier
-                `&token=${encodeURIComponent(idToken)}` +    // Auth token
-                `&t=${Date.now()}` +                         // Timestamp
-                `&fresh=true` +                              // Explicit fresh flag
-                `&reset=1`;                                  // Reset flag
-            
-            console.log("Redirecting to fresh Streamlit instance:", redirectUrl);
-            window.location.replace(redirectUrl);
-        });
+        // Create a redirect URL with specifically "user=new" parameter
+        // This is EXACTLY what your Streamlit app is looking for!
+        const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=new&token=${encodeURIComponent(idToken)}&t=${Date.now()}`;
+        
+        console.log("Redirecting to fresh Streamlit instance:", redirectUrl);
+        window.location.replace(redirectUrl);
     });
     
-    console.log("Auth0 Lock initialized with fresh Streamlit instance handling");
+    console.log("Auth0 Lock initialized with proper fresh workspace parameter");
 }
 
 // Login with Auth0 Lock only
