@@ -73,14 +73,16 @@ function setupLoginButton() {
     }
 }
 
-// Setup logout button - using Auth0 sample's logout implementation
+// Setup logout button - SIMPLIFIED to use direct URL navigation
 function setupLogoutButton() {
     const logoutButton = document.getElementById('auth0-logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', function(e) {
-            console.log("Logout button clicked");
             e.preventDefault();
-            logout();
+            console.log("Logout button clicked - redirecting now");
+            
+            // Direct URL navigation without any functions or async/await
+            window.location.href = 'https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=https://sanctusvidere.com';
         });
     }
 }
@@ -98,17 +100,6 @@ async function loginWithAuth0() {
         console.error("Login failed:", err);
     }
 }
-
-// Logout function using hardcoded direct URL that we know works
-const logout = async () => {
-    try {
-        console.log("Logging out...");
-        // Use hardcoded values since we know they work
-        window.location.href = 'https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=https://sanctusvidere.com';
-    } catch (err) {
-        console.log("Log out failed", err);
-    }
-};
 
 // Review system functionality
 function setupReviewForm() {
