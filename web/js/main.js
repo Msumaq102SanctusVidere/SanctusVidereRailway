@@ -58,12 +58,6 @@ async function initializeAuth0() {
             cacheLocation: 'localstorage'
         });
         
-        // Show widget after logout
-        if (window.location.search.includes("logout=true")) {
-            lock.show();
-            return; // Stop further processing to avoid Streamlit redirect
-        }
-        
         // Handle authentication callback only after login
         if (window.location.search.includes("code=") && 
             window.location.search.includes("state=")) {
@@ -116,15 +110,10 @@ async function logout() {
         }
         // Clear local storage to ensure clean state
         localStorage.removeItem('auth0:cache');
-        // Log out from Auth0 with federated logout to clear server-side session
-        await auth0Client.logout({
-            logoutParams: {
-                returnTo: "https://sanctusvidere.com?logout=true",
-                federated: true
-            }
-        });
-        // Ensure server-side session is cleared
-        window.location.href = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=https://sanctusvidere.com?logout=true&federated`;
+        // Redirect to Auth0 Universal Login page after logout
+        const loginUrl = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/authorize?response_type=code&client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&redirect_uri=https://sanctusvidere.com&scope=openid%20profile%20email`;
+        const logoutUrl = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=${encodeURIComponent(loginUrl)}&federated`;
+        window.location.href = logoutUrl;
     } catch (err) {
         console.error("Log out failed:", err);
     }
