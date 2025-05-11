@@ -53,7 +53,7 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 Lock - Optimized for Streamlit's fresh workspace parameter
+// Initialize Auth0 Lock - STREAMLIT-SPECIFIC VERSION
 function initializeLock() {
     // Initialize Auth0 Lock widget with minimal configuration
     lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
@@ -78,15 +78,36 @@ function initializeLock() {
         const idToken = authResult.idToken;
         const accessToken = authResult.accessToken;
         
-        // Create a redirect URL with specifically "user=new" parameter
-        // This is EXACTLY what your Streamlit app is looking for!
-        const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=new&token=${encodeURIComponent(idToken)}&t=${Date.now()}`;
-        
-        console.log("Redirecting to fresh Streamlit instance:", redirectUrl);
-        window.location.replace(redirectUrl);
+        // Get user profile
+        lock.getUserInfo(accessToken, function(error, profile) {
+            if (error) {
+                console.error("Error getting user info:", error);
+                
+                // Create a simpler redirect URL focusing just on the user=new parameter
+                const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=new&token=${encodeURIComponent(idToken)}`;
+                console.log("Redirecting with simplified fresh workspace URL:", redirectUrl);
+                window.location.replace(redirectUrl);
+                return;
+            }
+            
+            // Get user ID for logging
+            const userId = profile.name || profile.email || 'user-' + Date.now();
+            console.log("Authenticated user:", userId);
+            
+            // STREAMLIT-SPECIFIC APPROACH:
+            // Based on your Streamlit code, it looks for "user=new" or "user=regular"
+            // Let's try with just the essential parameters
+            
+            // Method 1: Minimal approach - just what Streamlit needs
+            const simpleUrl = `${AUTH0_CONFIG.appUrl}?user=new&token=${encodeURIComponent(idToken)}`;
+            console.log("Redirecting to Streamlit with minimal parameters:", simpleUrl);
+            
+            // Force navigation - use replace for cleaner history
+            window.location.replace(simpleUrl);
+        });
     });
     
-    console.log("Auth0 Lock initialized with proper fresh workspace parameter");
+    console.log("Auth0 Lock initialized with Streamlit-specific parameters");
 }
 
 // Login with Auth0 Lock only
