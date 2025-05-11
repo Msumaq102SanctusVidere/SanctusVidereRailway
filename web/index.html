@@ -14,29 +14,147 @@
     <!-- Tracking script -->
     <script src="js/tracking.js"></script>
     
-    <!-- AUTH0 SCRIPT FIRST - Load this before your main.js -->
+    <!-- Auth0 SPA JS SDK -->
     <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
     
-    <!-- Your main JS AFTER Auth0 loads -->
+    <!-- Your main JS - Load after Auth0 -->
     <script src="js/main.js"></script>
 </head>
-
-<!-- Right Column: Simplified Login Section -->
-<div class="column right-column">
-    <!-- Simplified Auth0 Login Panel - Using window. functions -->
-    <div class="auth0-login-panel" id="login-panel">
-        <h2><i class="fas fa-user-circle icon-header"></i> Dashboard Access</h2>
-        
-        <button class="button primary-button" onclick="window.login()" style="width: 100%; margin-bottom: 10px;">
-            <i class="fas fa-sign-in-alt"></i> Login / Create Account
-        </button>
-        
-        <button class="button primary-button" onclick="window.logout()" style="width: 100%;">
-            <i class="fas fa-sign-out-alt"></i> Logout
-        </button>
-        
-        <p class="login-info">Access our AI-powered drawing analysis dashboard</p>
+<body>
+    <!-- Logo in absolute position -->
+    <div class="absolute-logo">
+        <a href="index.html">
+            <img src="images/sanctus-videre-logo.png" alt="Sanctus Videre Logo" class="site-logo">
+        </a>
     </div>
-</div>
+    
+    <div class="container">
+        <!-- Header section with title only -->
+        <header class="site-header">
+            <h1 class="big-title">Sanctus Videre 1.0</h1>
+            <p class="subtitle"><i>Bridging Human Creativity and Computational Insight</i></p>
+        </header>
 
-<!-- ... Rest of your HTML remains unchanged ... -->
+        <!-- Main Content with Three-column Layout -->
+        <div class="main-content">
+            <!-- Left Column: Videos -->
+            <div class="column left-column">
+                <h2><i class="fas fa-film icon-header"></i> Introduction</h2>
+                <div class="video-container">
+                    <!-- YouTube video embed replacing placeholder -->
+                    <iframe width="100%" height="315" src="https://www.youtube.com/embed/pKFj4wwWQ7U" title="Sanctus Videre Introduction" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                    <a href="https://www.youtube.com/watch?v=pKFj4wwWQ7U" target="_blank" class="youtube-link">
+                        <i class="fab fa-youtube"></i> View on YouTube
+                    </a>
+                </div>
+                
+                <h2><i class="fas fa-graduation-cap icon-header"></i> Tutorial</h2>
+                <div class="video-container">
+                    <!-- YouTube tutorial video embed -->
+                    <iframe width="100%" height="315" src="https://www.youtube.com/embed/aP8e63qYni0" title="Sanctus Videre Tutorial" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                    <a href="https://www.youtube.com/watch?v=aP8e63qYni0" target="_blank" class="youtube-link">
+                        <i class="fab fa-youtube"></i> View on YouTube
+                    </a>
+                </div>
+            </div>
+
+            <!-- Middle Column: Feature Highlights -->
+            <div class="column middle-column">
+                <h2><i class="fas fa-rocket icon-header"></i> Key Capabilities</h2>
+                
+                <div class="feature-card">
+                    <h3><i class="fas fa-brain icon-feature"></i> Beyond Drawing Information</h3>
+                    <div class="feature-divider"></div>
+                    <p>The system provides valuable construction insights that may not be explicitly stated in the drawings. It leverages advanced AI to offer context, implications, and related knowledge.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <h3><i class="fas fa-layer-group icon-feature"></i> Integrated Multi-Drawing Analysis</h3>
+                    <div class="feature-divider"></div>
+                    <p>One of the system's most powerful features is its ability to analyze multiple drawings simultaneously, providing comprehensive insights across your entire selected set.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <h3><i class="fas fa-database icon-feature"></i> Advanced Memory Building</h3>
+                    <div class="feature-divider"></div>
+                    <p>The system builds a knowledge base as you interact with it, making subsequent analyses faster and more accurate over time.</p>
+                </div>
+                
+                <h2><i class="fas fa-comment-dots icon-header"></i> Client Testimonials</h2>
+                <!-- Reviews section with improved styling -->
+                <div class="testimonials">
+                    <div class="testimonial-card">
+                        <div class="rating">★★★★★</div>
+                        <p>"Sanctus Videre transformed our workflow, reducing analysis time by 60% and improving accuracy."</p>
+                        <p class="reviewer">- John D., Project Manager</p>
+                    </div>
+                    
+                    <div class="testimonial-card">
+                        <div class="rating">★★★★★</div>
+                        <p>"The multi-drawing analysis feature has been revolutionary for our complex projects."</p>
+                        <p class="reviewer">- Sarah T., Construction Lead</p>
+                    </div>
+                    
+                    <a href="#" class="button secondary-button" id="review-button">
+                        <i class="fas fa-pen"></i> Submit Your Review
+                    </a>
+                </div>
+            </div>
+
+            <!-- Right Column: Simplified Login Section -->
+            <div class="column right-column">
+                <!-- Simplified Auth0 Login Panel -->
+                <div class="auth0-login-panel" id="login-panel">
+                    <h2><i class="fas fa-user-circle icon-header"></i> Dashboard Access</h2>
+                    
+                    <button class="button primary-button" onclick="login()" style="width: 100%; margin-bottom: 10px;">
+                        <i class="fas fa-sign-in-alt"></i> Login / Create Account
+                    </button>
+                    
+                    <button class="button primary-button" onclick="logout()" style="width: 100%;">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                    
+                    <p class="login-info">Access our AI-powered drawing analysis dashboard</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Review submission form (hidden by default) -->
+        <div class="review-form-container" id="review-form-container" style="display: none;">
+            <div class="review-form">
+                <h2><i class="fas fa-star"></i> Submit Your Review</h2>
+                <form id="review-submission">
+                    <div class="form-group">
+                        <label>Your Rating</label>
+                        <div class="star-rating">
+                            <input type="radio" id="star5" name="rating" value="5"><label for="star5">★</label>
+                            <input type="radio" id="star4" name="rating" value="4"><label for="star4">★</label>
+                            <input type="radio" id="star3" name="rating" value="3"><label for="star3">★</label>
+                            <input type="radio" id="star2" name="rating" value="2"><label for="star2">★</label>
+                            <input type="radio" id="star1" name="rating" value="1"><label for="star1">★</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="review-text">Your Experience</label>
+                        <textarea id="review-text" name="review" rows="4" required></textarea>
+                    </div>
+                    <div class="form-buttons">
+                        <button type="submit" class="button primary-button">
+                            <i class="fas fa-paper-plane"></i> Submit Review
+                        </button>
+                        <button type="button" class="button text-button" id="cancel-review">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <footer>
+            <div class="footer-content">
+                <p>© 2025 Sanctus Videre. All rights reserved.</p>
+                <p class="admin-link"><a href="#" id="admin-access-direct">Direct Dashboard Access</a></p>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>
