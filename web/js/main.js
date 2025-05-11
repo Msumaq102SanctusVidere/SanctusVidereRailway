@@ -54,6 +54,17 @@ document.addEventListener('DOMContentLoaded', async function() {
     try {
         await waitForAuth0SDK();
         await initializeAuth0();
+        
+        // Check if we've just returned from logout page
+        const referrer = document.referrer;
+        if (referrer && referrer.includes('logged-out.html')) {
+            console.log("Returned from logout page - reinitializing Auth0");
+            // Clear any remaining data
+            clearAuthData();
+            // Reinitialize Auth0 from scratch
+            await initializeAuth0();
+        }
+        
         await logAuthState(); // Debug auth state
         
         // Check if we're on the logged-out page and need to show login
@@ -157,23 +168,65 @@ async function initializeAuth0() {
 // Login with Auth0 - GLOBAL FUNCTION as in Auth0 sample
 async function login() {
     try {
+        // If client doesn't exist, attempt to reinitialize
         if (!auth0Client || !lock) {
-            throw new Error("Authentication service not available");
+            try {
+                await initializeAuth0();
+                if (!auth0Client || !lock) {
+                    throw new Error("Failed to initialize Auth0");
+                }
+            } catch (e) {
+                console.error("Error reinitializing Auth0:", e);
+                // Fallback: Just show the lock if it exists
+                if (lock) {
+                    lock.show();
+                    return;
+                } else {
+                    // Last resort - recreate lock directly
+                    const config = {
+                        "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
+                        "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
+                    };
+                    lock = new Auth0Lock(config.clientId, config.domain, {
+                        auth: {
+                            redirectUrl: "https://sanctusvidere.com",
+                            responseType: 'code',
+                            params: {
+                                scope: 'openid profile email'
+                            }
+                        },
+                        autoclose: true,
+                        allowSignUp: true
+                    });
+                    lock.show();
+                    return;
+                }
+            }
         }
+        
         // Check if user is already logged in
-        const isAuthenticated = await auth0Client.isAuthenticated();
-        if (isAuthenticated) {
-            // If logged in, get user info and token, then redirect to Streamlit app
-            const user = await auth0Client.getUser();
-            const token = await auth0Client.getTokenSilently();
-            const userId = user.name || user.email.split('@')[0];
-            window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
-        } else {
-            // Show the Auth0 Lock widget
-            lock.show();
+        try {
+            const isAuthenticated = await auth0Client.isAuthenticated();
+            if (isAuthenticated) {
+                // If logged in, get user info and token, then redirect to Streamlit app
+                const user = await auth0Client.getUser();
+                const token = await auth0Client.getTokenSilently();
+                const userId = user.name || user.email.split('@')[0];
+                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+            } else {
+                // Show the Auth0 Lock widget
+                lock.show();
+            }
+        } catch (err) {
+            // If there's an error checking auth state, just show the lock widget
+            console.error("Error checking auth state:", err);
+            if (lock) {
+                lock.show();
+            }
         }
     } catch (err) {
         console.error("Login failed:", err);
+        alert("Authentication service is unavailable. Please try again later.");
     }
 }
 
