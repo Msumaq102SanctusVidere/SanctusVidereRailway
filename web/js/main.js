@@ -15,11 +15,46 @@ async function waitForAuth0SDK() {
     }
 }
 
+// Log authentication state for debugging
+async function logAuthState() {
+    console.log("=== Auth State Debug ===");
+    
+    // Check Auth0 client
+    console.log("Auth0 client exists:", auth0Client !== null);
+    
+    // Check if authenticated
+    if (auth0Client) {
+        try {
+            const isAuthenticated = await auth0Client.isAuthenticated();
+            console.log("Is authenticated:", isAuthenticated);
+            
+            if (isAuthenticated) {
+                const user = await auth0Client.getUser();
+                console.log("User info:", user ? "Found" : "Not found");
+            }
+        } catch (e) {
+            console.error("Error checking auth state:", e);
+        }
+    }
+    
+    // Check localStorage
+    console.log("Auth0 localStorage items:");
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('auth0') || key.includes('Auth0'))) {
+            console.log(" - " + key);
+        }
+    }
+    
+    console.log("========================");
+}
+
 // Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', async function() {
     try {
         await waitForAuth0SDK();
         await initializeAuth0();
+        await logAuthState(); // Debug auth state
         
         // Check if we're on the logged-out page and need to show login
         if (window.location.pathname.includes('logged-out.html')) {
@@ -44,7 +79,7 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 client - ORIGINAL VERSION
+// Initialize Auth0 client - WITH ERROR HANDLING FOR REDIRECT
 async function initializeAuth0() {
     try {
         // Config for Auth0
@@ -73,20 +108,33 @@ async function initializeAuth0() {
             cacheLocation: 'localstorage'
         });
         
-        // Handle authentication callback only after login
-        if (window.location.search.includes("code=") && 
-            window.location.search.includes("state=")) {
-            
-            await auth0Client.handleRedirectCallback();
-            window.history.replaceState({}, document.title, window.location.pathname);
-            
-            // Get user info & token for Streamlit app
-            const user = await auth0Client.getUser();
-            const token = await auth0Client.getTokenSilently();
-            const userId = user.name || user.email.split('@')[0];
-            
-            // Redirect to Streamlit app with user=new parameter to ensure fresh instance
-            window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+        // Handle authentication callback only after login - WITH ERROR HANDLING
+        if (window.location.search.includes("code=")) {
+            try {
+                await auth0Client.handleRedirectCallback();
+                window.history.replaceState({}, document.title, window.location.pathname);
+                
+                // Get user info & token for Streamlit app
+                const user = await auth0Client.getUser();
+                const token = await auth0Client.getTokenSilently();
+                const userId = user.name || user.email.split('@')[0];
+                
+                // Redirect to Streamlit app with user=new parameter to ensure fresh instance
+                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+            } catch (redirectError) {
+                console.error("Error handling redirect:", redirectError);
+                
+                // Clean up URL and localStorage if there's an error
+                window.history.replaceState({}, document.title, window.location.pathname);
+                localStorage.removeItem('auth0.is.authenticated');
+                
+                // Recreate the client without handling the callback
+                auth0Client = await auth0.createAuth0Client({
+                    domain: config.domain,
+                    clientId: config.clientId,
+                    cacheLocation: 'localstorage'
+                });
+            }
         }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
