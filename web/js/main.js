@@ -99,25 +99,14 @@ async function loginWithAuth0() {
     }
 }
 
-// Logout function using Universal Logout endpoint directly
+// Logout function using hardcoded direct URL that we know works
 const logout = async () => {
     try {
         console.log("Logging out...");
-        // First check if the user is authenticated
-        const isAuthenticated = await auth0Client.isAuthenticated();
-        console.log("Is user authenticated?", isAuthenticated);
-        
-        if (isAuthenticated) {
-            // Use Auth0's universal logout endpoint directly
-            window.location.href = `https://${auth0Client.options.domain}/v2/logout?client_id=${auth0Client.options.clientId}&returnTo=https://sanctusvidere.com`;
-        } else {
-            // If not authenticated, just redirect to home
-            window.location.href = "https://sanctusvidere.com";
-        }
+        // Use hardcoded values since we know they work
+        window.location.href = 'https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=https://sanctusvidere.com';
     } catch (err) {
         console.log("Log out failed", err);
-        // Fallback - just redirect to home
-        window.location.href = "https://sanctusvidere.com";
     }
 };
 
