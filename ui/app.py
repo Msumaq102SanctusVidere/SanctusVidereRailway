@@ -513,8 +513,8 @@ def main():
         background-color: #d32f2f;
     }
     </style>
-    <a href="{}" class="logout-button">Logout</a>
-    """.format(logout_url), unsafe_allow_html=True)
+    <a href=""" + logout_url + """ class="logout-button">Logout</a>
+    """, unsafe_allow_html=True)
     
     # Add custom CSS to make the title more prominent
     st.markdown("""
