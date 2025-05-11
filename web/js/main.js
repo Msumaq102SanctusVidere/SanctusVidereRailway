@@ -1,16 +1,17 @@
 // The Auth0 client, initialized in initializeAuth0()
 let auth0Client = null;
+let lock = null;
 
 // Wait for the Auth0 SDK to load
 async function waitForAuth0SDK() {
     const maxAttempts = 50; // Wait up to 5 seconds (50 * 100ms)
     let attempts = 0;
-    while (typeof auth0 === 'undefined' && attempts < maxAttempts) {
+    while (typeof Auth0Lock === 'undefined' && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 100));
         attempts++;
     }
-    if (typeof auth0 === 'undefined') {
-        throw new Error("Auth0 SDK failed to load 'auth0' global within 5 seconds");
+    if (typeof Auth0Lock === 'undefined') {
+        throw new Error("Auth0 Lock SDK failed to load within 5 seconds");
     }
 }
 
@@ -37,17 +38,25 @@ async function initializeAuth0() {
             "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
         };
         
-        // Create the Auth0 client
+        // Initialize Auth0 Lock widget
+        lock = new Auth0Lock(config.clientId, config.domain, {
+            auth: {
+                redirectUrl: "https://sanctusvidere.com",
+                responseType: 'code',
+                params: {
+                    scope: 'openid profile email'
+                }
+            },
+            autoclose: true,
+            allowSignUp: true
+        });
+
+        // Create the Auth0 client for session management
         auth0Client = await auth0.createAuth0Client({
             domain: config.domain,
             clientId: config.clientId,
             cacheLocation: 'localstorage'
         });
-        
-        // Prevent Streamlit redirect if coming from logout
-        if (window.location.search.includes("logout=true")) {
-            return; // Stop further processing to avoid Streamlit redirect
-        }
         
         // Handle authentication callback only after login
         if (window.location.search.includes("code=") && 
@@ -73,7 +82,7 @@ async function initializeAuth0() {
 // Login with Auth0 - GLOBAL FUNCTION as in Auth0 sample
 async function login() {
     try {
-        if (!auth0Client) {
+        if (!auth0Client || !lock) {
             throw new Error("Authentication service not available");
         }
         // Check if user is already logged in
@@ -85,12 +94,8 @@ async function login() {
             const userId = user.name || user.email.split('@')[0];
             window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
         } else {
-            // If not logged in, redirect to Auth0 login form
-            await auth0Client.loginWithRedirect({
-                authorizationParams: {
-                    redirect_uri: "https://sanctusvidere.com" // Redirect back to homepage after login
-                }
-            });
+            // Show the Auth0 Lock widget
+            lock.show();
         }
     } catch (err) {
         console.error("Login failed:", err);
@@ -100,20 +105,20 @@ async function login() {
 // Logout function - GLOBAL FUNCTION as in Auth0 sample
 async function logout() {
     try {
-        if (!auth0Client) {
+        if (!auth0Client || !lock) {
             throw new Error("Authentication service not available");
         }
-        // Clear client-side session first
+        // Clear local storage to ensure clean state
+        localStorage.removeItem('auth0:cache');
+        // Log out from Auth0 with federated logout to clear server-side session
         await auth0Client.logout({
             logoutParams: {
-                returnTo: "https://sanctusvidere.com?logout=true",
+                returnTo: "https://sanctusvidere.com",
                 federated: true
             }
         });
-        // Clear local storage to ensure clean state
-        localStorage.removeItem('auth0:cache');
-        // Direct logout URL to ensure server-side session is cleared
-        window.location.href = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=https://sanctusvidere.com?logout=true&federated`;
+        // Clear any remaining session cookies by redirecting to Auth0 logout endpoint
+        window.location.href = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=https://sanctusvidere.com&federated`;
     } catch (err) {
         console.error("Log out failed:", err);
     }
@@ -215,11 +220,7 @@ function setupDirectAccess() {
                         window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
                     } else {
                         alert('You must be logged in to access the dashboard.');
-                        await auth0Client.loginWithRedirect({
-                            authorizationParams: {
-                                redirect_uri: "https://sanctusvidere.com"
-                            }
-                        });
+                        lock.show();
                     }
                 } catch (err) {
                     console.error("Direct access failed:", err);
