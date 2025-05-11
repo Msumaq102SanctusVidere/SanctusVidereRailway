@@ -20,6 +20,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     try {
         await waitForAuth0SDK();
         await initializeAuth0();
+        
+        // Check if we're on the logged-out page and need to show login
+        if (window.location.pathname.includes('logged-out.html')) {
+            setupLoginButton();
+        }
     } catch (err) {
         console.error(err.message);
     }
@@ -28,6 +33,41 @@ document.addEventListener('DOMContentLoaded', async function() {
     setupReviewForm();
     setupDirectAccess();
 });
+
+// Setup login button on logged-out page
+function setupLoginButton() {
+    const loginButton = document.getElementById('login-again-button');
+    if (loginButton) {
+        loginButton.addEventListener('click', function() {
+            showLoginWidget();
+        });
+    }
+}
+
+// Function to show the login widget
+function showLoginWidget() {
+    if (!lock) {
+        // Reinitialize Auth0 if needed
+        const config = {
+            "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
+            "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
+        };
+        
+        lock = new Auth0Lock(config.clientId, config.domain, {
+            auth: {
+                redirectUrl: "https://sanctusvidere.com",
+                responseType: 'code',
+                params: {
+                    scope: 'openid profile email'
+                }
+            },
+            autoclose: true,
+            allowSignUp: true
+        });
+    }
+    
+    lock.show();
+}
 
 // Initialize Auth0 client
 async function initializeAuth0() {
@@ -102,58 +142,43 @@ async function login() {
     }
 }
 
-// Logout function - GLOBAL FUNCTION as in Auth0 sample - REVISED VERSION
+// Logout function - GLOBAL FUNCTION using professional approach
 function logout() {
-    try {
-        // Prevent any redirect attempts
-        const originalLocation = window.location.href;
-        
-        // Temporarily block any navigation methods
-        const originalHref = window.location.href;
-        const originalAssign = window.location.assign;
-        const originalReplace = window.location.replace;
-        
-        window.location.assign = function() { console.log("Blocked redirect attempt"); };
-        window.location.replace = function() { console.log("Blocked redirect attempt"); };
-        
-        Object.defineProperty(window.location, 'href', {
-            get: function() { return originalHref; },
-            set: function() { console.log("Blocked redirect attempt"); }
-        });
-        
-        // Clear auth-related data
-        localStorage.removeItem('auth0:cache');
-        localStorage.removeItem('auth0.is.authenticated');
-        
-        // Nullify the client to force logged-out state
-        auth0Client = null;
-        
-        // Always show the lock widget
-        if (lock) {
-            lock.show();
-        } else {
-            console.error("Auth0 Lock widget not available");
+    // Clear all Auth0-related data from localStorage
+    clearAuthData();
+    
+    // Redirect to the logged-out page
+    window.location.href = 'logged-out.html';
+    
+    return false;
+}
+
+// Helper function to thoroughly clear all Auth0-related data
+function clearAuthData() {
+    // Clear Auth0 specific items
+    localStorage.removeItem('auth0:cache');
+    localStorage.removeItem('auth0.is.authenticated');
+    
+    // Clear any token or user info
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('id_token');
+    localStorage.removeItem('expires_at');
+    
+    // Find and clear any Auth0-related items
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('auth0') || key.includes('Auth0'))) {
+            localStorage.removeItem(key);
         }
-        
-        // Restore navigation functions after a short delay
-        setTimeout(function() {
-            window.location.assign = originalAssign;
-            window.location.replace = originalReplace;
-            
-            Object.defineProperty(window.location, 'href', {
-                get: function() { return originalLocation; },
-                set: originalAssign
-            });
-        }, 500);
-        
-    } catch (err) {
-        console.error("Logout failed:", err);
-        // Still try to show the widget even if there's an error
-        if (lock) lock.show();
     }
     
-    // Prevent any form submission or navigation
-    return false;
+    // Clear Auth0 cookies if possible
+    document.cookie.split(';').forEach(function(c) {
+        document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
+    });
+    
+    // Nullify the client reference
+    auth0Client = null;
 }
 
 // Review system functionality
