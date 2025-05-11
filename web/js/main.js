@@ -1,11 +1,12 @@
-// The Auth0 client, initialized in initializeAuth0()
+// Global variable for Auth0 client - will be initialized when SDK is ready
 let auth0Client = null;
+let auth0Initialized = false;
 
-// CRITICAL: These functions MUST be in global scope - directly accessible from HTML onclick
-// Login function - called directly from HTML
-async function login() {
-    if (!auth0Client) {
-        alert("Authentication system is still initializing. Please try again in a moment.");
+// VERY IMPORTANT: Window level functions for onclick access
+window.login = async function() {
+    if (!auth0Initialized) {
+        console.log("Auth0 not initialized yet");
+        alert("Authentication is still initializing. Please try again in a moment.");
         return;
     }
     
@@ -20,12 +21,12 @@ async function login() {
         console.error("Login failed:", err);
         alert("Login failed: " + err.message);
     }
-}
+};
 
-// Logout function - called directly from HTML
-async function logout() {
-    if (!auth0Client) {
-        alert("Authentication system is still initializing. Please try again in a moment.");
+window.logout = async function() {
+    if (!auth0Initialized) {
+        console.log("Auth0 not initialized yet");
+        alert("Authentication is still initializing. Please try again in a moment.");
         return;
     }
     
@@ -40,23 +41,21 @@ async function logout() {
         console.log("Log out failed", err);
         alert("Logout failed: " + err.message);
     }
-}
+};
 
-// Initialize everything when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM loaded, initializing application...");
-    
-    // Initialize Auth0
-    initializeAuth0();
-    
-    // Set up other components
-    setupReviewForm();
-    setupDirectAccess();
-});
-
-// Initialize Auth0 client - MOVED OUTSIDE DOMContentLoaded to ensure it runs early
-async function initializeAuth0() {
+// Initialize Auth0 client - SEPARATED FROM DOM READY
+async function initAuth0() {
     try {
+        // Check if Auth0 is available
+        if (typeof auth0 === 'undefined') {
+            console.error("Auth0 SDK not loaded yet");
+            // Try again in a second
+            setTimeout(initAuth0, 1000);
+            return;
+        }
+        
+        console.log("Initializing Auth0...");
+        
         // Config for Auth0
         const config = {
             "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
@@ -69,6 +68,7 @@ async function initializeAuth0() {
             clientId: config.clientId
         });
         
+        auth0Initialized = true;
         console.log("Auth0 client created successfully");
         
         // Handle authentication callback
@@ -88,14 +88,24 @@ async function initializeAuth0() {
                 window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
             } catch (error) {
                 console.error("Error handling authentication:", error);
-                alert("Authentication error: " + error.message);
             }
         }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
-        alert("Failed to initialize authentication: " + err.message);
     }
 }
+
+// Start Auth0 initialization process immediately
+setTimeout(initAuth0, 500);
+
+// Initialize everything when DOM is loaded - KEEP REST OF CODE AS IS
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM loaded, initializing application...");
+    
+    // Set up other components
+    setupReviewForm();
+    setupDirectAccess();
+});
 
 // Review system functionality
 function setupReviewForm() {
