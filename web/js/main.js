@@ -1,4 +1,4 @@
-// Simple Auth0 client
+// The Auth0 client, initialized in initializeAuth0()
 let auth0Client = null;
 
 // Initialize everything when DOM is loaded
@@ -11,8 +11,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up other components
     setupReviewForm();
     setupDirectAccess();
-    setupLoginButton();
-    setupLogoutButton();
 });
 
 // Initialize Auth0 client
@@ -27,13 +25,7 @@ async function initializeAuth0() {
         // Create the Auth0 client
         auth0Client = await auth0.createAuth0Client({
             domain: config.domain,
-            clientId: config.clientId,
-            cacheLocation: "localstorage", // Required for proper logout
-            authorizationParams: {
-                redirect_uri: "https://app.sanctusvidere.com",
-                response_type: "code",
-                scope: "openid profile email"
-            }
+            clientId: config.clientId
         });
         
         console.log("Auth0 client created successfully");
@@ -62,33 +54,8 @@ async function initializeAuth0() {
     }
 }
 
-// Setup login button
-function setupLoginButton() {
-    const loginButton = document.getElementById('auth0-login-button');
-    if (loginButton) {
-        loginButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            loginWithAuth0();
-        });
-    }
-}
-
-// Setup logout button - SIMPLIFIED to use direct URL navigation
-function setupLogoutButton() {
-    const logoutButton = document.getElementById('auth0-logout-button');
-    if (logoutButton) {
-        logoutButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            console.log("Logout button clicked - redirecting now");
-            
-            // Direct URL navigation without any functions or async/await
-            window.location.href = 'https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=https://sanctusvidere.com';
-        });
-    }
-}
-
-// Login with Auth0
-async function loginWithAuth0() {
+// Login with Auth0 - GLOBAL FUNCTION as in Auth0 sample
+async function login() {
     try {
         console.log("Logging in...");
         await auth0Client.loginWithRedirect({
@@ -98,6 +65,20 @@ async function loginWithAuth0() {
         });
     } catch (err) {
         console.error("Login failed:", err);
+    }
+}
+
+// Logout function - GLOBAL FUNCTION as in Auth0 sample
+async function logout() {
+    try {
+        console.log("Logging out...");
+        await auth0Client.logout({
+            logoutParams: {
+                returnTo: "https://sanctusvidere.com"
+            }
+        });
+    } catch (err) {
+        console.log("Log out failed", err);
     }
 }
 
