@@ -98,6 +98,31 @@
             margin-right: 8px;
         }
         
+        /* Logout button style */
+        .logout-button {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 12px 20px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .logout-button:hover {
+            background-color: #c0392b;
+        }
+        
+        .logout-button i {
+            margin-right: 10px;
+        }
+        
         /* Review form styles */
         .review-form-container {
             position: fixed;
@@ -263,8 +288,14 @@
                 <div class="auth0-login-panel" id="login-panel">
                     <h2><i class="fas fa-user-circle icon-header"></i> Dashboard Access</h2>
                     
+                    <!-- Login button (shown when logged out) -->
                     <button class="button primary-button" id="auth0-login-button" style="width: 100%; margin-bottom: 10px;">
                         <i class="fas fa-sign-in-alt"></i> Login / Create Account
+                    </button>
+                    
+                    <!-- Logout button (hidden by default, shown when logged in) -->
+                    <button class="button logout-button" id="auth0-logout-button" style="display: none;">
+                        <i class="fas fa-sign-out-alt"></i> Logout
                     </button>
                     
                     <p class="login-info">Access our AI-powered drawing analysis dashboard</p>
