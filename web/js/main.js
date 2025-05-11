@@ -1,5 +1,4 @@
-// The Auth0 client, initialized in initializeAuth0()
-let auth0Client = null;
+// Auth0 Lock widget
 let lock = null;
 
 // Auth0 configuration
@@ -28,7 +27,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     try {
         await waitForAuth0SDK();
         
-        // Initialize Lock without SPA SDK
+        // Initialize Lock
         initializeLock();
         
         // Check if we're on the logged-out page and need to show login
@@ -54,51 +53,40 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 Lock without SPA SDK
+// Initialize Auth0 Lock - Simplified
 function initializeLock() {
-    // Initialize Auth0 Lock widget - WITHOUT user parameter
+    // Initialize Auth0 Lock widget with minimal configuration
     lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
         auth: {
-            redirectUrl: AUTH0_CONFIG.mainUrl, // Redirect back to main site first
+            redirectUrl: AUTH0_CONFIG.mainUrl,
             responseType: 'token id_token',
             params: {
                 scope: 'openid profile email'
-                // Removed the 'user' parameter that was causing the error
             }
         },
         autoclose: true,
         allowSignUp: true,
         languageDictionary: {
             title: 'Sanctus Videre Login'
-        }
+        },
+        // Disable Gravatar to prevent the 404 error
+        avatar: null
     });
     
-    // Set up additional parameters for fresh workspace
+    // Set up the authenticated event handler
     lock.on('authenticated', function(authResult) {
-        // Create the redirect URL with all parameters for a fresh workspace
-        const token = authResult.idToken;
-        const accessToken = authResult.accessToken;
+        // Get the tokens from the authResult
+        const idToken = authResult.idToken;
         
-        lock.getUserInfo(accessToken, function(error, profile) {
-            if (error) {
-                console.error("Error getting user info:", error);
-                return;
-            }
-            
-            // Get user ID
-            const userId = profile.name || profile.email.split('@')[0];
-            
-            // Create URL with fresh parameter - Add it here instead of in the Lock config
-            const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
-            
-            console.log("Redirecting to Streamlit with fresh workspace:", redirectUrl);
-            
-            // Redirect manually
-            window.location.replace(redirectUrl);
-        });
+        // Create a simple redirect with a timestamp to ensure fresh instance
+        const timestamp = Date.now();
+        const redirectUrl = `${AUTH0_CONFIG.appUrl}?t=${timestamp}&token=${encodeURIComponent(idToken)}`;
+        
+        console.log("Redirecting to Streamlit...");
+        window.location.replace(redirectUrl);
     });
     
-    console.log("Auth0 Lock initialized with fresh workspace handling");
+    console.log("Auth0 Lock initialized");
 }
 
 // Login with Auth0 Lock only
@@ -160,9 +148,6 @@ function clearAuthData() {
     document.cookie.split(';').forEach(function(c) {
         document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
     });
-    
-    // Nullify the client reference
-    auth0Client = null;
 }
 
 // Review system functionality
@@ -240,7 +225,7 @@ function saveReview(rating, text) {
     localStorage.setItem('reviews', JSON.stringify(reviews));
 }
 
-// Direct dashboard access function (emergency backup access)
+// Direct dashboard access function
 function setupDirectAccess() {
     const directAccessLink = document.getElementById('admin-access-direct');
     if (directAccessLink) {
