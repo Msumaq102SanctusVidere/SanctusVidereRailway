@@ -110,9 +110,46 @@ function showLoginWidget() {
             autoclose: true,
             allowSignUp: true
         });
+        setupLockEvents();
     }
     
     lock.show();
+}
+
+// Set up Auth0 Lock authentication events
+function setupLockEvents() {
+    if (!lock) return;
+    
+    // Remove any existing event listeners to prevent duplicates
+    lock.off('authenticated');
+    
+    // Add authenticated event handler
+    lock.on('authenticated', function(authResult) {
+        console.log('Lock authenticated event fired');
+        
+        // Store authentication data if needed
+        if (authResult && authResult.accessToken && authResult.idToken) {
+            // Get user info
+            lock.getUserInfo(authResult.accessToken, function(error, profile) {
+                if (error) {
+                    console.error('Error getting user info:', error);
+                    return;
+                }
+                
+                // Get user ID for redirection
+                const userId = profile.name || profile.email.split('@')[0];
+                
+                // Redirect to Streamlit app
+                console.log('Redirecting to Streamlit app...');
+                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${authResult.idToken}&t=${Date.now()}`;
+            });
+        }
+    });
+    
+    // Add authentication error event handler
+    lock.on('authorization_error', function(err) {
+        console.error('Lock authorization error:', err);
+    });
 }
 
 // Initialize Auth0 client
@@ -136,6 +173,9 @@ async function initializeAuth0() {
             autoclose: true,
             allowSignUp: true
         });
+        
+        // Set up Lock events
+        setupLockEvents();
 
         // Create the Auth0 client for session management
         auth0Client = await auth0.createAuth0Client({
@@ -179,6 +219,7 @@ async function login() {
                 console.error("Error reinitializing Auth0:", e);
                 // Fallback: Just show the lock if it exists
                 if (lock) {
+                    setupLockEvents(); // Ensure event handlers are set up
                     lock.show();
                     return;
                 } else {
@@ -187,6 +228,7 @@ async function login() {
                         "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
                         "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
                     };
+                    
                     lock = new Auth0Lock(config.clientId, config.domain, {
                         auth: {
                             redirectUrl: "https://sanctusvidere.com",
@@ -198,6 +240,7 @@ async function login() {
                         autoclose: true,
                         allowSignUp: true
                     });
+                    setupLockEvents(); // Set up event handlers
                     lock.show();
                     return;
                 }
@@ -215,12 +258,14 @@ async function login() {
                 window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
             } else {
                 // Show the Auth0 Lock widget
+                setupLockEvents(); // Ensure event handlers are set up
                 lock.show();
             }
         } catch (err) {
             // If there's an error checking auth state, just show the lock widget
             console.error("Error checking auth state:", err);
             if (lock) {
+                setupLockEvents(); // Ensure event handlers are set up
                 lock.show();
             }
         }
