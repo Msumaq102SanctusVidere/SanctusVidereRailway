@@ -99,13 +99,13 @@ async function loginWithAuth0() {
     }
 }
 
-// Logout function directly from Auth0 sample
+// Logout function directly from Auth0 sample - FIXED with explicit returnTo URL
 const logout = async () => {
     try {
         console.log("Logging out...");
         await auth0Client.logout({
             logoutParams: {
-                returnTo: window.location.origin
+                returnTo: "https://app.sanctusvidere.com"
             }
         });
     } catch (err) {
