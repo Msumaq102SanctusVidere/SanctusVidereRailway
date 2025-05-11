@@ -15,11 +15,46 @@ async function waitForAuth0SDK() {
     }
 }
 
+// Log authentication state for debugging
+async function logAuthState() {
+    console.log("=== Auth State Debug ===");
+    
+    // Check Auth0 client
+    console.log("Auth0 client exists:", auth0Client !== null);
+    
+    // Check if authenticated
+    if (auth0Client) {
+        try {
+            const isAuthenticated = await auth0Client.isAuthenticated();
+            console.log("Is authenticated:", isAuthenticated);
+            
+            if (isAuthenticated) {
+                const user = await auth0Client.getUser();
+                console.log("User info:", user ? "Found" : "Not found");
+            }
+        } catch (e) {
+            console.error("Error checking auth state:", e);
+        }
+    }
+    
+    // Check localStorage
+    console.log("Auth0 localStorage items:");
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('auth0') || key.includes('Auth0'))) {
+            console.log(" - " + key);
+        }
+    }
+    
+    console.log("========================");
+}
+
 // Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', async function() {
     try {
         await waitForAuth0SDK();
         await initializeAuth0();
+        await logAuthState(); // Debug auth state
         
         // Check if we're on the logged-out page and need to show login
         if (window.location.pathname.includes('logged-out.html')) {
@@ -142,13 +177,14 @@ async function login() {
     }
 }
 
-// Logout function - GLOBAL FUNCTION using professional approach
+// Logout function - GLOBAL FUNCTION using Auth0's server-side logout
 function logout() {
-    // Clear all Auth0-related data from localStorage
+    // Clear local storage and cookies
     clearAuthData();
     
-    // Redirect to the logged-out page
-    window.location.href = 'logged-out.html';
+    // Use Auth0's official logout endpoint (most reliable method)
+    const returnTo = encodeURIComponent(window.location.origin + '/logged-out.html');
+    window.location.href = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=${returnTo}`;
     
     return false;
 }
@@ -169,6 +205,14 @@ function clearAuthData() {
         const key = localStorage.key(i);
         if (key && (key.includes('auth0') || key.includes('Auth0'))) {
             localStorage.removeItem(key);
+        }
+    }
+    
+    // Clear session storage too
+    for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && (key.includes('auth0') || key.includes('Auth0'))) {
+            sessionStorage.removeItem(key);
         }
     }
     
