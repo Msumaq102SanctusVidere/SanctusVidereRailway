@@ -491,31 +491,6 @@ def main():
     # Check for user parameter (for fresh workspace)
     check_user_parameter()
     
-    # --- Add Logout Button in Top Right Corner ---
-    logout_url = "https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?returnTo=https://sanctusvidere.com&client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
-    
-    # Custom CSS for top-right logout button - FIXED PROPERLY
-    st.markdown(f"""
-    <style>
-    .logout-button {{
-        position: fixed;
-        top: 15px;
-        right: 15px;
-        background-color: #f44336;
-        color: white;
-        padding: 8px 16px;
-        border-radius: 4px;
-        text-decoration: none;
-        font-weight: bold;
-        z-index: 9999;
-    }}
-    .logout-button:hover {{
-        background-color: #d32f2f;
-    }}
-    </style>
-    <a href="{logout_url}" class="logout-button">Logout</a>
-    """, unsafe_allow_html=True)
-    
     # Add custom CSS to make the title more prominent
     st.markdown("""
     <style>
