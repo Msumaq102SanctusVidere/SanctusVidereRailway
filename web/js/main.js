@@ -204,12 +204,33 @@ function saveReview(rating, text) {
 function setupDirectAccess() {
     const directAccessLink = document.getElementById('admin-access-direct');
     if (directAccessLink) {
-        directAccessLink.addEventListener('click', function(e) {
+        directAccessLink.addEventListener('click', async function(e) {
             e.preventDefault();
             
             const accessCode = prompt('Enter direct access code:');
             if (accessCode === 'sanctus2025') {
-                window.location.href = 'https://app.sanctusvidere.com';
+                try {
+                    if (!auth0Client) {
+                        throw new Error("Authentication service not available");
+                    }
+                    const isAuthenticated = await auth0Client.isAuthenticated();
+                    if (isAuthenticated) {
+                        const user = await auth0Client.getUser();
+                        const token = await auth0Client.getTokenSilently();
+                        const userId = user.name || user.email.split('@')[0];
+                        window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+                    } else {
+                        alert('You must be logged in to access the dashboard.');
+                        await auth0Client.loginWithRedirect({
+                            authorizationParams: {
+                                redirect_uri: "https://sanctusvidere.com"
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.error("Direct access failed:", err);
+                    alert('Failed to access dashboard. Please try logging in.');
+                }
             } else {
                 alert('Invalid access code.');
             }
