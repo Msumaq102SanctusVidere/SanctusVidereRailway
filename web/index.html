@@ -14,11 +14,11 @@
     <!-- Tracking script -->
     <script src="js/tracking.js"></script>
     
-    <!-- Auth0 SPA JS SDK -->
-    <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+    <!-- Auth0 SPA JS SDK with defer to ensure it loads before main.js -->
+    <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js" defer></script>
     
-    <!-- Your main JS - Load after Auth0 -->
-    <script src="js/main.js"></script>
+    <!-- Your main JS - Load after Auth0 with defer -->
+    <script src="js/main.js" defer></script>
 </head>
 <body>
     <!-- Logo in absolute position -->
@@ -107,15 +107,17 @@
                 <div class="auth0-login-panel" id="login-panel">
                     <h2><i class="fas fa-user-circle icon-header"></i> Dashboard Access</h2>
                     
-                    <button class="button primary-button" onclick="login()" style="width: 100%; margin-bottom: 10px;">
+                    <button id="login-button" class="button primary-button" style="width: 100%; margin-bottom: 10px;" disabled>
                         <i class="fas fa-sign-in-alt"></i> Login / Create Account
                     </button>
                     
-                    <button class="button primary-button" onclick="logout()" style="width: 100%;">
+                    <button id="logout-button" class="button primary-button" style="width: 100%;" disabled>
                         <i class="fas fa-sign-out-alt"></i> Logout
                     </button>
                     
-                    <p class="login-info">Access our AI-powered drawing analysis dashboard</p>
+                    <div id="auth-status" class="login-info">
+                        <p>Initializing authentication system...</p>
+                    </div>
                 </div>
             </div>
         </div>
