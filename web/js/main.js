@@ -57,6 +57,12 @@ async function initializeAuth0() {
 // Login with Auth0 - GLOBAL FUNCTION as in Auth0 sample
 async function login() {
     try {
+        console.log("Login button clicked");
+        if (!auth0Client) {
+            console.error("Auth0 client not initialized");
+            alert("Authentication service is not available. Please try again later.");
+            return;
+        }
         console.log("Logging in...");
         await auth0Client.loginWithRedirect({
             authorizationParams: {
@@ -65,12 +71,19 @@ async function login() {
         });
     } catch (err) {
         console.error("Login failed:", err);
+        alert("Login failed. Please try again.");
     }
 }
 
 // Logout function - GLOBAL FUNCTION as in Auth0 sample
 async function logout() {
     try {
+        console.log("Logout button clicked");
+        if (!auth0Client) {
+            console.error("Auth0 client not initialized");
+            alert("Authentication service is not available. Please try again later.");
+            return;
+        }
         console.log("Logging out...");
         await auth0Client.logout({
             logoutParams: {
@@ -78,7 +91,8 @@ async function logout() {
             }
         });
     } catch (err) {
-        console.log("Log out failed", err);
+        console.error("Log out failed:", err);
+        alert("Logout failed. Please try again.");
     }
 }
 
