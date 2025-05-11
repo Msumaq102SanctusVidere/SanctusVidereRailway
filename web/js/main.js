@@ -56,13 +56,14 @@ function setupLoginButton() {
 
 // Initialize Auth0 Lock without SPA SDK
 function initializeLock() {
-    // Initialize Auth0 Lock widget
+    // Initialize Auth0 Lock widget - WITHOUT user parameter
     lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
         auth: {
-            redirectUrl: AUTH0_CONFIG.appUrl, // Redirect directly to Streamlit
+            redirectUrl: AUTH0_CONFIG.mainUrl, // Redirect back to main site first
             responseType: 'token id_token',
             params: {
                 scope: 'openid profile email'
+                // Removed the 'user' parameter that was causing the error
             }
         },
         autoclose: true,
@@ -87,15 +88,17 @@ function initializeLock() {
             // Get user ID
             const userId = profile.name || profile.email.split('@')[0];
             
-            // Create URL with fresh parameter
+            // Create URL with fresh parameter - Add it here instead of in the Lock config
             const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=new&userid=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
+            
+            console.log("Redirecting to Streamlit with fresh workspace:", redirectUrl);
             
             // Redirect manually
             window.location.replace(redirectUrl);
         });
     });
     
-    console.log("Auth0 Lock initialized with fresh workspace parameters");
+    console.log("Auth0 Lock initialized with fresh workspace handling");
 }
 
 // Login with Auth0 Lock only
