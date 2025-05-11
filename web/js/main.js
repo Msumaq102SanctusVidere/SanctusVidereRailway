@@ -1,6 +1,9 @@
 // The Auth0 client, initialized in initializeAuth0()
 let auth0Client = null;
 
+// Flag to prevent Streamlit redirect during logout
+let isLoggingOut = false;
+
 // Wait for the Auth0 SDK to load
 async function waitForAuth0SDK() {
     const maxAttempts = 50; // Wait up to 5 seconds (50 * 100ms)
@@ -46,7 +49,8 @@ async function initializeAuth0() {
         
         // Handle authentication callback
         if (window.location.search.includes("code=") && 
-            window.location.search.includes("state=")) {
+            window.location.search.includes("state=") && 
+            !isLoggingOut) {
             
             await auth0Client.handleRedirectCallback();
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -98,13 +102,17 @@ async function logout() {
         if (!auth0Client) {
             throw new Error("Authentication service not available");
         }
+        // Set flag to prevent Streamlit redirect during logout
+        isLoggingOut = true;
         // Log out from Auth0
         await auth0Client.logout({
             logoutParams: {
-                returnTo: "https://sanctusvidere.com" // Temporarily redirect to homepage
+                returnTo: "https://sanctusvidere.com" // Redirect to homepage after logout
             }
         });
-        // Immediately initiate a new login redirect to show the Auth0 login form
+        // Clear local storage to ensure clean state
+        localStorage.removeItem('auth0:cache');
+        // Redirect to Auth0 login form by initiating a new login
         await auth0Client.loginWithRedirect({
             authorizationParams: {
                 redirect_uri: "https://sanctusvidere.com"
@@ -112,6 +120,8 @@ async function logout() {
         });
     } catch (err) {
         console.error("Log out failed:", err);
+    } finally {
+        isLoggingOut = false;
     }
 }
 
