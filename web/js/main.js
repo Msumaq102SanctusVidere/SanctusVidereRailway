@@ -116,6 +116,12 @@ function showLoginWidget() {
     lock.show();
 }
 
+// Get Streamlit App URL
+function getStreamlitAppUrl(userId, token) {
+    // This function centralizes the streamlit app URL to ensure consistency
+    return `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+}
+
 // Set up Auth0 Lock authentication events
 function setupLockEvents() {
     if (!lock) return;
@@ -141,7 +147,7 @@ function setupLockEvents() {
                 
                 // Redirect to Streamlit app
                 console.log('Redirecting to Streamlit app...');
-                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${authResult.idToken}&t=${Date.now()}`;
+                window.location.href = getStreamlitAppUrl(userId, authResult.idToken);
             });
         }
     });
@@ -197,7 +203,7 @@ async function initializeAuth0() {
             const userId = user.name || user.email.split('@')[0];
             
             // Redirect to Streamlit app with user=new parameter to ensure fresh instance
-            window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+            window.location.href = getStreamlitAppUrl(userId, token);
         }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
@@ -255,7 +261,7 @@ async function login() {
                 const user = await auth0Client.getUser();
                 const token = await auth0Client.getTokenSilently();
                 const userId = user.name || user.email.split('@')[0];
-                window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+                window.location.href = getStreamlitAppUrl(userId, token);
             } else {
                 // Show the Auth0 Lock widget
                 setupLockEvents(); // Ensure event handlers are set up
@@ -416,7 +422,7 @@ function setupDirectAccess() {
                         const user = await auth0Client.getUser();
                         const token = await auth0Client.getTokenSilently();
                         const userId = user.name || user.email.split('@')[0];
-                        window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+                        window.location.href = getStreamlitAppUrl(userId, token);
                     } else {
                         alert('You must be logged in to access the dashboard.');
                         lock.show();
