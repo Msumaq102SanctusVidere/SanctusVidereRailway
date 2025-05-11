@@ -53,7 +53,7 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 Lock - Simplified
+// Initialize Auth0 Lock - Modified for fresh Streamlit instance
 function initializeLock() {
     // Initialize Auth0 Lock widget with minimal configuration
     lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
@@ -69,24 +69,49 @@ function initializeLock() {
         languageDictionary: {
             title: 'Sanctus Videre Login'
         },
-        // Disable Gravatar to prevent the 404 error
         avatar: null
     });
     
     // Set up the authenticated event handler
     lock.on('authenticated', function(authResult) {
-        // Get the tokens from the authResult
+        // Get the tokens and user info
         const idToken = authResult.idToken;
+        const accessToken = authResult.accessToken;
         
-        // Create a simple redirect with a timestamp to ensure fresh instance
-        const timestamp = Date.now();
-        const redirectUrl = `${AUTH0_CONFIG.appUrl}?t=${timestamp}&token=${encodeURIComponent(idToken)}`;
-        
-        console.log("Redirecting to Streamlit...");
-        window.location.replace(redirectUrl);
+        // Get user profile
+        lock.getUserInfo(accessToken, function(error, profile) {
+            if (error) {
+                console.error("Error getting user info:", error);
+                
+                // Fallback: Redirect with just timestamp
+                const timestamp = Date.now();
+                const redirectUrl = `${AUTH0_CONFIG.appUrl}?t=${timestamp}&token=${encodeURIComponent(idToken)}&user=new`;
+                window.location.replace(redirectUrl);
+                return;
+            }
+            
+            // Get user ID for a more personalized experience
+            const userId = profile.name || profile.email || 'user-' + Date.now();
+            
+            // Create a unique session ID for this login
+            const sessionId = Date.now().toString(36) + Math.random().toString(36).substring(2);
+            
+            // Build URL with multiple fresh instance indicators
+            const redirectUrl = `${AUTH0_CONFIG.appUrl}?` + 
+                `user=new` +                                 // Signal for new user session
+                `&session=${sessionId}` +                    // Unique session ID
+                `&userid=${encodeURIComponent(userId)}` +    // User identifier
+                `&token=${encodeURIComponent(idToken)}` +    // Auth token
+                `&t=${Date.now()}` +                         // Timestamp
+                `&fresh=true` +                              // Explicit fresh flag
+                `&reset=1`;                                  // Reset flag
+            
+            console.log("Redirecting to fresh Streamlit instance:", redirectUrl);
+            window.location.replace(redirectUrl);
+        });
     });
     
-    console.log("Auth0 Lock initialized");
+    console.log("Auth0 Lock initialized with fresh Streamlit instance handling");
 }
 
 // Login with Auth0 Lock only
