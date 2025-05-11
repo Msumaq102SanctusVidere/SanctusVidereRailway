@@ -2,6 +2,14 @@
 let auth0Client = null;
 let lock = null;
 
+// Auth0 configuration - centralized for consistency
+const AUTH0_CONFIG = {
+    domain: "dev-wl2dxopsswbbvkcb.us.auth0.com",
+    clientId: "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU",
+    mainSiteUrl: "https://sanctusvidere.com",
+    streamlitAppUrl: "https://app.sanctusvidere.com"
+};
+
 // Wait for the Auth0 SDK to load
 async function waitForAuth0SDK() {
     const maxAttempts = 50; // Wait up to 5 seconds (50 * 100ms)
@@ -15,57 +23,11 @@ async function waitForAuth0SDK() {
     }
 }
 
-// Log authentication state for debugging
-async function logAuthState() {
-    console.log("=== Auth State Debug ===");
-    
-    // Check Auth0 client
-    console.log("Auth0 client exists:", auth0Client !== null);
-    
-    // Check if authenticated
-    if (auth0Client) {
-        try {
-            const isAuthenticated = await auth0Client.isAuthenticated();
-            console.log("Is authenticated:", isAuthenticated);
-            
-            if (isAuthenticated) {
-                const user = await auth0Client.getUser();
-                console.log("User info:", user ? "Found" : "Not found");
-            }
-        } catch (e) {
-            console.error("Error checking auth state:", e);
-        }
-    }
-    
-    // Check localStorage
-    console.log("Auth0 localStorage items:");
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.includes('auth0') || key.includes('Auth0'))) {
-            console.log(" - " + key);
-        }
-    }
-    
-    console.log("========================");
-}
-
 // Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', async function() {
     try {
         await waitForAuth0SDK();
         await initializeAuth0();
-        
-        // Check if we've just returned from logout page
-        const referrer = document.referrer;
-        if (referrer && referrer.includes('logged-out.html')) {
-            console.log("Returned from logout page - reinitializing Auth0");
-            // Clear any remaining data
-            clearAuthData();
-            // Reinitialize Auth0 from scratch
-            await initializeAuth0();
-        }
-        
-        await logAuthState(); // Debug auth state
         
         // Check if we're on the logged-out page and need to show login
         if (window.location.pathname.includes('logged-out.html')) {
@@ -85,273 +47,62 @@ function setupLoginButton() {
     const loginButton = document.getElementById('login-again-button');
     if (loginButton) {
         loginButton.addEventListener('click', function() {
-            showLoginWidget();
+            login();
         });
     }
 }
 
-// Function to show the login widget
-function showLoginWidget() {
-    if (!lock) {
-        // Reinitialize Auth0 if needed
-        const config = {
-            "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
-            "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
-        };
-        
-        lock = new Auth0Lock(config.clientId, config.domain, {
-            auth: {
-                redirectUrl: "https://sanctusvidere.com",
-                responseType: 'code',
-                params: {
-                    scope: 'openid profile email'
-                }
-            },
-            autoclose: true,
-            allowSignUp: true
-        });
-        setupLockEvents();
-    }
-    
-    lock.show();
-}
-
-// Get Streamlit App URL - Ensuring proper encoding of parameters
-function getStreamlitAppUrl(userId, token) {
-    // This function centralizes the streamlit app URL to ensure consistency
-    const baseUrl = 'https://app.sanctusvidere.com';
-    const params = new URLSearchParams({
-        user: 'new',
-        userid: userId,
-        token: token,
-        t: Date.now()
-    });
-    console.log('Generated Streamlit URL:', `${baseUrl}?${params.toString()}`);
-    return `${baseUrl}?${params.toString()}`;
-}
-
-// Set up Auth0 Lock authentication events with additional debugging
-function setupLockEvents() {
-    if (!lock) {
-        console.error('Lock not initialized in setupLockEvents');
-        return;
-    }
-    
-    console.log('Setting up Lock event handlers');
-    
-    // Remove any existing event listeners to prevent duplicates
-    lock.off('authenticated');
-    lock.off('authorization_error');
-    
-    // Add authenticated event handler
-    lock.on('authenticated', function(authResult) {
-        console.log('✅ Lock authenticated event fired', authResult);
-        
-        // Store authentication data if needed
-        if (authResult && authResult.accessToken && authResult.idToken) {
-            console.log('✅ Got accessToken and idToken');
-            
-            // Get user info
-            lock.getUserInfo(authResult.accessToken, function(error, profile) {
-                if (error) {
-                    console.error('❌ Error getting user info:', error);
-                    return;
-                }
-                
-                console.log('✅ Got user profile:', profile);
-                
-                // Get user ID for redirection
-                const userId = profile.name || profile.email.split('@')[0];
-                console.log('✅ Using userId:', userId);
-                
-                // Create redirect URL
-                const redirectUrl = getStreamlitAppUrl(userId, authResult.idToken);
-                console.log('✅ About to redirect to:', redirectUrl);
-                
-                // Try multiple redirection approaches
-                try {
-                    // Approach 1: Simple location redirect with delay
-                    console.log('Attempting redirect with window.location.href');
-                    setTimeout(function() {
-                        window.location.href = redirectUrl;
-                    }, 100);
-                    
-                    // Approach 2: If that doesn't work, try form submission after delay
-                    setTimeout(function() {
-                        console.log('Simple redirect may have failed, trying form submission');
-                        const form = document.createElement('form');
-                        form.method = 'GET';
-                        form.action = 'https://app.sanctusvidere.com';
-                        
-                        // Add the parameters
-                        const params = {
-                            user: 'new',
-                            userid: userId,
-                            token: authResult.idToken,
-                            t: Date.now()
-                        };
-                        
-                        for (const key in params) {
-                            const input = document.createElement('input');
-                            input.type = 'hidden';
-                            input.name = key;
-                            input.value = params[key];
-                            form.appendChild(input);
-                        }
-                        
-                        document.body.appendChild(form);
-                        form.submit();
-                    }, 500);
-                } catch (e) {
-                    console.error('❌ Redirect error:', e);
-                    
-                    // Last resort - alert with manual copy-paste URL
-                    alert('Automatic redirect failed. Please copy and paste the following URL into your browser: ' + redirectUrl);
-                }
-            });
-        } else {
-            console.error('❌ Missing tokens in authResult', authResult);
-        }
-    });
-    
-    // Add authentication error event handler
-    lock.on('authorization_error', function(err) {
-        console.error('❌ Lock authorization error:', err);
-    });
-    
-    // Add hide event handler to monitor when widget closes
-    lock.on('hide', function() {
-        console.log('⚠️ Lock widget closed without authentication');
-    });
-    
-    console.log('✅ Lock event handlers setup complete');
-}
-
-// Initialize Auth0 client
+// Initialize Auth0 client - SIMPLIFIED for direct redirection
 async function initializeAuth0() {
     try {
-        // Config for Auth0
-        const config = {
-            "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
-            "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
-        };
-        
-        // Initialize Auth0 Lock widget
-        lock = new Auth0Lock(config.clientId, config.domain, {
+        // Create the Auth0 Lock widget with direct redirection to Streamlit
+        lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
             auth: {
-                redirectUrl: "https://sanctusvidere.com",
-                responseType: 'code',
+                redirectUrl: AUTH0_CONFIG.streamlitAppUrl,
+                responseType: 'token id_token',
                 params: {
-                    scope: 'openid profile email'
+                    scope: 'openid profile email',
+                    // Add any additional params your Streamlit app needs
+                    user: 'new'
                 }
             },
             autoclose: true,
-            allowSignUp: true
+            allowSignUp: true,
+            closable: true
         });
         
-        // Set up Lock events
-        setupLockEvents();
-
-        // Create the Auth0 client for session management
+        // Create the SPA client for checking authentication status
         auth0Client = await auth0.createAuth0Client({
-            domain: config.domain,
-            clientId: config.clientId,
+            domain: AUTH0_CONFIG.domain,
+            clientId: AUTH0_CONFIG.clientId,
             cacheLocation: 'localstorage'
         });
-        
-        // Handle authentication callback only after login
-        if (window.location.search.includes("code=") && 
-            window.location.search.includes("state=")) {
-            
-            await auth0Client.handleRedirectCallback();
-            window.history.replaceState({}, document.title, window.location.pathname);
-            
-            // Get user info & token for Streamlit app
-            const user = await auth0Client.getUser();
-            const token = await auth0Client.getTokenSilently();
-            const userId = user.name || user.email.split('@')[0];
-            
-            // Redirect to Streamlit app with user=new parameter to ensure fresh instance
-            const redirectUrl = getStreamlitAppUrl(userId, token);
-            console.log('✅ SPA SDK: Redirecting to Streamlit app:', redirectUrl);
-            window.location.href = redirectUrl;
-        }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
         auth0Client = null;
     }
 }
 
-// Login with Auth0 - GLOBAL FUNCTION as in Auth0 sample
-async function login() {
-    try {
-        // If client doesn't exist, attempt to reinitialize
-        if (!auth0Client || !lock) {
-            try {
-                await initializeAuth0();
-                if (!auth0Client || !lock) {
-                    throw new Error("Failed to initialize Auth0");
+// Login with Auth0 - SIMPLIFIED to focus on reliability
+function login() {
+    if (!lock) {
+        // Recreate lock if needed
+        lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
+            auth: {
+                redirectUrl: AUTH0_CONFIG.streamlitAppUrl,
+                responseType: 'token id_token',
+                params: {
+                    scope: 'openid profile email',
+                    user: 'new'
                 }
-            } catch (e) {
-                console.error("Error reinitializing Auth0:", e);
-                // Fallback: Just show the lock if it exists
-                if (lock) {
-                    setupLockEvents(); // Ensure event handlers are set up
-                    lock.show();
-                    return;
-                } else {
-                    // Last resort - recreate lock directly
-                    const config = {
-                        "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
-                        "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
-                    };
-                    
-                    lock = new Auth0Lock(config.clientId, config.domain, {
-                        auth: {
-                            redirectUrl: "https://sanctusvidere.com",
-                            responseType: 'code',
-                            params: {
-                                scope: 'openid profile email'
-                            }
-                        },
-                        autoclose: true,
-                        allowSignUp: true
-                    });
-                    setupLockEvents(); // Set up event handlers
-                    lock.show();
-                    return;
-                }
-            }
-        }
-        
-        // Check if user is already logged in
-        try {
-            const isAuthenticated = await auth0Client.isAuthenticated();
-            if (isAuthenticated) {
-                // If logged in, get user info and token, then redirect to Streamlit app
-                const user = await auth0Client.getUser();
-                const token = await auth0Client.getTokenSilently();
-                const userId = user.name || user.email.split('@')[0];
-                const redirectUrl = getStreamlitAppUrl(userId, token);
-                console.log('✅ Already logged in: Redirecting to Streamlit app:', redirectUrl);
-                window.location.href = redirectUrl;
-            } else {
-                // Show the Auth0 Lock widget
-                setupLockEvents(); // Ensure event handlers are set up
-                lock.show();
-            }
-        } catch (err) {
-            // If there's an error checking auth state, just show the lock widget
-            console.error("Error checking auth state:", err);
-            if (lock) {
-                setupLockEvents(); // Ensure event handlers are set up
-                lock.show();
-            }
-        }
-    } catch (err) {
-        console.error("Login failed:", err);
-        alert("Authentication service is unavailable. Please try again later.");
+            },
+            autoclose: true,
+            allowSignUp: true
+        });
     }
+    
+    // Show the login widget
+    lock.show();
 }
 
 // Logout function - GLOBAL FUNCTION using Auth0's server-side logout
@@ -361,7 +112,7 @@ function logout() {
     
     // Use Auth0's official logout endpoint (most reliable method)
     const returnTo = encodeURIComponent(window.location.origin + '/logged-out.html');
-    window.location.href = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=${returnTo}`;
+    window.location.href = `https://${AUTH0_CONFIG.domain}/v2/logout?client_id=${AUTH0_CONFIG.clientId}&returnTo=${returnTo}`;
     
     return false;
 }
@@ -486,26 +237,7 @@ function setupDirectAccess() {
             
             const accessCode = prompt('Enter direct access code:');
             if (accessCode === 'sanctus2025') {
-                try {
-                    if (!auth0Client) {
-                        throw new Error("Authentication service not available");
-                    }
-                    const isAuthenticated = await auth0Client.isAuthenticated();
-                    if (isAuthenticated) {
-                        const user = await auth0Client.getUser();
-                        const token = await auth0Client.getTokenSilently();
-                        const userId = user.name || user.email.split('@')[0];
-                        const redirectUrl = getStreamlitAppUrl(userId, token);
-                        console.log('✅ Direct access: Redirecting to Streamlit app:', redirectUrl);
-                        window.location.href = redirectUrl;
-                    } else {
-                        alert('You must be logged in to access the dashboard.');
-                        lock.show();
-                    }
-                } catch (err) {
-                    console.error("Direct access failed:", err);
-                    alert('Failed to access dashboard. Please try logging in.');
-                }
+                login(); // Just show the login widget directly
             } else {
                 alert('Invalid access code.');
             }
