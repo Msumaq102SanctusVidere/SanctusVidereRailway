@@ -1,9 +1,6 @@
 // The Auth0 client, initialized in initializeAuth0()
 let auth0Client = null;
 
-// Flag to prevent Streamlit redirect during logout
-let isLoggingOut = false;
-
 // Wait for the Auth0 SDK to load
 async function waitForAuth0SDK() {
     const maxAttempts = 50; // Wait up to 5 seconds (50 * 100ms)
@@ -47,10 +44,10 @@ async function initializeAuth0() {
             cacheLocation: 'localstorage'
         });
         
-        // Handle authentication callback
+        // Handle authentication callback only after login
         if (window.location.search.includes("code=") && 
             window.location.search.includes("state=") && 
-            !isLoggingOut) {
+            !window.location.search.includes("logout=true")) {
             
             await auth0Client.handleRedirectCallback();
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -62,6 +59,14 @@ async function initializeAuth0() {
             
             // Redirect to Streamlit app with user=new parameter to ensure fresh instance
             window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
+        }
+        // After logout, redirect to Auth0 login form
+        if (window.location.search.includes("logout=true")) {
+            await auth0Client.loginWithRedirect({
+                authorizationParams: {
+                    redirect_uri: "https://sanctusvidere.com"
+                }
+            });
         }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
@@ -102,27 +107,12 @@ async function logout() {
         if (!auth0Client) {
             throw new Error("Authentication service not available");
         }
-        // Set flag to prevent Streamlit redirect during logout
-        isLoggingOut = true;
         // Clear local storage to ensure clean state
         localStorage.removeItem('auth0:cache');
         // Log out from Auth0 with federated logout to clear server-side session
-        await auth0Client.logout({
-            logoutParams: {
-                returnTo: "https://sanctusvidere.com",
-                federated: true // Ensure server-side session is cleared
-            }
-        });
-        // Redirect to Auth0 login form by initiating a new login
-        await auth0Client.loginWithRedirect({
-            authorizationParams: {
-                redirect_uri: "https://sanctusvidere.com"
-            }
-        });
+        window.location.href = `https://dev-wl2dxopsswbbvkcb.us.auth0.com/v2/logout?client_id=BAXPcs4GZAZodDtErS0UxTmugyxbEcZU&returnTo=https://sanctusvidere.com?logout=true&federated`;
     } catch (err) {
         console.error("Log out failed:", err);
-    } finally {
-        isLoggingOut = false;
     }
 }
 
