@@ -103,33 +103,86 @@ async function login() {
 }
 
 // Logout function - GLOBAL FUNCTION as in Auth0 sample
-async function logout() {
+function logout(event) {
+    // Prevent any default behavior
+    event?.preventDefault();
+    
     try {
+        // Brute force approach to prevent redirects
+        const originalLocation = window.location.href;
+        
+        // Block any redirect attempts (we'll restore it in the finally block)
+        const originalAssign = window.location.assign;
+        const originalReplace = window.location.replace;
+        const originalHref = Object.getOwnPropertyDescriptor(window.location, 'href');
+        
+        window.location.assign = function() { console.log("Blocked redirect attempt"); };
+        window.location.replace = function() { console.log("Blocked redirect attempt"); };
+        Object.defineProperty(window.location, 'href', {
+            set: function() { console.log("Blocked redirect attempt"); },
+            get: function() { return originalLocation; }
+        });
+        
         // Clear local storage to ensure clean state
         localStorage.removeItem('auth0:cache');
+        localStorage.removeItem('auth0.is.authenticated');
         
-        // If auth0Client exists, try to log out, but don't wait for it
+        // If auth0Client exists, try to clear it without redirects
         if (auth0Client) {
-            // Attempt to clear session but don't await it
-            auth0Client.logout({
-                localOnly: true  // Don't redirect to Auth0 logout page
-            }).catch(e => console.error("Session clearance error:", e));
+            try {
+                // Force client to be in a logged-out state
+                auth0Client = null;
+            } catch (e) {
+                console.error("Client reset error:", e);
+            }
+        }
+
+        // Make sure we have a lock instance
+        if (!lock && typeof Auth0Lock !== 'undefined') {
+            const config = {
+                "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
+                "clientId": "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU"
+            };
             
-            // Invalidate client-side session
-            auth0Client = null;
+            // Recreate lock widget
+            lock = new Auth0Lock(config.clientId, config.domain, {
+                auth: {
+                    redirectUrl: "https://sanctusvidere.com",
+                    responseType: 'code',
+                    params: {
+                        scope: 'openid profile email'
+                    }
+                },
+                autoclose: true,
+                allowSignUp: true
+            });
         }
     } catch (err) {
         console.error("Log out failed:", err);
     } finally {
-        // ALWAYS show the lock widget regardless of what happened above
+        // Always show the lock widget regardless of what happened above
         if (lock) {
             lock.show();
         } else {
             console.error("Auth0 Lock widget not available");
-            // If lock isn't available, we might need to reinitialize Auth0
-            waitForAuth0SDK().then(initializeAuth0).catch(console.error);
+            // Try one more time to initialize
+            waitForAuth0SDK().then(() => {
+                initializeAuth0().then(() => {
+                    if (lock) lock.show();
+                });
+            }).catch(console.error);
         }
+        
+        // Restore the original location methods after a short delay
+        setTimeout(() => {
+            if (originalAssign) window.location.assign = originalAssign;
+            if (originalReplace) window.location.replace = originalReplace;
+            if (originalHref) Object.defineProperty(window.location, 'href', originalHref);
+        }, 500);
     }
+    
+    // Ensure we don't continue with any default behavior
+    return false;
 }
 
 // Review system functionality
