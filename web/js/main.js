@@ -1,20 +1,15 @@
 // The Auth0 client, initialized in initializeAuth0()
 let auth0Client = null;
-let isAuthenticated = false;
 
-// Global login function - must be available in global scope for HTML
+// CRITICAL: These functions MUST be in global scope - directly accessible from HTML onclick
+// Login function - called directly from HTML
 async function login() {
+    if (!auth0Client) {
+        alert("Authentication system is still initializing. Please try again in a moment.");
+        return;
+    }
+    
     try {
-        // Show loading state
-        const loginButton = document.getElementById('login-button');
-        if (loginButton) {
-            loginButton.textContent = "Logging in...";
-            loginButton.disabled = true;
-        }
-        
-        // Update status
-        updateAuthStatus("Redirecting to login...");
-        
         console.log("Logging in...");
         await auth0Client.loginWithRedirect({
             authorizationParams: {
@@ -23,30 +18,18 @@ async function login() {
         });
     } catch (err) {
         console.error("Login failed:", err);
-        updateAuthStatus("Login failed: " + err.message);
-        
-        // Reset button
-        const loginButton = document.getElementById('login-button');
-        if (loginButton) {
-            loginButton.textContent = "Login / Create Account";
-            loginButton.disabled = false;
-        }
+        alert("Login failed: " + err.message);
     }
 }
 
-// Global logout function - must be available in global scope for HTML
+// Logout function - called directly from HTML
 async function logout() {
+    if (!auth0Client) {
+        alert("Authentication system is still initializing. Please try again in a moment.");
+        return;
+    }
+    
     try {
-        // Show loading state
-        const logoutButton = document.getElementById('logout-button');
-        if (logoutButton) {
-            logoutButton.textContent = "Logging out...";
-            logoutButton.disabled = true;
-        }
-        
-        // Update status
-        updateAuthStatus("Logging out...");
-        
         console.log("Logging out...");
         await auth0Client.logout({
             logoutParams: {
@@ -55,22 +38,7 @@ async function logout() {
         });
     } catch (err) {
         console.log("Log out failed", err);
-        updateAuthStatus("Logout failed: " + err.message);
-        
-        // Reset button
-        const logoutButton = document.getElementById('logout-button');
-        if (logoutButton) {
-            logoutButton.textContent = "Logout";
-            logoutButton.disabled = false;
-        }
-    }
-}
-
-// Helper function to update authentication status display
-function updateAuthStatus(message) {
-    const statusElement = document.getElementById('auth-status');
-    if (statusElement) {
-        statusElement.innerHTML = `<p>${message}</p>`;
+        alert("Logout failed: " + err.message);
     }
 }
 
@@ -84,16 +52,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up other components
     setupReviewForm();
     setupDirectAccess();
-    
-    // Set up the click handlers for login/logout buttons
-    setupAuthButtons();
 });
 
-// Initialize Auth0 client
+// Initialize Auth0 client - MOVED OUTSIDE DOMContentLoaded to ensure it runs early
 async function initializeAuth0() {
     try {
-        updateAuthStatus("Initializing authentication...");
-        
         // Config for Auth0
         const config = {
             "domain": "dev-wl2dxopsswbbvkcb.us.auth0.com",
@@ -108,12 +71,11 @@ async function initializeAuth0() {
         
         console.log("Auth0 client created successfully");
         
-        // Check if we need to handle a redirect callback
+        // Handle authentication callback
         if (window.location.search.includes("code=") && 
             window.location.search.includes("state=")) {
             
             try {
-                updateAuthStatus("Completing authentication...");
                 await auth0Client.handleRedirectCallback();
                 window.history.replaceState({}, document.title, window.location.pathname);
                 
@@ -126,54 +88,12 @@ async function initializeAuth0() {
                 window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
             } catch (error) {
                 console.error("Error handling authentication:", error);
-                updateAuthStatus("Authentication error: " + error.message);
-            }
-        } else {
-            // Check if user is authenticated
-            isAuthenticated = await auth0Client.isAuthenticated();
-            
-            // Enable the auth buttons now that we've initialized
-            enableAuthButtons();
-            
-            if (isAuthenticated) {
-                updateAuthStatus("You are logged in");
-            } else {
-                updateAuthStatus("Ready to log in");
+                alert("Authentication error: " + error.message);
             }
         }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
-        updateAuthStatus("Failed to initialize authentication: " + err.message);
-    }
-}
-
-// Set up the click handlers for login/logout buttons
-function setupAuthButtons() {
-    const loginButton = document.getElementById('login-button');
-    const logoutButton = document.getElementById('logout-button');
-    
-    if (loginButton) {
-        loginButton.addEventListener('click', login);
-    }
-    
-    if (logoutButton) {
-        logoutButton.addEventListener('click', logout);
-    }
-}
-
-// Enable auth buttons once Auth0 is initialized
-function enableAuthButtons() {
-    const loginButton = document.getElementById('login-button');
-    const logoutButton = document.getElementById('logout-button');
-    
-    if (loginButton) {
-        loginButton.disabled = false;
-        loginButton.textContent = "Login / Create Account";
-    }
-    
-    if (logoutButton) {
-        logoutButton.disabled = false;
-        logoutButton.textContent = "Logout";
+        alert("Failed to initialize authentication: " + err.message);
     }
 }
 
