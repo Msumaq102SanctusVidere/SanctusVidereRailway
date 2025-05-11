@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupReviewForm();
     setupDirectAccess();
     setupLoginButton();
+    setupLogoutButton();
 });
 
 // Initialize Auth0 client
@@ -55,8 +56,32 @@ async function initializeAuth0() {
                 console.error("Error handling authentication:", error);
             }
         }
+        
+        // Check if user is authenticated and update UI
+        updateAuthUI();
     } catch (err) {
         console.error("Error initializing Auth0:", err);
+    }
+}
+
+// Update the UI based on authentication state
+async function updateAuthUI() {
+    try {
+        const isAuthenticated = await auth0Client.isAuthenticated();
+        const loginButton = document.getElementById('auth0-login-button');
+        const logoutButton = document.getElementById('auth0-logout-button');
+        
+        if (isAuthenticated) {
+            // User is logged in - show logout button, hide login button
+            if (loginButton) loginButton.style.display = 'none';
+            if (logoutButton) logoutButton.style.display = 'flex';
+        } else {
+            // User is logged out - show login button, hide logout button
+            if (loginButton) loginButton.style.display = 'flex';
+            if (logoutButton) logoutButton.style.display = 'none';
+        }
+    } catch (err) {
+        console.error("Error updating auth UI:", err);
     }
 }
 
@@ -71,6 +96,17 @@ function setupLoginButton() {
     }
 }
 
+// Setup logout button
+function setupLogoutButton() {
+    const logoutButton = document.getElementById('auth0-logout-button');
+    if (logoutButton) {
+        logoutButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            logoutWithAuth0();
+        });
+    }
+}
+
 // Login with Auth0
 async function loginWithAuth0() {
     try {
@@ -81,6 +117,19 @@ async function loginWithAuth0() {
         });
     } catch (err) {
         console.error("Login failed:", err);
+    }
+}
+
+// Logout with Auth0
+async function logoutWithAuth0() {
+    try {
+        await auth0Client.logout({
+            logoutParams: {
+                returnTo: window.location.origin
+            }
+        });
+    } catch (err) {
+        console.error("Logout failed:", err);
     }
 }
 
