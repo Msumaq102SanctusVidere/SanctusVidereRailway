@@ -44,10 +44,14 @@ async function initializeAuth0() {
             cacheLocation: 'localstorage'
         });
         
+        // Prevent Streamlit redirect if coming from logout
+        if (window.location.search.includes("logout=true")) {
+            return; // Stop further processing to avoid Streamlit redirect
+        }
+        
         // Handle authentication callback only after login
         if (window.location.search.includes("code=") && 
-            window.location.search.includes("state=") && 
-            !window.location.search.includes("logout=true")) {
+            window.location.search.includes("state=")) {
             
             await auth0Client.handleRedirectCallback();
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -59,14 +63,6 @@ async function initializeAuth0() {
             
             // Redirect to Streamlit app with user=new parameter to ensure fresh instance
             window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
-        }
-        // After logout, redirect to Auth0 login form
-        if (window.location.search.includes("logout=true")) {
-            await auth0Client.loginWithRedirect({
-                authorizationParams: {
-                    redirect_uri: "https://sanctusvidere.com"
-                }
-            });
         }
     } catch (err) {
         console.error("Error initializing Auth0:", err);
