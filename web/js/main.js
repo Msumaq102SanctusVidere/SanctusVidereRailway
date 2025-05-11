@@ -105,7 +105,7 @@ const logout = async () => {
         console.log("Logging out...");
         await auth0Client.logout({
             logoutParams: {
-                returnTo: "https://app.sanctusvidere.com"
+                returnTo: "https://sanctusvidere.com"
             }
         });
     } catch (err) {
