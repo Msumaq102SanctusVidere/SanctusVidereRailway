@@ -28,7 +28,7 @@ async function initializeAuth0() {
         auth0Client = await auth0.createAuth0Client({
             domain: config.domain,
             clientId: config.clientId,
-            cacheLocation: "localstorage",
+            cacheLocation: "localstorage", // Required for proper logout
             authorizationParams: {
                 redirect_uri: "https://app.sanctusvidere.com",
                 response_type: "code",
@@ -51,7 +51,7 @@ async function initializeAuth0() {
                 const token = await auth0Client.getTokenSilently();
                 const userId = user.name || user.email.split('@')[0];
                 
-                // FIXED: Redirect to Streamlit app with user=new parameter to ensure fresh instance
+                // Redirect to Streamlit app with user=new parameter to ensure fresh instance
                 window.location.href = `https://app.sanctusvidere.com?user=new&userid=${userId}&token=${token}&t=${Date.now()}`;
             } catch (error) {
                 console.error("Error handling authentication:", error);
@@ -88,6 +88,7 @@ function setupLogoutButton() {
 // Login with Auth0
 async function loginWithAuth0() {
     try {
+        console.log("Logging in...");
         await auth0Client.loginWithRedirect({
             authorizationParams: {
                 redirect_uri: "https://app.sanctusvidere.com"
@@ -98,10 +99,10 @@ async function loginWithAuth0() {
     }
 }
 
-// Logout function directly from Auth0 sample code
+// Logout function directly from Auth0 sample
 const logout = async () => {
     try {
-        console.log("Logging out");
+        console.log("Logging out...");
         await auth0Client.logout({
             logoutParams: {
                 returnTo: window.location.origin
