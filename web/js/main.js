@@ -11,8 +11,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up other components
     setupReviewForm();
     setupDirectAccess();
-    setupLoginButton();
-    setupLogoutButton();
 });
 
 // Initialize Auth0 client
@@ -28,8 +26,9 @@ async function initializeAuth0() {
         auth0Client = await auth0.createAuth0Client({
             domain: config.domain,
             clientId: config.clientId,
+            cacheLocation: "localstorage", // Required for proper logout
             authorizationParams: {
-                redirect_uri: "https://app.sanctusvidere.com",
+                redirect_uri: window.location.origin,
                 response_type: "code",
                 scope: "openid profile email"
             }
@@ -56,8 +55,33 @@ async function initializeAuth0() {
                 console.error("Error handling authentication:", error);
             }
         }
+        
+        // Set up the login and logout buttons and update UI
+        setupLoginButton();
+        setupLogoutButton();
+        updateUI();
+        
     } catch (err) {
         console.error("Error initializing Auth0:", err);
+    }
+}
+
+// Update UI based on authentication state
+async function updateUI() {
+    try {
+        const isAuthenticated = await auth0Client.isAuthenticated();
+        
+        if (isAuthenticated) {
+            console.log("> User is authenticated");
+            document.getElementById('auth0-login-button').classList.add('auth-invisible');
+            document.getElementById('auth0-logout-button').classList.remove('auth-invisible');
+        } else {
+            console.log("> User is not authenticated");
+            document.getElementById('auth0-login-button').classList.remove('auth-invisible');
+            document.getElementById('auth0-logout-button').classList.add('auth-invisible');
+        }
+    } catch (err) {
+        console.error("Error updating UI:", err);
     }
 }
 
@@ -77,6 +101,7 @@ function setupLogoutButton() {
     const logoutButton = document.getElementById('auth0-logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', function(e) {
+            console.log("Logout button clicked");
             e.preventDefault();
             logoutWithAuth0();
         });
@@ -86,9 +111,10 @@ function setupLogoutButton() {
 // Login with Auth0
 async function loginWithAuth0() {
     try {
+        console.log("Logging in...");
         await auth0Client.loginWithRedirect({
             authorizationParams: {
-                redirect_uri: "https://app.sanctusvidere.com"
+                redirect_uri: window.location.origin
             }
         });
     } catch (err) {
@@ -99,6 +125,7 @@ async function loginWithAuth0() {
 // Logout with Auth0
 async function logoutWithAuth0() {
     try {
+        console.log("Logging out...");
         await auth0Client.logout({
             logoutParams: {
                 returnTo: window.location.origin
