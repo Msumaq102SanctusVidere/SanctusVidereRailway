@@ -53,9 +53,23 @@ function setupLoginButton() {
     }
 }
 
-// Initialize Auth0 Lock - STREAMLIT-SPECIFIC VERSION
+// Initialize Auth0 Lock with enhanced styling
 function initializeLock() {
-    // Initialize Auth0 Lock widget with minimal configuration
+    // Define custom theme colors to match your site's aesthetic
+    const customTheme = {
+        logo: 'images/sanctus-videre-logo.png',  // Using the exact path from your repo
+        primaryColor: '#64B5F6',                 // Blue accent color from your CSS
+        authButtons: {
+            "google-oauth2": {
+                displayName: "Google",
+                primaryColor: "#4285F4",
+                foregroundColor: "#ffffff",
+                icon: "https://cdn.auth0.com/website/new-homepage/dark-auth0-logo.png"
+            }
+        }
+    };
+    
+    // Enhanced Lock widget configuration
     lock = new Auth0Lock(AUTH0_CONFIG.clientId, AUTH0_CONFIG.domain, {
         auth: {
             redirectUrl: AUTH0_CONFIG.mainUrl,
@@ -66,10 +80,25 @@ function initializeLock() {
         },
         autoclose: true,
         allowSignUp: true,
+        allowForgotPassword: true,
+        allowShowPassword: true,
+        closable: true,
+        theme: customTheme,
         languageDictionary: {
-            title: 'Sanctus Videre Login'
+            title: 'Sanctus Videre',
+            emailInputPlaceholder: 'Your email address',
+            passwordInputPlaceholder: 'Your secure password',
+            loginSubmitLabel: 'Sign In',
+            signUpSubmitLabel: 'Create Account',
+            signUpLabel: "Don't have an account? Sign Up",
+            forgotPasswordTitle: 'Reset Your Password',
+            forgotPasswordAction: 'Forgot password?'
         },
-        avatar: null
+        container: 'auth0-login-container',
+        avatar: null,
+        rememberLastLogin: true,
+        socialButtonStyle: 'big',
+        initialScreen: 'login'
     });
     
     // Set up the authenticated event handler
@@ -94,20 +123,16 @@ function initializeLock() {
             const userId = profile.name || profile.email || 'user-' + Date.now();
             console.log("Authenticated user:", userId);
             
-            // STREAMLIT-SPECIFIC APPROACH:
-            // Based on your Streamlit code, it looks for "user=new" or "user=regular"
-            // Let's try with just the essential parameters
-            
-            // Method 1: Minimal approach - just what Streamlit needs
+            // Use the minimal approach that works
             const simpleUrl = `${AUTH0_CONFIG.appUrl}?user=new&token=${encodeURIComponent(idToken)}`;
             console.log("Redirecting to Streamlit with minimal parameters:", simpleUrl);
             
-            // Force navigation - use replace for cleaner history
+            // Force navigation
             window.location.replace(simpleUrl);
         });
     });
     
-    console.log("Auth0 Lock initialized with Streamlit-specific parameters");
+    console.log("Auth0 Lock initialized with enhanced styling and your logo");
 }
 
 // Login with Auth0 Lock only
