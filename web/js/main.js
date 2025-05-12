@@ -81,13 +81,16 @@ function initializeLock() {
         const idToken = authResult.idToken;
         const accessToken = authResult.accessToken;
         
+        // CRITICAL FIX: Check for existing workspace BEFORE we get user info
+        // This properly identifies if user had a previous workspace
+        const hasExistingWorkspace = localStorage.getItem('sanctus_user_id') !== null;
+        
         // Get user profile
         lock.getUserInfo(accessToken, function(error, profile) {
             if (error) {
                 console.error("Error getting user info:", error);
                 
-                // CHANGE: Still create a redirect but use a consistent approach
-                const hasExistingWorkspace = localStorage.getItem('sanctus_user_id') !== null;
+                // Still create a redirect based on existing workspace check
                 const userParam = hasExistingWorkspace ? 'existing' : 'new';
                 
                 const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
@@ -100,14 +103,14 @@ function initializeLock() {
             const userId = profile.sub || profile.user_id || 'user-' + Date.now();
             console.log("Authenticated user:", userId);
             
-            // CHANGE: Store user ID in localStorage for workspace persistence
+            // Now store user ID in localStorage for future workspace persistence
+            // This happens AFTER we've determined if they're new or existing
             localStorage.setItem('sanctus_user_id', userId);
             
-            // CHANGE: Check if user should get new or existing workspace
-            const hasExistingWorkspace = true; // Since we just stored their ID, they now have a workspace
+            // Use the hasExistingWorkspace value we determined BEFORE getting profile
             const userParam = hasExistingWorkspace ? 'existing' : 'new';
             
-            // CHANGE: Use the appropriate user parameter in the URL
+            // Use the appropriate user parameter in the URL
             const simpleUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
             console.log(`Redirecting to Streamlit with ${userParam} workspace:`, simpleUrl);
             
@@ -137,7 +140,7 @@ function login() {
 
 // Logout function - IMPROVED VERSION
 function logout() {
-    // CHANGE: Modified to preserve user ID while clearing auth data
+    // Modified to preserve user ID while clearing auth data
     // This allows users to return to their workspace on next login
     clearAuthData(false); // false = don't clear user ID
     
@@ -148,7 +151,7 @@ function logout() {
     return false;
 }
 
-// CHANGE: Updated to accept a parameter controlling whether to clear user ID
+// Updated to accept a parameter controlling whether to clear user ID
 function clearAuthData(clearUserID = true) {
     // Clear Auth0 specific items
     localStorage.removeItem('auth0:cache');
