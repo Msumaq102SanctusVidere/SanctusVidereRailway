@@ -105,9 +105,9 @@ function initializeLock() {
             const userId = profile.sub || profile.user_id || 'user-' + Date.now();
             console.log("Authenticated user:", userId);
             
-            // Determine if this is a new user or returning user
-            // CRITICAL: Check BEFORE updating localStorage
-            const isNewUser = (storedUserId !== userId);
+            // FIXED: Determine if this is a new user or returning user
+            // Only consider user "new" if there is NO stored ID at all
+            const isNewUser = !storedUserId;
             
             // Store user info (standard practice)
             localStorage.setItem('auth_user_id', userId);
