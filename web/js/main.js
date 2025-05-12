@@ -81,42 +81,50 @@ function initializeLock() {
         const idToken = authResult.idToken;
         const accessToken = authResult.accessToken;
         
-        // Check if this is a first-time login by looking for user ID in localStorage
-        const storedUserId = localStorage.getItem('sanctus_user_id');
+        // Store tokens securely (standard practice)
+        localStorage.setItem('auth_id_token', idToken);
+        localStorage.setItem('auth_access_token', accessToken);
+        
+        // Check if this user has logged in before (standard practice)
+        const storedUserId = localStorage.getItem('auth_user_id');
         
         // Get user profile
         lock.getUserInfo(accessToken, function(error, profile) {
             if (error) {
                 console.error("Error getting user info:", error);
                 
-                // Even with error, determine user parameter based on stored ID
+                // Even with error, we can determine if new or returning user
                 const userParam = storedUserId ? 'existing' : 'new';
                 const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
-                console.log(`Redirecting with ${userParam} workspace URL:`, redirectUrl);
+                console.log(`Redirecting with ${userParam} parameter:`, redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
             }
             
-            // Get user ID for logging
+            // Get user ID
             const userId = profile.sub || profile.user_id || 'user-' + Date.now();
             console.log("Authenticated user:", userId);
             
             // Determine if this is a new user or returning user
-            // Critical: we check BEFORE storing the new ID
-            const isNewUser = !storedUserId;
+            // CRITICAL: Check BEFORE updating localStorage
+            const isNewUser = (storedUserId !== userId);
             
-            // Set the user parameter for streamlit based on new/existing status
+            // Store user info (standard practice)
+            localStorage.setItem('auth_user_id', userId);
+            if (profile.name) localStorage.setItem('auth_user_name', profile.name);
+            if (profile.email) localStorage.setItem('auth_user_email', profile.email);
+            localStorage.setItem('auth_login_time', Date.now().toString());
+            
+            // Set the appropriate user parameter for Streamlit
+            // This aligns with your Streamlit app's expectations
             const userParam = isNewUser ? 'new' : 'existing';
             
-            // Now store the user ID for future reference
-            localStorage.setItem('sanctus_user_id', userId);
+            // Create URL with both token and required user parameter
+            const appUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
+            console.log(`Redirecting to Streamlit with ${userParam} parameter:`, appUrl);
             
-            // Create URL with proper user parameter that Streamlit expects
-            const streamlitUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
-            console.log(`Redirecting to Streamlit with ${userParam} workspace:`, streamlitUrl);
-            
-            // Force navigation to Streamlit
-            window.location.replace(streamlitUrl);
+            // Force navigation to app
+            window.location.replace(appUrl);
         });
     });
     
@@ -139,9 +147,9 @@ function login() {
     }
 }
 
-// Logout function - IMPROVED VERSION
+// Logout function - Using standard practices
 function logout() {
-    // Clear auth data but preserve user ID to maintain workspace association
+    // Clear auth data but preserve user ID to remember this user has logged in before
     clearAuthData(false); // false = don't clear user ID
     
     // Use Auth0's official logout endpoint (most reliable method)
@@ -151,21 +159,23 @@ function logout() {
     return false;
 }
 
-// Helper function to thoroughly clear all Auth0-related data
+// Helper function to clear auth data using standard practices
 function clearAuthData(clearUserID = true) {
-    // Clear Auth0 specific items
-    localStorage.removeItem('auth0:cache');
-    localStorage.removeItem('auth0.is.authenticated');
+    // Clear auth tokens
+    localStorage.removeItem('auth_id_token');
+    localStorage.removeItem('auth_access_token');
     
-    // Clear any token or user info
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('id_token');
-    localStorage.removeItem('expires_at');
-    
-    // Only clear user ID if specifically requested
+    // Optionally clear user identity info
     if (clearUserID) {
-        localStorage.removeItem('sanctus_user_id');
+        localStorage.removeItem('auth_user_id');
+        localStorage.removeItem('auth_user_name');
+        localStorage.removeItem('auth_user_email');
     }
+    
+    localStorage.removeItem('auth_login_time');
+    
+    // Clear any Auth0 specific items
+    localStorage.removeItem('auth0.is.authenticated');
     
     // Find and clear any Auth0-related items
     for (let i = 0; i < localStorage.length; i++) {
@@ -175,7 +185,7 @@ function clearAuthData(clearUserID = true) {
         }
     }
     
-    // Clear session storage too
+    // Clear session storage too (standard security practice)
     for (let i = 0; i < sessionStorage.length; i++) {
         const key = sessionStorage.key(i);
         if (key && (key.includes('auth0') || key.includes('Auth0'))) {
@@ -252,7 +262,7 @@ function hideReviewForm() {
 // Save review to localStorage for demo
 function saveReview(rating, text) {
     const reviews = JSON.parse(localStorage.getItem('reviews') || '[]');
-    const userName = localStorage.getItem('userName') || 'Anonymous User';
+    const userName = localStorage.getItem('auth_user_name') || 'Anonymous User';
     
     reviews.push({
         rating: rating,
