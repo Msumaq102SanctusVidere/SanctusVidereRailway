@@ -81,14 +81,18 @@ function initializeLock() {
         const idToken = authResult.idToken;
         const accessToken = authResult.accessToken;
         
+        // Check if this is a first-time login by looking for user ID in localStorage
+        const storedUserId = localStorage.getItem('sanctus_user_id');
+        
         // Get user profile
         lock.getUserInfo(accessToken, function(error, profile) {
             if (error) {
                 console.error("Error getting user info:", error);
                 
-                // Simplest possible redirect - just pass the token
-                const redirectUrl = `${AUTH0_CONFIG.appUrl}?token=${encodeURIComponent(idToken)}`;
-                console.log("Redirecting to Streamlit:", redirectUrl);
+                // Even with error, determine user parameter based on stored ID
+                const userParam = storedUserId ? 'existing' : 'new';
+                const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
+                console.log(`Redirecting with ${userParam} workspace URL:`, redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
             }
@@ -97,16 +101,22 @@ function initializeLock() {
             const userId = profile.sub || profile.user_id || 'user-' + Date.now();
             console.log("Authenticated user:", userId);
             
-            // Store user ID for session identification if needed by other components
+            // Determine if this is a new user or returning user
+            // Critical: we check BEFORE storing the new ID
+            const isNewUser = !storedUserId;
+            
+            // Set the user parameter for streamlit based on new/existing status
+            const userParam = isNewUser ? 'new' : 'existing';
+            
+            // Now store the user ID for future reference
             localStorage.setItem('sanctus_user_id', userId);
             
-            // Simple redirect with just the token
-            // No workspace management parameters - let Streamlit handle it naturally
-            const simpleUrl = `${AUTH0_CONFIG.appUrl}?token=${encodeURIComponent(idToken)}`;
-            console.log("Redirecting to Streamlit:", simpleUrl);
+            // Create URL with proper user parameter that Streamlit expects
+            const streamlitUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
+            console.log(`Redirecting to Streamlit with ${userParam} workspace:`, streamlitUrl);
             
-            // Force navigation
-            window.location.replace(simpleUrl);
+            // Force navigation to Streamlit
+            window.location.replace(streamlitUrl);
         });
     });
     
@@ -131,8 +141,8 @@ function login() {
 
 // Logout function - IMPROVED VERSION
 function logout() {
-    // Clear all auth data
-    clearAuthData();
+    // Clear auth data but preserve user ID to maintain workspace association
+    clearAuthData(false); // false = don't clear user ID
     
     // Use Auth0's official logout endpoint (most reliable method)
     const returnTo = encodeURIComponent(window.location.origin + '/logged-out.html');
@@ -142,7 +152,7 @@ function logout() {
 }
 
 // Helper function to thoroughly clear all Auth0-related data
-function clearAuthData() {
+function clearAuthData(clearUserID = true) {
     // Clear Auth0 specific items
     localStorage.removeItem('auth0:cache');
     localStorage.removeItem('auth0.is.authenticated');
@@ -151,7 +161,11 @@ function clearAuthData() {
     localStorage.removeItem('access_token');
     localStorage.removeItem('id_token');
     localStorage.removeItem('expires_at');
-    localStorage.removeItem('sanctus_user_id');
+    
+    // Only clear user ID if specifically requested
+    if (clearUserID) {
+        localStorage.removeItem('sanctus_user_id');
+    }
     
     // Find and clear any Auth0-related items
     for (let i = 0; i < localStorage.length; i++) {
