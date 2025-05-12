@@ -81,20 +81,14 @@ function initializeLock() {
         const idToken = authResult.idToken;
         const accessToken = authResult.accessToken;
         
-        // CRITICAL FIX: Check for existing workspace BEFORE we get user info
-        // This properly identifies if user had a previous workspace
-        const hasExistingWorkspace = localStorage.getItem('sanctus_user_id') !== null;
-        
         // Get user profile
         lock.getUserInfo(accessToken, function(error, profile) {
             if (error) {
                 console.error("Error getting user info:", error);
                 
-                // Still create a redirect based on existing workspace check
-                const userParam = hasExistingWorkspace ? 'existing' : 'new';
-                
-                const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
-                console.log(`Redirecting with ${userParam} workspace URL:`, redirectUrl);
+                // Simplest possible redirect - just pass the token
+                const redirectUrl = `${AUTH0_CONFIG.appUrl}?token=${encodeURIComponent(idToken)}`;
+                console.log("Redirecting to Streamlit:", redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
             }
@@ -103,16 +97,13 @@ function initializeLock() {
             const userId = profile.sub || profile.user_id || 'user-' + Date.now();
             console.log("Authenticated user:", userId);
             
-            // Now store user ID in localStorage for future workspace persistence
-            // This happens AFTER we've determined if they're new or existing
+            // Store user ID for session identification if needed by other components
             localStorage.setItem('sanctus_user_id', userId);
             
-            // Use the hasExistingWorkspace value we determined BEFORE getting profile
-            const userParam = hasExistingWorkspace ? 'existing' : 'new';
-            
-            // Use the appropriate user parameter in the URL
-            const simpleUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
-            console.log(`Redirecting to Streamlit with ${userParam} workspace:`, simpleUrl);
+            // Simple redirect with just the token
+            // No workspace management parameters - let Streamlit handle it naturally
+            const simpleUrl = `${AUTH0_CONFIG.appUrl}?token=${encodeURIComponent(idToken)}`;
+            console.log("Redirecting to Streamlit:", simpleUrl);
             
             // Force navigation
             window.location.replace(simpleUrl);
@@ -140,9 +131,8 @@ function login() {
 
 // Logout function - IMPROVED VERSION
 function logout() {
-    // Modified to preserve user ID while clearing auth data
-    // This allows users to return to their workspace on next login
-    clearAuthData(false); // false = don't clear user ID
+    // Clear all auth data
+    clearAuthData();
     
     // Use Auth0's official logout endpoint (most reliable method)
     const returnTo = encodeURIComponent(window.location.origin + '/logged-out.html');
@@ -151,8 +141,8 @@ function logout() {
     return false;
 }
 
-// Updated to accept a parameter controlling whether to clear user ID
-function clearAuthData(clearUserID = true) {
+// Helper function to thoroughly clear all Auth0-related data
+function clearAuthData() {
     // Clear Auth0 specific items
     localStorage.removeItem('auth0:cache');
     localStorage.removeItem('auth0.is.authenticated');
@@ -161,6 +151,7 @@ function clearAuthData(clearUserID = true) {
     localStorage.removeItem('access_token');
     localStorage.removeItem('id_token');
     localStorage.removeItem('expires_at');
+    localStorage.removeItem('sanctus_user_id');
     
     // Find and clear any Auth0-related items
     for (let i = 0; i < localStorage.length; i++) {
@@ -168,11 +159,6 @@ function clearAuthData(clearUserID = true) {
         if (key && (key.includes('auth0') || key.includes('Auth0'))) {
             localStorage.removeItem(key);
         }
-    }
-    
-    // Only clear user ID if specifically requested
-    if (clearUserID) {
-        localStorage.removeItem('sanctus_user_id');
     }
     
     // Clear session storage too
