@@ -86,20 +86,30 @@ function initializeLock() {
             if (error) {
                 console.error("Error getting user info:", error);
                 
-                // Create a simpler redirect URL focusing just on the user=new parameter
-                const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=new&token=${encodeURIComponent(idToken)}`;
-                console.log("Redirecting with simplified fresh workspace URL:", redirectUrl);
+                // CHANGE: Still create a redirect but use a consistent approach
+                const hasExistingWorkspace = localStorage.getItem('sanctus_user_id') !== null;
+                const userParam = hasExistingWorkspace ? 'existing' : 'new';
+                
+                const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
+                console.log(`Redirecting with ${userParam} workspace URL:`, redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
             }
             
             // Get user ID for logging
-            const userId = profile.name || profile.email || 'user-' + Date.now();
+            const userId = profile.sub || profile.user_id || 'user-' + Date.now();
             console.log("Authenticated user:", userId);
             
-            // Use the minimal approach that works
-            const simpleUrl = `${AUTH0_CONFIG.appUrl}?user=new&token=${encodeURIComponent(idToken)}`;
-            console.log("Redirecting to Streamlit with minimal parameters:", simpleUrl);
+            // CHANGE: Store user ID in localStorage for workspace persistence
+            localStorage.setItem('sanctus_user_id', userId);
+            
+            // CHANGE: Check if user should get new or existing workspace
+            const hasExistingWorkspace = true; // Since we just stored their ID, they now have a workspace
+            const userParam = hasExistingWorkspace ? 'existing' : 'new';
+            
+            // CHANGE: Use the appropriate user parameter in the URL
+            const simpleUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
+            console.log(`Redirecting to Streamlit with ${userParam} workspace:`, simpleUrl);
             
             // Force navigation
             window.location.replace(simpleUrl);
@@ -127,8 +137,9 @@ function login() {
 
 // Logout function - IMPROVED VERSION
 function logout() {
-    // Clear local storage and cookies
-    clearAuthData();
+    // CHANGE: Modified to preserve user ID while clearing auth data
+    // This allows users to return to their workspace on next login
+    clearAuthData(false); // false = don't clear user ID
     
     // Use Auth0's official logout endpoint (most reliable method)
     const returnTo = encodeURIComponent(window.location.origin + '/logged-out.html');
@@ -137,8 +148,8 @@ function logout() {
     return false;
 }
 
-// Helper function to thoroughly clear all Auth0-related data
-function clearAuthData() {
+// CHANGE: Updated to accept a parameter controlling whether to clear user ID
+function clearAuthData(clearUserID = true) {
     // Clear Auth0 specific items
     localStorage.removeItem('auth0:cache');
     localStorage.removeItem('auth0.is.authenticated');
@@ -154,6 +165,11 @@ function clearAuthData() {
         if (key && (key.includes('auth0') || key.includes('Auth0'))) {
             localStorage.removeItem(key);
         }
+    }
+    
+    // Only clear user ID if specifically requested
+    if (clearUserID) {
+        localStorage.removeItem('sanctus_user_id');
     }
     
     // Clear session storage too
