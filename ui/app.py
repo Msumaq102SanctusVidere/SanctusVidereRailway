@@ -1,5 +1,5 @@
-# --- Filename: ui/app.py (Frontend Streamlit UI - Three-Column Layout with User Workspace Isolation) ---
-# REVISED: Removed problematic st.rerun() calls and modified refresh pattern for consistency
+# --- Filename: ui/app.py (Frontend Streamlit UI - Fixed User Workspace Initialization) ---
+# REVISED: Fixed workspace initialization to only happen once per user
 
 import streamlit as st
 import time
@@ -31,6 +31,7 @@ def check_user_parameter():
     """
     Check if URL contains a user_id parameter to identify the user
     This is passed from Auth0 after authentication
+    FIXED: Only initialize workspace once per user, not on every rerun
     """
     try:
         # Get query parameters from URL
@@ -39,10 +40,16 @@ def check_user_parameter():
         # Get user_id parameter (sent by Auth0)
         user_id = query_params.get("user_id", "")
         
-        if user_id:
+        # Get current user_id from session state (if any)
+        current_user_id = st.session_state.get("user_id")
+        
+        # Only initialize if user_id is present AND different from current user_id
+        # This prevents reinitialization on every interaction
+        if user_id and user_id != current_user_id:
+            logger.info(f"New user detected. Initializing workspace for user_id: {user_id}")
+            
             # Store the user_id in session state for later use in API calls
             st.session_state["user_id"] = user_id
-            logger.info(f"Initialized workspace for user_id: {user_id}")
             
             # We still want to set a flag to skip the next refresh
             # This ensures a clean start with the correct user context
@@ -61,6 +68,9 @@ def check_user_parameter():
                 logger.info(f"Cleared analysis results for user workspace: {user_id}")
             
             return True
+        elif user_id and user_id == current_user_id:
+            logger.debug(f"Same user continued session: {user_id}")
+            return False
         return False
     except Exception as e:
         logger.error(f"Error checking user parameter: {e}")
@@ -506,7 +516,7 @@ def integrated_results_pane(result_text):
 def main():
     st.set_page_config(page_title="Sanctus Videre 1.0", layout="wide")
     
-    # Check for user_id parameter (from Auth0)
+    # FIXED: Only check and initialize user workspace once
     check_user_parameter()
     
     # Add custom CSS to make the title more prominent
@@ -577,8 +587,13 @@ def main():
         status = health_check().get('status')
         if status == 'ok':
             st.session_state.backend_healthy = True
-            # Critical fix: Always refresh on load for consistent state
-            refresh_drawings()  
+            
+            # FIXED: Only refresh drawings if list is empty
+            if not st.session_state.drawings:
+                logger.info("Drawings list empty, doing initial fetch")
+                refresh_drawings()
+            else:
+                logger.info(f"Using existing drawings list with {len(st.session_state.drawings)} items")
         else:
             st.error("⚠️ Backend service unavailable.")
     except Exception as e:
@@ -681,9 +696,6 @@ def main():
                 # Show summary message
                 if delete_count > 0:
                     st.success(f"Successfully processed {delete_count} drawings.")
-                
-                # REMOVED: This was causing the drawings to disappear
-                # st.rerun()
 
     # --- Middle Column: Query, Analysis Control & Status ---
     with col2:
