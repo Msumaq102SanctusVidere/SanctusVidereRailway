@@ -131,6 +131,29 @@ jobs = {}
 # Dictionary to track active analysis threads
 active_analysis_threads = {}
 
+# --- User Path Helper Function ---
+def get_user_path(user_id=None):
+    """
+    Get the base path for a specific user, or the global path if no user_id
+    Creates the user directory if it doesn't exist
+    """
+    if not user_id:
+        return OUTPUT_DIR
+        
+    # Sanitize user_id to ensure filesystem safety
+    # Replace characters that could cause path issues
+    safe_user_id = str(user_id).replace('|', '_').replace('/', '_')
+    
+    # Create user-specific path
+    user_path = os.path.join(OUTPUT_DIR, safe_user_id)
+    
+    # Ensure directory exists
+    os.makedirs(user_path, exist_ok=True)
+    
+    logger.info(f"Using user-specific path: {user_path}")
+    
+    return user_path
+
 # Helper function to refresh DrawingManager
 def refresh_drawing_manager():
     """Re-initialize the DrawingManager to refresh its internal state"""
@@ -154,6 +177,29 @@ def refresh_drawing_manager():
     except Exception as e:
         logger.error(f"Failed to refresh DrawingManager: {e}")
         return False
+
+# Helper function to refresh user-specific DrawingManager
+def refresh_user_drawing_manager(user_id):
+    """
+    Refresh a user-specific drawing manager or the global one if no user_id.
+    Returns a temporary DrawingManager for the user's drawings.
+    """
+    if not DrawingManager:
+        logger.error("Cannot refresh user drawing manager: DrawingManager not available")
+        return None
+    
+    try:
+        # Get path for this user
+        user_path = get_user_path(user_id)
+        
+        # Create a temporary DrawingManager for this user's path
+        temp_manager = DrawingManager(user_path)
+        logger.info(f"Created temporary DrawingManager for user {user_id}")
+        
+        return temp_manager
+    except Exception as e:
+        logger.error(f"Failed to refresh user drawing manager: {e}")
+        return None
 
 def allowed_file(filename):
     """Check if filename has an allowed extension"""
@@ -204,9 +250,18 @@ def process_pdf_file(pdf_path, job_id, original_filename):
         update_job_status(job_id, "processing", 5, "initializing", 
                          message="Starting PDF processing")
         
+        # Get user_id from the job data if available
+        user_id = None
+        if job_id in jobs and "user_id" in jobs[job_id]:
+            user_id = jobs[job_id]["user_id"]
+            logger.info(f"Processing PDF for user_id: {user_id}")
+        
         # Extract sheet name from original filename
         sheet_name = Path(original_filename).stem.replace(" ", "_").replace("-", "_").replace(".", "_")
-        sheet_output_dir = Path(OUTPUT_DIR) / sheet_name
+        
+        # Use user-specific path if available
+        base_dir = get_user_path(user_id)
+        sheet_output_dir = Path(base_dir) / sheet_name
         
         # Ensure output directory exists
         ensure_dir(sheet_output_dir)
@@ -257,9 +312,15 @@ def process_pdf_file(pdf_path, job_id, original_filename):
         logger.info(f"Successfully processed {sheet_name}")
         
         # Now that the upload is complete and all JSON files are saved,
-        # refresh the DrawingManager to ensure it recognizes the new drawing
-        refresh_drawing_manager()
-        logger.info(f"Refreshed DrawingManager after completing processing of {sheet_name}")
+        # refresh the appropriate DrawingManager to ensure it recognizes the new drawing
+        if user_id:
+            # Create a temporary manager for this user's drawings
+            user_manager = refresh_user_drawing_manager(user_id)
+            logger.info(f"Refreshed user-specific DrawingManager for user {user_id}")
+        else:
+            # Standard global refresh
+            refresh_drawing_manager()
+            logger.info(f"Refreshed global DrawingManager after completing processing")
         
         return True
         
@@ -272,6 +333,10 @@ def process_pdf_file(pdf_path, job_id, original_filename):
 
 def process_analysis(job_id, query, drawings, use_cache):
     """Process a drawing analysis query using ConstructionAnalyzer directly"""
+    # Store the original drawing manager reference so we can restore it
+    original_drawing_manager = None
+    temp_drawing_manager = None
+    
     try:
         # Check if job has been manually stopped by an explicit API call
         if job_id in jobs and jobs[job_id].get("status") == "stopped":
@@ -283,6 +348,28 @@ def process_analysis(job_id, query, drawings, use_cache):
         
         update_job_status(job_id, "processing", 10, "initializing", 
                          message="Starting analysis")
+        
+        # Get user_id from the job data if available
+        user_id = None
+        if job_id in jobs and "user_id" in jobs[job_id]:
+            user_id = jobs[job_id]["user_id"]
+            logger.info(f"Processing analysis for user_id: {user_id}")
+            
+            # If we have a user_id, we need to temporarily redirect the analyzer
+            # to use the user's drawings directory
+            if user_id and DrawingManager:
+                # Get user-specific base path
+                user_path = get_user_path(user_id)
+                
+                # Create a temporary drawing manager for this user
+                temp_drawing_manager = DrawingManager(user_path)
+                
+                # Store reference to the current global manager
+                original_drawing_manager = analyzer.drawing_manager
+                
+                # Temporarily replace the analyzer's drawing manager with our user-specific one
+                analyzer.drawing_manager = temp_drawing_manager
+                logger.info(f"Temporarily set analyzer to use user {user_id}'s drawings path")
         
         # Format the query with the drawings prefix
         formatted_query = f"[DRAWINGS:{','.join(drawings)}] {query}"
@@ -318,6 +405,11 @@ def process_analysis(job_id, query, drawings, use_cache):
                          message=f"Analysis failed: {str(e)}")
         return False
     finally:
+        # Restore the original drawing manager if we replaced it
+        if original_drawing_manager and analyzer:
+            analyzer.drawing_manager = original_drawing_manager
+            logger.info("Restored analyzer's original drawing manager")
+        
         # Clean up thread tracking
         if job_id in active_analysis_threads:
             del active_analysis_threads[job_id]
@@ -355,8 +447,26 @@ def get_drawings():
         return jsonify({"error": "Drawing manager not available"}), 500
     
     try:
-        # Direct call to drawing_manager's method
-        drawings = drawing_manager.get_available_drawings()
+        # Get user_id from request parameters
+        user_id = request.args.get('user_id')
+        
+        if user_id:
+            # Use temporary DrawingManager with user-specific path
+            user_path = get_user_path(user_id)
+            # Only if DrawingManager class is available
+            if DrawingManager:
+                temp_manager = DrawingManager(user_path)
+                drawings = temp_manager.get_available_drawings()
+                logger.info(f"Retrieved {len(drawings)} drawings for user {user_id}")
+            else:
+                # Fallback if DrawingManager is not available
+                logger.error("DrawingManager not available, cannot get user drawings")
+                drawings = []
+        else:
+            # Use global drawing manager (existing behavior)
+            drawings = drawing_manager.get_available_drawings()
+            logger.info(f"Retrieved {len(drawings)} drawings (no user specified)")
+        
         return jsonify({"drawings": drawings})
     except Exception as e:
         logger.error(f"Error listing drawings: {e}", exc_info=True)
@@ -376,25 +486,37 @@ def upload_file():
         return jsonify({"error": f"File type not allowed. Supported types: {', '.join(ALLOWED_EXTENSIONS)}"}), 400
     
     try:
+        # Get user_id from form data or query parameters
+        user_id = request.form.get('user_id') or request.args.get('user_id')
+        logger.info(f"Upload request for user_id: {user_id}")
+        
         # Create sanitized filename
         safe_filename = werkzeug.utils.secure_filename(file.filename)
         sheet_name = Path(safe_filename).stem.replace(" ", "_").replace("-", "_").replace(".", "_")
         
-        # Create directory for this drawing
-        sheet_dir = Path(OUTPUT_DIR) / sheet_name
+        # Get user-specific base path
+        base_dir = get_user_path(user_id)
+        
+        # Create directory for this drawing within the user directory
+        sheet_dir = Path(base_dir) / sheet_name
         os.makedirs(sheet_dir, exist_ok=True)
         
         # Save uploaded file
         pdf_path = sheet_dir / f"{sheet_name}.pdf"
         file.save(pdf_path)
-        logger.info(f"Saved uploaded file to {pdf_path}")
+        logger.info(f"Saved uploaded file to {pdf_path} for user {user_id}")
         
-        # Create job
+        # Create job with user_id stored in it
         job_id = str(uuid.uuid4())
         update_job_status(job_id, "queued", 0, "queued", 
                          message=f"Queued file for processing: {file.filename}")
         
-        # Start processing in background thread
+        # Store user_id in the job data for later use
+        if job_id in jobs:
+            jobs[job_id]["user_id"] = user_id
+        
+        # Start processing in background thread - note the process_pdf_file function
+        # may need to be modified separately to handle user_id
         thread = threading.Thread(
             target=process_pdf_file,
             args=(pdf_path, job_id, file.filename)
@@ -430,10 +552,18 @@ def analyze_drawings():
         
         use_cache = data.get('use_cache', True)
         
+        # Get user_id from JSON data or query parameters
+        user_id = data.get('user_id') or request.args.get('user_id')
+        
         # Create job - force is_running to True
         job_id = str(uuid.uuid4())
         update_job_status(job_id, "queued", 0, "queued", 
                          message=f"Queued analysis: {query[:50]}...")
+        
+        # Store user_id in the job for later reference
+        if user_id:
+            jobs[job_id]["user_id"] = user_id
+            logger.info(f"Analysis request for user_id: {user_id}, drawings: {drawings}")
         
         # Double check is_running is set to True and can't be misinterpreted
         jobs[job_id]["is_running"] = True
@@ -495,8 +625,20 @@ def delete_drawing(drawing_name):
         return jsonify({"error": "Drawing manager not available"}), 500
     
     try:
-        # Path to drawing directory
-        drawing_dir = Path(OUTPUT_DIR) / drawing_name
+        # Get user_id from query parameters
+        user_id = request.args.get('user_id')
+        
+        # Get base path for this user
+        base_dir = get_user_path(user_id)
+        
+        # Path to drawing directory within user's space
+        drawing_dir = Path(base_dir) / drawing_name
+        
+        # Log the operation
+        if user_id:
+            logger.info(f"Attempting to delete drawing {drawing_name} for user {user_id}")
+        else:
+            logger.info(f"Attempting to delete drawing {drawing_name} from global space")
         
         # Check if drawing exists
         if not drawing_dir.is_dir():
@@ -507,8 +649,15 @@ def delete_drawing(drawing_name):
         shutil.rmtree(drawing_dir)
         logger.info(f"Deleted drawing: {drawing_name}")
         
-        # Refresh DrawingManager and update analyzer's reference
-        refresh_drawing_manager()
+        # Refresh DrawingManager for the appropriate path
+        if user_id and DrawingManager:
+            # Refresh a temporary drawing manager for this user
+            temp_manager = DrawingManager(base_dir)
+            # If we have an analyzer, we might need to update it separately
+            # This depends on how the rest of the system uses the global drawing_manager
+        else:
+            # Refresh the global drawing manager (original behavior)
+            refresh_drawing_manager()
         
         return jsonify({"success": True, "message": f"Drawing {drawing_name} deleted"})
         
@@ -523,15 +672,30 @@ def clear_cache():
         return jsonify({"error": "Config not available"}), 500
     
     try:
+        # Get user_id from query parameters to potentially clear only user-specific cache
+        user_id = request.args.get('user_id')
+        
         # Check if memory store directory exists
         if hasattr(Config, 'MEMORY_STORE') and Config.MEMORY_STORE:
-            # Delete the directory and recreate it
-            if os.path.exists(Config.MEMORY_STORE):
-                shutil.rmtree(Config.MEMORY_STORE)
-            
-            # Recreate empty directory
-            os.makedirs(Config.MEMORY_STORE, exist_ok=True)
-            logger.info(f"Cleared cache at: {Config.MEMORY_STORE}")
+            if user_id:
+                # Create user-specific memory store path
+                user_memory_path = os.path.join(Config.MEMORY_STORE, safe_user_id) 
+                
+                # Check if it exists before trying to delete
+                if os.path.exists(user_memory_path):
+                    shutil.rmtree(user_memory_path)
+                
+                # Recreate empty directory
+                os.makedirs(user_memory_path, exist_ok=True)
+                logger.info(f"Cleared cache for user {user_id} at: {user_memory_path}")
+            else:
+                # Clear global cache (all users)
+                if os.path.exists(Config.MEMORY_STORE):
+                    shutil.rmtree(Config.MEMORY_STORE)
+                
+                # Recreate empty directory
+                os.makedirs(Config.MEMORY_STORE, exist_ok=True)
+                logger.info(f"Cleared all cache at: {Config.MEMORY_STORE}")
             
             return jsonify({"success": True, "message": "Cache cleared successfully"})
         else:
