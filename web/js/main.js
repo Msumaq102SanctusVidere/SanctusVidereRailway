@@ -34,6 +34,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (window.location.pathname.includes('logged-out.html')) {
             setupLoginButton();
         }
+        
+        // Detect and fix URL format if needed (new code)
+        fixUrlFormat();
     } catch (err) {
         console.error(err.message);
     }
@@ -42,6 +45,32 @@ document.addEventListener('DOMContentLoaded', async function() {
     setupReviewForm();
     setupDirectAccess();
 });
+
+// Check and fix URL format if needed (new function)
+function fixUrlFormat() {
+    // Check if we're on the app page with the wrong parameter format
+    if (window.location.href.includes('app.sanctusvidere.com') && 
+        window.location.href.includes('user=')) {
+        
+        console.log("Detected old URL format, attempting to fix...");
+        
+        // Get the token from the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        
+        if (token) {
+            // Get userId from localStorage or create a temporary one
+            const userId = localStorage.getItem('auth_user_id') || 'user-' + Date.now();
+            
+            // Redirect to the correct URL format
+            const correctUrl = `${window.location.origin}?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}`;
+            console.log("Redirecting to correct URL format:", correctUrl);
+            window.location.replace(correctUrl);
+        } else {
+            console.log("Token not found in URL, cannot redirect");
+        }
+    }
+}
 
 // Setup login button on logged-out page
 function setupLoginButton() {
