@@ -617,15 +617,24 @@ def main():
         if st.session_state.get("refresh_drawings_needed", False):
             st.success("✨ New drawing has been uploaded!")
     
-        # Refresh button
-        if st.button("Refresh Drawings", key="refresh_btn"):  
+        # Refresh button with fix to preserve user_id in URL
+        if st.button("Refresh Drawings", key="refresh_btn"):
+            # Store current user_id before refresh
+            current_user_id = st.session_state.get("user_id")
+            
             if refresh_drawings():
                 st.success("Drawings list updated.")
+                
                 # Clear the flag after successful refresh
                 if "refresh_drawings_needed" in st.session_state:
                     del st.session_state["refresh_drawings_needed"]
             else:
                 st.error("Failed to refresh drawings.")
+            
+            # CRITICAL FIX: Update URL parameter to preserve user_id during rerun
+            if current_user_id:
+                st.query_params["user_id"] = current_user_id
+            
             st.rerun()
 
         # Drawing list component (integrated version)
@@ -687,6 +696,11 @@ def main():
                 if delete_count > 0:
                     st.success(f"Successfully processed {delete_count} drawings.")
                 
+                # Ensure user_id is preserved in URL before rerun
+                user_id = st.session_state.get("user_id")
+                if user_id:
+                    st.query_params["user_id"] = user_id
+                
                 # Force UI refresh regardless of success/failure
                 st.rerun()
 
@@ -736,6 +750,11 @@ def main():
                     if resp and 'job_id' in resp:
                         st.session_state.current_job_id = resp['job_id']
                         st.session_state.job_status = None
+                        
+                        # Preserve user_id in URL
+                        if user_id:
+                            st.query_params["user_id"] = user_id
+                            
                         st.rerun()
                     else:
                         st.error(f"Failed to start analysis: {resp}")
@@ -752,6 +771,12 @@ def main():
                     if result:
                         st.session_state.analysis_results = result
                         st.session_state.current_job_id = None
+                        
+                        # Preserve user_id in URL
+                        user_id = st.session_state.get("user_id")
+                        if user_id:
+                            st.query_params["user_id"] = user_id
+                            
                         st.rerun()
                     else:
                         st.warning("Results not ready yet. Please wait for analysis to complete.")
@@ -763,6 +788,12 @@ def main():
             if st.button("Clear Results"):
                 # Simply clear the results
                 st.session_state.analysis_results = None
+                
+                # Preserve user_id in URL
+                user_id = st.session_state.get("user_id")
+                if user_id:
+                    st.query_params["user_id"] = user_id
+                    
                 st.rerun()
     
         # Job status display - styled with border for better appearance
@@ -801,6 +832,11 @@ def main():
                 
                 # Auto-refresh while analysis is running
                 if prog < 100 and 'complete' not in phase.lower():
+                    # Preserve user_id in URL before rerun
+                    user_id = st.session_state.get("user_id")
+                    if user_id:
+                        st.query_params["user_id"] = user_id
+                        
                     time.sleep(2)  # Brief pause to avoid hammering the API
                     st.rerun()
             except Exception as e:
