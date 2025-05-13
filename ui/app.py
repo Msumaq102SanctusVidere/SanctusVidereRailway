@@ -1,5 +1,6 @@
 # --- Filename: ui/app.py (Frontend Streamlit UI - Fixed User Workspace Initialization) ---
 # REVISED: Fixed workspace initialization to only happen once per user
+# REVISED: Ensured drawings are always fetched on initial load
 
 import streamlit as st
 import time
@@ -588,9 +589,12 @@ def main():
         if status == 'ok':
             st.session_state.backend_healthy = True
             
-            # FIXED: Only refresh drawings if list is empty
+            # FIXED: Make sure drawings are always fetched on initial load
             if not st.session_state.drawings:
                 logger.info("Drawings list empty, doing initial fetch")
+                # Turn off skip flag to ensure drawings are fetched
+                st.session_state["skip_next_refresh"] = False
+                # Fetch drawings
                 refresh_drawings()
             else:
                 logger.info(f"Using existing drawings list with {len(st.session_state.drawings)} items")
@@ -628,6 +632,12 @@ def main():
     # --- Left Column: Drawing Selection ---
     with col1:
         st.subheader("Select Drawings")
+    
+        # Add manual refresh button (new addition to solve the missing drawings issue)
+        if st.button("Refresh Drawings List"):
+            st.session_state["skip_next_refresh"] = False  # Ensure skip flag is off
+            refresh_drawings()
+            st.success("✅ Drawings list refreshed!")
     
         # Special notification if upload just completed
         if st.session_state.get("refresh_drawings_needed", False):
