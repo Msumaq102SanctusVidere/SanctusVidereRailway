@@ -85,18 +85,15 @@ function initializeLock() {
         localStorage.setItem('auth_id_token', idToken);
         localStorage.setItem('auth_access_token', accessToken);
         
-        // Check if this user has logged in before (standard practice)
-        const storedUserId = localStorage.getItem('auth_user_id');
-        
         // Get user profile
         lock.getUserInfo(accessToken, function(error, profile) {
             if (error) {
                 console.error("Error getting user info:", error);
                 
-                // Even with error, we can determine if new or returning user
-                const userParam = storedUserId ? 'existing' : 'new';
-                const redirectUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
-                console.log(`Redirecting with ${userParam} parameter:`, redirectUrl);
+                // Fallback case: redirect with a temporary user ID
+                const tempUserId = 'user-' + Date.now();
+                const redirectUrl = `${AUTH0_CONFIG.appUrl}?user_id=${encodeURIComponent(tempUserId)}&token=${encodeURIComponent(idToken)}`;
+                console.log(`Redirecting with temporary user_id (due to error):`, redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
             }
@@ -105,23 +102,15 @@ function initializeLock() {
             const userId = profile.sub || profile.user_id || 'user-' + Date.now();
             console.log("Authenticated user:", userId);
             
-            // FIXED: Determine if this is a new user or returning user
-            // Only consider user "new" if there is NO stored ID at all
-            const isNewUser = !storedUserId;
-            
             // Store user info (standard practice)
             localStorage.setItem('auth_user_id', userId);
             if (profile.name) localStorage.setItem('auth_user_name', profile.name);
             if (profile.email) localStorage.setItem('auth_user_email', profile.email);
             localStorage.setItem('auth_login_time', Date.now().toString());
             
-            // Set the appropriate user parameter for Streamlit
-            // This aligns with your Streamlit app's expectations
-            const userParam = isNewUser ? 'new' : 'existing';
-            
-            // Create URL with both token and required user parameter
-            const appUrl = `${AUTH0_CONFIG.appUrl}?user=${userParam}&token=${encodeURIComponent(idToken)}`;
-            console.log(`Redirecting to Streamlit with ${userParam} parameter:`, appUrl);
+            // Create URL with user_id and token
+            const appUrl = `${AUTH0_CONFIG.appUrl}?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(idToken)}`;
+            console.log(`Redirecting to Streamlit with user_id:`, appUrl);
             
             // Force navigation to app
             window.location.replace(appUrl);
