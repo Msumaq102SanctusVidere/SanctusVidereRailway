@@ -1,4 +1,4 @@
-# --- Filename: ui/app.py (Frontend Streamlit UI - Three-Column Layout) ---
+# --- Filename: ui/app.py (Frontend Streamlit UI - Three-Column Layout with User Workspace Isolation) ---
 
 import streamlit as st
 import time
@@ -13,7 +13,8 @@ from api_client import (
     delete_drawing,
     start_analysis,
     get_job_status,
-    upload_drawing
+    upload_drawing,
+    clear_cache
 )
 
 # --- Logging Setup ---
@@ -24,62 +25,66 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Check for user parameter in URL (for fresh AI system) ---
+# --- Check for user_id parameter from Auth0 ---
 def check_user_parameter():
-    """Check if URL contains a user parameter to determine if fresh workspace is needed"""
+    """
+    Check if URL contains a user_id parameter to identify the user
+    This is passed from Auth0 after authentication
+    """
     try:
-        # Get query parameters from URL (using the newer method)
+        # Get query parameters from URL
         query_params = st.query_params
-        user_param = query_params.get("user", "")
         
-        # If user parameter exists and is not admin, initialize a fresh workspace
-        if user_param and user_param in ["new", "regular"]:
-            # Log that we're initializing a fresh workspace
-            logger.info(f"Initializing fresh workspace for user type: {user_param}")
+        # Get user_id parameter (sent by Auth0)
+        user_id = query_params.get("user_id", "")
+        
+        if user_id:
+            # Store the user_id in session state for later use in API calls
+            st.session_state["user_id"] = user_id
+            logger.info(f"Initialized workspace for user_id: {user_id}")
             
-            # Set the one-time flag to skip the next refresh
+            # We still want to set a flag to skip the next refresh
+            # This ensures a clean start with the correct user context
             st.session_state["skip_next_refresh"] = True
-            # Safety timestamp to prevent the flag from getting stuck
             st.session_state["skip_flag_timestamp"] = time.time()
             
-            # Clear any existing data
+            # Clear old data if we're initializing a user workspace
             if 'drawings' in st.session_state:
                 st.session_state.drawings = []
-                logger.info("Cleared drawings for fresh workspace")
+                logger.info(f"Cleared drawings for user workspace: {user_id}")
             if 'selected_drawings' in st.session_state:
                 st.session_state.selected_drawings = []
-                logger.info("Cleared selected drawings for fresh workspace")
+                logger.info(f"Cleared selected drawings for user workspace: {user_id}")
             if 'analysis_results' in st.session_state:
                 st.session_state.analysis_results = None
-                logger.info("Cleared analysis results for fresh workspace")
+                logger.info(f"Cleared analysis results for user workspace: {user_id}")
             
-            # Clear cache for completely fresh experience
-            try:
-                clear_cache()
-                logger.info("Cache cleared for fresh workspace")
-            except Exception as e:
-                logger.error(f"Error clearing cache for fresh workspace: {e}")
-                
             return True
-            
         return False
     except Exception as e:
         logger.error(f"Error checking user parameter: {e}")
         return False
 
 # --- Simple function to clear cache ---
-def clear_cache():
-    """Call the API to clear the memory cache"""
+def user_clear_cache():
+    """Call the API to clear the memory cache for the current user"""
     try:
-        # This should be imported from api_client
-        # For now, implement a simple version here
-        import requests
-        api_url = os.environ.get('API_URL', 'http://localhost:5000')
-        response = requests.delete(f"{api_url}/clear-cache")
-        return response.json()
+        # Get the user_id from session state
+        user_id = st.session_state.get("user_id")
+        
+        # Call the clear_cache function with user_id
+        response = clear_cache(user_id)
+        
+        if response and response.get('success'):
+            logger.info(f"Cache cleared successfully for user: {user_id}")
+            return {"success": True, "message": "Cache cleared successfully"}
+        else:
+            error_msg = response.get('error', 'Unknown error')
+            logger.error(f"Failed to clear cache for user {user_id}: {error_msg}")
+            return {"success": False, "error": error_msg}
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
-        return {"error": str(e)}
+        return {"success": False, "error": str(e)}
 
 # --- Session State Initialization ---
 def init_state():
@@ -96,6 +101,7 @@ def init_state():
         'last_status_check': 0,
         'upload_status': {},  # Track upload status
         'show_directions': False,  # Track directions visibility
+        'user_id': None,  # Store the Auth0 user ID
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -160,10 +166,18 @@ def refresh_drawings():
             logger.warning("Skip refresh flag was stuck - resetting it")
             st.session_state["skip_next_refresh"] = False
         
-        # Normal operation - fetch drawings from API
-        st.session_state.drawings = get_drawings()
+        # Get user_id from session state
+        user_id = st.session_state.get("user_id")
+        
+        # Normal operation - fetch drawings from API with user_id
+        st.session_state.drawings = get_drawings(user_id)
         st.session_state.drawings_last_updated = time.time()
-        logger.info(f"Refreshed drawings list: {len(st.session_state.drawings)} items")
+        
+        if user_id:
+            logger.info(f"Refreshed drawings list for user {user_id}: {len(st.session_state.drawings)} items")
+        else:
+            logger.info(f"Refreshed drawings list (global workspace): {len(st.session_state.drawings)} items")
+            
         return True
     except Exception as e:
         logger.error(f"Failed to refresh drawings: {e}")
@@ -197,8 +211,11 @@ def integrated_upload_drawing():
                     # Get file bytes directly
                     file_bytes = uploaded_file.getbuffer()
                     
-                    # Upload to API
-                    resp = upload_drawing(file_bytes, uploaded_file.name)
+                    # Get user_id from session state
+                    user_id = st.session_state.get("user_id")
+                    
+                    # Upload to API with user_id
+                    resp = upload_drawing(file_bytes, uploaded_file.name, user_id)
                     job_id = resp.get("job_id")
                     
                     if job_id:
@@ -488,7 +505,7 @@ def integrated_results_pane(result_text):
 def main():
     st.set_page_config(page_title="Sanctus Videre 1.0", layout="wide")
     
-    # Check for user parameter (for fresh workspace)
+    # Check for user_id parameter (from Auth0)
     check_user_parameter()
     
     # Add custom CSS to make the title more prominent
@@ -528,12 +545,31 @@ def main():
     .directions-panel h1, .directions-panel h2, .directions-panel h3 {
         color: white;
     }
+    /* Show user ID indicator in top right */
+    .user-indicator {
+        position: absolute;
+        top: 5px;
+        right: 15px;
+        font-size: 0.8rem;
+        color: #888;
+        padding: 2px 8px;
+        border-radius: 3px;
+        background-color: #f0f0f0;
+    }
     </style>
     """, unsafe_allow_html=True)
     
     # Add title with custom styling
     st.markdown('<h1 class="big-title">Sanctus Videre 1.0</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle"><i>Bridging Human Creativity and Computational Insight</i></p>', unsafe_allow_html=True)
+    
+    # Display user ID indicator at the top (only if a user_id exists)
+    if st.session_state.get("user_id"):
+        user_id_display = st.session_state.get("user_id")
+        # If user ID is long, truncate it for display
+        if len(user_id_display) > 20:
+            user_id_display = user_id_display[:10] + '...' + user_id_display[-10:]
+        st.markdown(f'<div class="user-indicator">User: {user_id_display}</div>', unsafe_allow_html=True)
     
     # --- Health Check & Initial Drawings Fetch ---
     try:
@@ -610,14 +646,17 @@ def main():
                 # This is the key fix: clearing selection before processing deletions
                 st.session_state.selected_drawings = []
                 
+                # Get user_id for deletion
+                user_id = st.session_state.get("user_id")
+                
                 # Process each drawing from our saved copy
                 for drawing in drawings_to_delete:
                     try:
                         # Log before deletion attempt
-                        logger.info(f"Attempting to delete drawing: {drawing}")
+                        logger.info(f"Attempting to delete drawing: {drawing} for user: {user_id}")
                         
-                        # Call delete API and capture response
-                        response = delete_drawing(drawing)
+                        # Call delete API with user_id and capture response
+                        response = delete_drawing(drawing, user_id)
                         logger.info(f"Delete API response: {response}")
                         
                         # Consider 404 errors as success for UI purposes
@@ -668,8 +707,8 @@ def main():
             st.session_state.use_cache = st.checkbox("Use cache", value=st.session_state.use_cache)
         with col_cache2:
             if st.button("Clear Cache"):
-                # Call the clear_cache function
-                response = clear_cache()
+                # Call the clear_cache function with the current user_id
+                response = user_clear_cache()
                 if response and response.get('success'):
                     st.success("Cache cleared successfully!")
                 else:
@@ -684,11 +723,15 @@ def main():
             analyze_disabled = not st.session_state.query.strip() or not st.session_state.selected_drawings
             if st.button("Analyze Drawings", disabled=analyze_disabled):
                 try:
-                    # Start analysis
+                    # Get user_id for analysis
+                    user_id = st.session_state.get("user_id")
+                    
+                    # Start analysis with user_id
                     resp = start_analysis(
                         st.session_state.query,
                         st.session_state.selected_drawings,
-                        st.session_state.use_cache
+                        st.session_state.use_cache,
+                        user_id
                     )
                     if resp and 'job_id' in resp:
                         st.session_state.current_job_id = resp['job_id']
