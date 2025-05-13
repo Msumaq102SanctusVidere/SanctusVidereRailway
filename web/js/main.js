@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     setupDirectAccess();
 });
 
-// Check and fix URL format if needed (new function)
+// Check and fix URL format if needed (improved function)
 function fixUrlFormat() {
     // Check if we're on the app page with the wrong parameter format
     if (window.location.href.includes('app.sanctusvidere.com') && 
@@ -58,17 +58,20 @@ function fixUrlFormat() {
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('token');
         
+        // Create a consistent user ID based on the token (if available)
+        let userId = 'user-';
         if (token) {
-            // Get userId from localStorage or create a temporary one
-            const userId = localStorage.getItem('auth_user_id') || 'user-' + Date.now();
-            
-            // Redirect to the correct URL format
-            const correctUrl = `${window.location.origin}?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}`;
-            console.log("Redirecting to correct URL format:", correctUrl);
-            window.location.replace(correctUrl);
+            // Use part of the token to create a consistent ID
+            userId += token.substring(0, 10).replace(/[^a-zA-Z0-9]/g, '');
         } else {
-            console.log("Token not found in URL, cannot redirect");
+            // Fallback to timestamp if no token
+            userId += Date.now();
         }
+        
+        // Create and navigate to the correct URL
+        const correctUrl = `${window.location.origin}?user_id=${encodeURIComponent(userId)}&token=${token || ''}`;
+        console.log("Redirecting to correct URL format:", correctUrl);
+        window.location.replace(correctUrl);
     }
 }
 
@@ -119,10 +122,10 @@ function initializeLock() {
             if (error) {
                 console.error("Error getting user info:", error);
                 
-                // Fallback case: redirect with a temporary user ID
-                const tempUserId = 'user-' + Date.now();
-                const redirectUrl = `${AUTH0_CONFIG.appUrl}?user_id=${encodeURIComponent(tempUserId)}&token=${encodeURIComponent(idToken)}`;
-                console.log(`Redirecting with temporary user_id (due to error):`, redirectUrl);
+                // Create a user ID from the token instead
+                const userId = 'user-' + idToken.substring(0, 10).replace(/[^a-zA-Z0-9]/g, '');
+                const redirectUrl = `${AUTH0_CONFIG.appUrl}?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(idToken)}`;
+                console.log(`Redirecting with token-based user_id:`, redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
             }
