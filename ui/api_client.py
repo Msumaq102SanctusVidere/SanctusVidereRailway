@@ -1,4 +1,4 @@
-# --- Filename: ui/api_client.py (Revised for Direct File Uploads) ---
+# --- Filename: ui/api_client.py (Revised to include user_id parameter) ---
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) # Disables warnings for verify=False
@@ -44,21 +44,35 @@ def health_check():
         logger.error(f"Unexpected error during health check: {e}")
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
-def get_drawings():
-    """Fetch the list of available drawings you can analyze."""
+def get_drawings(user_id=None):
+    """
+    Fetch the list of available drawings you can analyze.
+    
+    Args:
+        user_id (str, optional): The user ID to get drawings for (isolates workspaces)
+    """
     if not API_BASE_URL: 
         logger.error("Cannot get drawings: BACKEND_API_URL not configured.")
         return [] # Return empty list if URL not set
     
     url = f"{API_BASE_URL}/drawings"
-    logger.info(f"Fetching drawings from: {url}")
+    
+    # Add user_id to parameters if provided
+    params = {}
+    if user_id:
+        params['user_id'] = user_id
+        logger.info(f"Fetching drawings for user_id: {user_id}")
+    else:
+        logger.info("Fetching drawings without user_id (global workspace)")
+    
+    logger.info(f"Fetching drawings from: {url} with params: {params}")
     
     try:
         # Log the exact request we're making
-        logger.info(f"Making GET request to {url} with verify=False and timeout=60")
+        logger.info(f"Making GET request to {url} with params={params}, verify=False and timeout=60")
         
-        # Make the API call
-        resp = requests.get(url, verify=False, timeout=60)
+        # Make the API call with user_id parameter
+        resp = requests.get(url, params=params, verify=False, timeout=60)
         
         # Log the raw response
         logger.info(f"Received response from {url}, status code: {resp.status_code}")
@@ -100,19 +114,28 @@ def get_drawings():
         return []
 
 
-def upload_drawing(file_data, original_filename):
+def upload_drawing(file_data, original_filename, user_id=None):
     """
     Upload a PDF file for processing directly without using temporary files.
     
     Args:
         file_data: Can be either a file-like object, bytes, or a file path string
         original_filename: The original name of the file
+        user_id (str, optional): The user ID to associate this file with (isolates workspaces)
     """
     if not API_BASE_URL:
         logger.error("Cannot upload drawing: BACKEND_API_URL not configured.")
         return {"success": False, "error": "Backend URL not configured"}
 
     api_url = f"{API_BASE_URL}/upload"
+    
+    # Add user_id as a query parameter if provided
+    if user_id:
+        api_url = f"{api_url}?user_id={quote(user_id)}"
+        logger.info(f"Uploading drawing for user_id: {user_id}")
+    else:
+        logger.info("Uploading drawing without user_id (global workspace)")
+    
     logger.info(f"Attempting to upload: {original_filename} to {api_url}")
 
     try:
@@ -120,14 +143,24 @@ def upload_drawing(file_data, original_filename):
         if isinstance(file_data, str) and os.path.exists(file_data):
             # It's a file path
             with open(file_data, "rb") as f:
+                # Include user_id in form data as well (for robustness)
+                form_data = {}
+                if user_id:
+                    form_data['user_id'] = user_id
+                
                 files = {"file": (original_filename, f, 'application/pdf')}
-                logger.info(f"POSTing file from path to {api_url}...")
-                resp = requests.post(api_url, files=files, verify=False, timeout=300)
+                logger.info(f"POSTing file from path to {api_url} with form_data: {form_data}...")
+                resp = requests.post(api_url, files=files, data=form_data, verify=False, timeout=300)
         else:
             # It's bytes or a file-like object
+            # Include user_id in form data as well (for robustness)
+            form_data = {}
+            if user_id:
+                form_data['user_id'] = user_id
+                
             files = {"file": (original_filename, file_data, 'application/pdf')}
-            logger.info(f"POSTing file data to {api_url}...")
-            resp = requests.post(api_url, files=files, verify=False, timeout=300)
+            logger.info(f"POSTing file data to {api_url} with form_data: {form_data}...")
+            resp = requests.post(api_url, files=files, data=form_data, verify=False, timeout=300)
         
         logger.info(f"Received response from {api_url}")
         logger.info(f"Upload Response Status Code: {resp.status_code}")
@@ -164,18 +197,41 @@ def upload_drawing(file_data, original_filename):
         return {"success": False, "error": f"Client-side error during upload: {str(e)}"}
 
 
-def start_analysis(query, drawings, use_cache=True):
-    """Kick off a new analysis job; returns the job ID."""
+def start_analysis(query, drawings, use_cache=True, user_id=None):
+    """
+    Kick off a new analysis job; returns the job ID.
+    
+    Args:
+        query (str): The analysis query to run
+        drawings (list): List of drawings to analyze
+        use_cache (bool, optional): Whether to use cached results, defaults to True
+        user_id (str, optional): The user ID to associate this analysis with (isolates workspaces)
+    """
     if not API_BASE_URL: return {"error": "Backend URL not configured"}
     url = f"{API_BASE_URL}/analyze"
-    logger.info(f"Starting analysis via: {url}")
+    
+    # Add user_id to parameters if provided
+    params = {}
+    if user_id:
+        params['user_id'] = user_id
+        logger.info(f"Starting analysis for user_id: {user_id}")
+    else:
+        logger.info("Starting analysis without user_id (global workspace)")
+    
+    logger.info(f"Starting analysis via: {url} with params: {params}")
+    
     payload = {
         "query": query,
         "drawings": drawings,
         "use_cache": use_cache
     }
+    
+    # Also include user_id in the JSON payload for consistency
+    if user_id:
+        payload["user_id"] = user_id
+    
     try:
-        resp = requests.post(url, json=payload, verify=False, timeout=300)
+        resp = requests.post(url, json=payload, params=params, verify=False, timeout=300)
         resp.raise_for_status()
         return resp.json()
     except requests.exceptions.RequestException as e:
@@ -228,8 +284,14 @@ def get_job_logs(job_id, limit=100, since_id=None):
 # --- END NEW FUNCTION ---
 
 # --- DELETE DRAWING FUNCTION ---
-def delete_drawing(drawing_name):
-    """Request deletion of a specific drawing file from the backend."""
+def delete_drawing(drawing_name, user_id=None):
+    """
+    Request deletion of a specific drawing file from the backend.
+    
+    Args:
+        drawing_name (str): Name of the drawing to delete
+        user_id (str, optional): The user ID owning this drawing (isolates workspaces)
+    """
     if not API_BASE_URL:
         logger.error("Cannot delete drawing: BACKEND_API_URL not configured.")
         return {"success": False, "error": "Backend URL not configured"}
@@ -246,12 +308,23 @@ def delete_drawing(drawing_name):
 
     # URL-encode the sanitized drawing name
     encoded_drawing_name = quote(sanitized_name)
+    
+    # Base URL for delete operation
     url = f"{API_BASE_URL}/delete_drawing/{encoded_drawing_name}"
-    logger.info(f"Requesting deletion of drawing '{drawing_name}' (sanitized to '{sanitized_name}') via DELETE to: {url}")
+    
+    # Add user_id parameter if provided
+    params = {}
+    if user_id:
+        params['user_id'] = user_id
+        logger.info(f"Deleting drawing for user_id: {user_id}")
+    else:
+        logger.info("Deleting drawing without user_id (global workspace)")
+    
+    logger.info(f"Requesting deletion of drawing '{drawing_name}' (sanitized to '{sanitized_name}') via DELETE to: {url} with params: {params}")
 
     try:
-        # Use requests.delete method
-        resp = requests.delete(url, verify=False, timeout=60) 
+        # Use requests.delete method with params for user_id
+        resp = requests.delete(url, params=params, verify=False, timeout=60) 
         response_text = resp.text 
         
         logger.info(f"Delete Response Status Code: {resp.status_code}")
@@ -291,3 +364,41 @@ def delete_drawing(drawing_name):
         # Even if there's an exception, return success to allow UI refresh
         return {"success": True, "message": f"Drawing deletion process completed with status: error occurred"}
 # --- END DELETE FUNCTION ---
+
+# --- CLEAR CACHE FUNCTION ---
+def clear_cache(user_id=None):
+    """
+    Clear the memory cache used by the analyzer.
+    
+    Args:
+        user_id (str, optional): The user ID to clear cache for. If not provided,
+                                 clears global cache.
+    """
+    if not API_BASE_URL:
+        logger.error("Cannot clear cache: BACKEND_API_URL not configured.")
+        return {"success": False, "error": "Backend URL not configured"}
+    
+    url = f"{API_BASE_URL}/clear-cache"
+    
+    # Add user_id parameter if provided
+    params = {}
+    if user_id:
+        params['user_id'] = user_id
+        logger.info(f"Clearing cache for user_id: {user_id}")
+    else:
+        logger.info("Clearing global cache (all users)")
+    
+    logger.info(f"Requesting cache clearing via: {url} with params: {params}")
+    
+    try:
+        resp = requests.delete(url, params=params, verify=False, timeout=60)
+        resp.raise_for_status()
+        
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to clear cache: {e}")
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.error(f"Unexpected error clearing cache: {e}")
+        return {"success": False, "error": f"Unexpected error: {str(e)}"}
+# --- END CLEAR CACHE FUNCTION ---
