@@ -1,4 +1,5 @@
 # --- Filename: ui/app.py (Frontend Streamlit UI - Three-Column Layout with User Workspace Isolation) ---
+# REVISED: Removed problematic st.rerun() calls and modified refresh pattern for consistency
 
 import streamlit as st
 import time
@@ -222,7 +223,7 @@ def integrated_upload_drawing():
                         # Update status and track job
                         st.session_state.upload_status[file_key]['job_id'] = job_id
                         st.session_state.upload_status[file_key]['status'] = 'processing'
-                        st.rerun()
+                        # The button click will naturally trigger a rerun
                     else:
                         st.error(f"Upload failed: {resp.get('error', 'Unknown error')}")
                 except Exception as e:
@@ -274,7 +275,7 @@ def integrated_upload_drawing():
                     # Show completion message
                     status.update(label="✅ Processing Complete", state="complete")
                     st.success(f"✅ UPLOAD COMPLETE: {drawing_name} has been successfully processed!")
-                    st.info("The drawing is now available for analysis. Click 'Refresh Drawings' to update the list.")
+                    st.info("The drawing is now available for analysis.")
                     
                     return True
                 
@@ -289,7 +290,7 @@ def integrated_upload_drawing():
                 # Auto-refresh for ongoing uploads
                 if percent < 100 and backend_status != "completed" and backend_status != "failed":
                     time.sleep(2)  # Brief pause
-                    st.rerun()
+                    st.rerun()  # This rerun is needed for the polling loop
         
         # Show status for completed uploads
         elif status_info['status'] == 'completed':
@@ -301,7 +302,7 @@ def integrated_upload_drawing():
             st.error(f"❌ Previous upload of {uploaded_file.name} failed")
             if st.button("Try Again"):
                 st.session_state.upload_status[file_key]['status'] = 'new'
-                st.rerun()
+                # The button click will naturally trigger a rerun
     
     return False
 
@@ -589,7 +590,7 @@ def main():
         # Directions Button - toggles direction visibility
         if st.button("📋 Directions", use_container_width=True):
             st.session_state.show_directions = not st.session_state.show_directions
-            st.rerun()
+            # The button click will naturally trigger a rerun
             
         # Show directions panel if enabled
         if st.session_state.show_directions:
@@ -597,7 +598,7 @@ def main():
             st.markdown(get_directions_content())
             if st.button("Close Directions", use_container_width=True):
                 st.session_state.show_directions = False
-                st.rerun()
+                # The button click will naturally trigger a rerun
             st.markdown('</div>', unsafe_allow_html=True)
         
         # Upload Drawing component
@@ -617,26 +618,6 @@ def main():
         if st.session_state.get("refresh_drawings_needed", False):
             st.success("✨ New drawing has been uploaded!")
     
-        # Refresh button with fix to preserve user_id in URL
-        if st.button("Refresh Drawings", key="refresh_btn"):
-            # Store current user_id before refresh
-            current_user_id = st.session_state.get("user_id")
-            
-            if refresh_drawings():
-                st.success("Drawings list updated.")
-                
-                # Clear the flag after successful refresh
-                if "refresh_drawings_needed" in st.session_state:
-                    del st.session_state["refresh_drawings_needed"]
-            else:
-                st.error("Failed to refresh drawings.")
-            
-            # CRITICAL FIX: Update URL parameter to preserve user_id during rerun
-            if current_user_id:
-                st.query_params["user_id"] = current_user_id
-            
-            st.rerun()
-
         # Drawing list component (integrated version)
         selected = integrated_drawing_list(st.session_state.drawings)
         if selected is not None:
@@ -689,20 +670,20 @@ def main():
                         st.error(f"Failed to delete {drawing}: {e}")
                         error_count += 1
                 
+                # REVISED: Follow the automatic refresh pattern instead of forcing a rerun
                 # Refresh the drawings list to show current state
                 refresh_drawings()
+                
+                # Set the flag that indicates drawings need to be refreshed
+                # This follows the pattern from automatic refresh
+                st.session_state["refresh_drawings_needed"] = True
                 
                 # Show summary message
                 if delete_count > 0:
                     st.success(f"Successfully processed {delete_count} drawings.")
                 
-                # Ensure user_id is preserved in URL before rerun
-                user_id = st.session_state.get("user_id")
-                if user_id:
-                    st.query_params["user_id"] = user_id
-                
-                # Force UI refresh regardless of success/failure
-                st.rerun()
+                # REMOVED: This was causing the drawings to disappear
+                # st.rerun()
 
     # --- Middle Column: Query, Analysis Control & Status ---
     with col2:
@@ -751,11 +732,7 @@ def main():
                         st.session_state.current_job_id = resp['job_id']
                         st.session_state.job_status = None
                         
-                        # Preserve user_id in URL
-                        if user_id:
-                            st.query_params["user_id"] = user_id
-                            
-                        st.rerun()
+                        # The button click will naturally trigger a rerun
                     else:
                         st.error(f"Failed to start analysis: {resp}")
                 except Exception as e:
@@ -772,12 +749,7 @@ def main():
                         st.session_state.analysis_results = result
                         st.session_state.current_job_id = None
                         
-                        # Preserve user_id in URL
-                        user_id = st.session_state.get("user_id")
-                        if user_id:
-                            st.query_params["user_id"] = user_id
-                            
-                        st.rerun()
+                        # The button click will naturally trigger a rerun
                     else:
                         st.warning("Results not ready yet. Please wait for analysis to complete.")
                 except Exception as e:
@@ -789,12 +761,7 @@ def main():
                 # Simply clear the results
                 st.session_state.analysis_results = None
                 
-                # Preserve user_id in URL
-                user_id = st.session_state.get("user_id")
-                if user_id:
-                    st.query_params["user_id"] = user_id
-                    
-                st.rerun()
+                # The button click will naturally trigger a rerun
     
         # Job status display - styled with border for better appearance
         if st.session_state.current_job_id:
@@ -832,13 +799,8 @@ def main():
                 
                 # Auto-refresh while analysis is running
                 if prog < 100 and 'complete' not in phase.lower():
-                    # Preserve user_id in URL before rerun
-                    user_id = st.session_state.get("user_id")
-                    if user_id:
-                        st.query_params["user_id"] = user_id
-                        
                     time.sleep(2)  # Brief pause to avoid hammering the API
-                    st.rerun()
+                    st.rerun()  # This rerun is needed for the polling loop
             except Exception as e:
                 st.error(f"Error updating job status: {str(e)}")
 
