@@ -675,11 +675,14 @@ def clear_cache():
         # Get user_id from query parameters to potentially clear only user-specific cache
         user_id = request.args.get('user_id')
         
+        # Sanitize user_id to ensure filesystem safety
+        safe_user_id = str(user_id).replace('|', '_').replace('/', '_') if user_id else None
+        
         # Check if memory store directory exists
         if hasattr(Config, 'MEMORY_STORE') and Config.MEMORY_STORE:
             if user_id:
                 # Create user-specific memory store path
-                user_memory_path = os.path.join(Config.MEMORY_STORE, safe_user_id) 
+                user_memory_path = os.path.join(Config.MEMORY_STORE, safe_user_id)
                 
                 # Check if it exists before trying to delete
                 if os.path.exists(user_memory_path):
@@ -704,6 +707,7 @@ def clear_cache():
     except Exception as e:
         logger.error(f"Error clearing cache: {e}", exc_info=True)
         return jsonify({"error": f"Failed to clear cache: {str(e)}"}), 500
+
 
 # --- Server Startup ---
 if __name__ == "__main__":
