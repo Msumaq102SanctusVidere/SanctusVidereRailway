@@ -1,6 +1,7 @@
 # --- Filename: ui/app.py (Frontend Streamlit UI - Fixed User Workspace Initialization) ---
 # REVISED: Fixed workspace initialization to only happen once per user
 # REVISED: Ensured drawings are always fetched on initial load
+# REVISED: Added blueprint grid background to match homepage
 
 import streamlit as st
 import time
@@ -520,9 +521,47 @@ def main():
     # FIXED: Only check and initialize user workspace once
     check_user_parameter()
     
-    # Add custom CSS to make the title more prominent
+    # Add custom CSS to make the title more prominent and add the blueprint grid background
     st.markdown("""
     <style>
+    /* Add dark background with gradient like the homepage */
+    body {
+        background-color: #0E1117;
+        background-image: linear-gradient(to bottom right, #0E1117, #1a1f2c);
+    }
+    
+    /* Blueprint grid background overlay - matches homepage exactly */
+    body:after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: 
+            linear-gradient(rgba(100, 181, 246, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(100, 181, 246, 0.03) 1px, transparent 1px);
+        background-size: 20px 20px;
+        pointer-events: none;
+        z-index: -1;
+    }
+    
+    /* Override StreamLit's default background for main content to be transparent */
+    .stApp {
+        background-color: transparent;
+    }
+    
+    /* Make text more readable on dark background */
+    .stMarkdown, .stText, caption, label, span, p {
+        color: #E0E0E0 !important;
+    }
+    
+    /* Ensure headers are visible on dark background */
+    h1, h2, h3, h4 {
+        color: white !important;
+    }
+    
+    /* Keep all other original styling */
     .big-title {
         font-size: 3rem !important;
         margin-top: -1.5rem !important;
