@@ -549,7 +549,7 @@ def main():
     /* SIMPLE FIX: Make ALL Streamlit containers transparent */
     .stApp, div[data-testid*="stSidebar"], section, .stTabs [data-baseweb="tab-panel"], 
     .stTabs [data-baseweb="tab-list"], [data-testid="stHeader"], [data-testid="stToolbar"], 
-    div.stButton, div.stDownloadButton, div.stFileUploader, div.stSelectbox, div.stTextInput, 
+    div.stDownloadButton, div.stFileUploader, div.stSelectbox, div.stTextInput, 
     div.stTextArea, .main [data-testid*="stVerticalBlock"], [data-testid="stAppViewContainer"], 
     div.stTextInput > div, div.stTextArea > div {
         background-color: transparent !important;
@@ -576,24 +576,56 @@ def main():
         margin-top: -0.5rem !important;
         margin-bottom: 1.5rem !important;
     }
-    .stButton button {
-        padding: 0.5rem 1rem;
-        font-weight: 500;
-    }
     
-    /* SIMPLE FIX: Make ALL action buttons green */
-    button[kind="primary"], 
-    [data-testid="stHorizontalBlock"] > div:first-child .stButton button,
-    button:contains("Clear Cache"), 
-    button:contains("Clear Results") {
+    /* Make ALL buttons green with consistent styling */
+    .stButton button {
         background-color: #4CAF50 !important;
         color: white !important;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        border: none !important;
+    }
+    
+    /* Hover effect for buttons */
+    .stButton button:hover {
+        background-color: #45a049 !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
+    }
+    
+    /* Style the upload drawing section in sidebar to match homepage theme */
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:first-of-type {
+        background: rgba(30, 30, 30, 0.7) !important;
+        border-radius: 12px !important;
+        padding: 20px !important;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        margin-bottom: 20px !important;
+        position: relative !important;
+        backdrop-filter: blur(5px) !important;
+    }
+    
+    /* Add a subtle blueprint corner accent to upload section */
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:first-of-type:before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 80px;
+        height: 80px;
+        background-image: 
+            linear-gradient(rgba(100, 181, 246, 0.07) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(100, 181, 246, 0.07) 1px, transparent 1px);
+        background-size: 10px 10px;
+        opacity: 0.7;
+        border-radius: 0 12px 0 30px;
+        pointer-events: none;
     }
     
     /* Style the status container for better appearance */
     [data-testid="stVerticalBlock"] > div > [data-testid="stContainer"] {
         padding: 1rem;
     }
+    
     /* Custom styling for directions panel */
     .directions-panel {
         background-color: #1E1E1E;
@@ -605,6 +637,7 @@ def main():
     .directions-panel h1, .directions-panel h2, .directions-panel h3 {
         color: white;
     }
+    
     /* Show user ID indicator in top right */
     .user-indicator {
         position: absolute;
