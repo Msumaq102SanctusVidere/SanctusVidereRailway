@@ -156,10 +156,12 @@ def get_directions_content():
       - This flexibility allows you to start fresh with new projects
     
     ## Best Practices
-    1. Start with asking questions using one drawing only
-    2. Ask detailed questions about a specific topic such as doors and finishes with "Use cache" unchecked
+    1. Start with asking questions using one drawing only and keep "Use cache" unchecked.
+    2. First ask a general question, "Please carefully review the selected drawing, and tell me everything you know about this drawing that a construction manager would find useful."
+    2. Ask detailed questions about a specific topic such as doors and finishes
     3. Keep "Use cache" unchecked while asking different questions to build memory bank
     4. When switching projects, clear the cache and delete unwanted drawings
+    5. Verify results with the actual drawings.
     """
 
 # --- Helper to Refresh Drawings ---
