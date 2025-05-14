@@ -546,11 +546,11 @@ def main():
         z-index: -1;
     }
     
-    /* SIMPLE FIX: Make ALL Streamlit containers transparent */
-    .stApp, div[data-testid*="stSidebar"], section, .stTabs [data-baseweb="tab-panel"], 
+    /* FIXED: Make most Streamlit containers transparent EXCEPT the sidebar and columns */
+    .stApp, section, .stTabs [data-baseweb="tab-panel"], 
     .stTabs [data-baseweb="tab-list"], [data-testid="stHeader"], [data-testid="stToolbar"], 
     div.stDownloadButton, div.stFileUploader, div.stSelectbox, div.stTextInput, 
-    div.stTextArea, .main [data-testid*="stVerticalBlock"], [data-testid="stAppViewContainer"], 
+    div.stTextArea, [data-testid="stAppViewContainer"], 
     div.stTextInput > div, div.stTextArea > div {
         background-color: transparent !important;
     }
@@ -592,26 +592,65 @@ def main():
         box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
     }
     
-    /* Style the upload drawing section in sidebar to match homepage theme */
-    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:first-of-type {
-        background: rgba(30, 30, 30, 0.7) !important;
-        border-radius: 12px !important;
-        padding: 20px !important;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3) !important;
-        border: 1px solid rgba(255, 255, 255, 0.05) !important;
-        margin-bottom: 20px !important;
-        position: relative !important;
+    /* FIXED: Give the sidebar a dark blue background like the homepage columns */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(20, 30, 45, 0.8)) !important;
+        border-right: 1px solid rgba(100, 181, 246, 0.1) !important;
         backdrop-filter: blur(5px) !important;
     }
     
-    /* Add a subtle blueprint corner accent to upload section */
-    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:first-of-type:before {
+    /* Style the sidebar content - matches homepage column styling */
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:first-of-type {
+        background: linear-gradient(135deg, rgba(30, 30, 30, 0.7), rgba(20, 30, 45, 0.7)) !important;
+        border-radius: 12px !important;
+        padding: 25px !important;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        margin: 10px !important;
+        position: relative !important;
+    }
+    
+    /* Style the left column (Drawing Selection) with blue styling matching homepage left column */
+    [data-testid="stHorizontalBlock"] > div:nth-child(1) {
+        background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(20, 30, 45, 0.8)) !important;
+        border-radius: 12px !important;
+        padding: 25px !important;
+        margin: 5px !important;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        position: relative !important;
+    }
+    
+    /* Style the middle column (Query & Status) with blue styling */
+    [data-testid="stHorizontalBlock"] > div:nth-child(2) {
+        background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(25, 40, 50, 0.8)) !important;
+        border-radius: 12px !important;
+        padding: 25px !important;
+        margin: 5px !important;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        position: relative !important;
+    }
+    
+    /* Style the right column (Analysis Results) with blue styling */
+    [data-testid="stHorizontalBlock"] > div:nth-child(3) {
+        background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(30, 35, 55, 0.8)) !important;
+        border-radius: 12px !important;
+        padding: 25px !important;
+        margin: 5px !important;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        position: relative !important;
+    }
+    
+    /* Add blueprint corner accents to columns matching homepage */
+    [data-testid="stHorizontalBlock"] > div:before {
         content: '';
         position: absolute;
         top: 0;
         right: 0;
-        width: 80px;
-        height: 80px;
+        width: 100px;
+        height: 100px;
         background-image: 
             linear-gradient(rgba(100, 181, 246, 0.07) 1px, transparent 1px),
             linear-gradient(90deg, rgba(100, 181, 246, 0.07) 1px, transparent 1px);
@@ -619,6 +658,14 @@ def main():
         opacity: 0.7;
         border-radius: 0 12px 0 30px;
         pointer-events: none;
+    }
+    
+    /* Style the file uploader specifically */
+    [data-testid="stFileUploader"] {
+        background-color: rgba(25, 30, 35, 0.5) !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
+        border: 1px dashed rgba(100, 181, 246, 0.2) !important;
     }
     
     /* Style the status container for better appearance */
