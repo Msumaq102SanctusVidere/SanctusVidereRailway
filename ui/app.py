@@ -412,9 +412,23 @@ def markdown_to_html(markdown_text):
     return html
 
 # --- Integrated Results Pane Component - FIXED VERSION ---
+# MINIMALLY MODIFIED VERSION - Only fixing the download functionality
+
+# The key change is to preserve the result in session state and use ONE consistent key for download buttons
 def integrated_results_pane(result_text):
     """Improved results display with better formatting and error handling"""
     try:
+        # Store the current result in session state to preserve it during button clicks
+        if result_text is not None and (isinstance(result_text, dict) or 
+                                       (isinstance(result_text, str) and len(result_text.strip()) > 0)):
+            st.session_state.preserved_result = result_text
+        
+        # Use preserved result if available and current is empty (after button click)
+        if ((result_text is None or 
+            (isinstance(result_text, str) and len(result_text.strip()) == 0)) and 
+            'preserved_result' in st.session_state):
+            result_text = st.session_state.preserved_result
+            
         # Don't show raw error message for valid results
         if isinstance(result_text, dict) or (isinstance(result_text, str) and len(result_text.strip()) > 0):
             # Display in a clean, bordered container
@@ -427,92 +441,92 @@ def integrated_results_pane(result_text):
                     if 'analysis' in result_obj:
                         analysis_text = result_obj['analysis']
                         
-                        # Display formatted analysis
+                        # Display formatted analysis - UNCHANGED
                         st.markdown(analysis_text)
                         
-                        # Add a download button instead of copy+code block
-                        filename = "analysis_results.html"
+                        # Add a download button - USING CONSISTENT KEY "download_content"
                         html_content = markdown_to_html(analysis_text)
-                        
                         st.download_button(
                             label="Copy Results",
                             data=html_content,
-                            file_name=filename,
+                            file_name="analysis_results.html",
                             mime="text/html",
-                            key="download_results_main"
+                            key="download_content"  # CONSISTENT KEY
                         )
                         
-                        # Technical information in an expandable section
+                        # Technical information in an expandable section - UNCHANGED
                         with st.expander("Technical Information", expanded=False):
                             st.json(result_obj)
                         
                         return
                     
-                    # If no analysis field but it's still a dict, just display content
+                    # If no analysis field but it's still a dict, just display content - UNCHANGED
                     st.subheader("Analysis Results")
                     st.json(result_obj)
                     
-                    # Add a download button for JSON results
+                    # Add a download button - USING CONSISTENT KEY
                     json_str = json.dumps(result_obj, indent=2)
                     st.download_button(
                         label="Copy Results",
                         data=json_str,
                         file_name="analysis_results.json",
                         mime="application/json",
-                        key="download_results_json"
+                        key="download_content"  # CONSISTENT KEY
                     )
                     
                     return
                     
-                # If it's a string, try to display as markdown
+                # If it's a string, try to display as markdown - BEHAVIOR UNCHANGED
                 elif isinstance(result_text, str):
                     try:
-                        # Try to parse as JSON first
+                        # Try to parse as JSON first - BEHAVIOR UNCHANGED
                         result_obj = json.loads(result_text)
                         if isinstance(result_obj, dict) and 'analysis' in result_obj:
                             analysis_text = result_obj['analysis']
                             st.markdown(analysis_text)
                             
-                            # Add a download button for analysis text
+                            # Add a download button - USING CONSISTENT KEY
                             html_content = markdown_to_html(analysis_text)
                             st.download_button(
                                 label="Copy Results",
                                 data=html_content,
                                 file_name="analysis_results.html",
                                 mime="text/html",
-                                key="download_results_json_str"
+                                key="download_content"  # CONSISTENT KEY
                             )
                         else:
                             st.markdown(result_text)
                             
-                            # Add a download button for general text
+                            # Add a download button - USING CONSISTENT KEY
                             html_content = markdown_to_html(result_text)
                             st.download_button(
                                 label="Copy Results",
                                 data=html_content,
                                 file_name="analysis_results.html",
                                 mime="text/html",
-                                key="download_results_parsed"
+                                key="download_content"  # CONSISTENT KEY
                             )
-                    except:
-                        # If not valid JSON, just show as markdown
+                    except json.JSONDecodeError:
+                        # If not valid JSON, just show as markdown - BEHAVIOR UNCHANGED
                         st.markdown(result_text)
                         
-                        # Add a download button for plain text
+                        # Add a download button - USING CONSISTENT KEY
                         html_content = markdown_to_html(result_text)
                         st.download_button(
                             label="Copy Results",
                             data=html_content,
                             file_name="analysis_results.html",
                             mime="text/html",
-                            key="download_results_plain"
+                            key="download_content"  # CONSISTENT KEY
                         )
         else:
-            # Empty or null result
+            # Empty or null result - UNCHANGED
             st.info("Results will appear here after analysis completes.")
             
     except Exception as e:
-        # Only show fallback for real exceptions, not empty results
+        # Add error logging
+        logger.error(f"Error in results pane: {e}")
+        # Only show fallback for real exceptions, not empty results - UNCHANGED
         st.info("Results will appear here after analysis completes.")
 
 # --- Main Application ---
