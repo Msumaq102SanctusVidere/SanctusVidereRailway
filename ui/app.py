@@ -561,22 +561,15 @@ def main():
         color: white !important;
     }
     
-    /* Make the left column (Drawing Selection) dark blue */
+    /* Make the left column (Drawing Selection) dark blue WITHOUT padding/margin */
     [data-testid="stHorizontalBlock"] > div:nth-child(1) {
         background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(20, 30, 45, 0.8)) !important;
-        border-radius: 12px !important;
-        padding: 25px !important;
-        margin: 5px !important;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3) !important;
-        border: 1px solid rgba(255, 255, 255, 0.05) !important;
     }
     
     /* Make ALL buttons green */
     .stButton button {
         background-color: #4CAF50 !important;
         color: white !important;
-        padding: 0.5rem 1rem;
-        font-weight: 500;
         border: none !important;
     }
     
