@@ -561,9 +561,10 @@ def main():
         color: white !important;
     }
     
-    /* Make the left column (Drawing Selection) dark blue WITHOUT padding/margin */
-    [data-testid="stHorizontalBlock"] > div:nth-child(1) {
+    /* Fixed selector for the left column */
+    div[data-testid="column"]:first-of-type {
         background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(20, 30, 45, 0.8)) !important;
+        border-radius: 8px !important;
     }
     
     /* Make ALL buttons green */
