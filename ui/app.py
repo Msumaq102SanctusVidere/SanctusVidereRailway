@@ -546,9 +546,13 @@ def main():
         z-index: -1;
     }
     
-    /* Override StreamLit's default background for main content to be transparent */
-    .stApp {
-        background-color: transparent;
+    /* SIMPLE FIX: Make ALL Streamlit containers transparent */
+    .stApp, div[data-testid*="stSidebar"], section, .stTabs [data-baseweb="tab-panel"], 
+    .stTabs [data-baseweb="tab-list"], [data-testid="stHeader"], [data-testid="stToolbar"], 
+    div.stButton, div.stDownloadButton, div.stFileUploader, div.stSelectbox, div.stTextInput, 
+    div.stTextArea, .main [data-testid*="stVerticalBlock"], [data-testid="stAppViewContainer"], 
+    div.stTextInput > div, div.stTextArea > div {
+        background-color: transparent !important;
     }
     
     /* Make text more readable on dark background */
@@ -576,11 +580,16 @@ def main():
         padding: 0.5rem 1rem;
         font-weight: 500;
     }
-    /* Make the Analyze button more distinct */
-    [data-testid="stHorizontalBlock"] > div:first-child .stButton button {
-        background-color: #4CAF50;
-        color: white;
+    
+    /* SIMPLE FIX: Make ALL action buttons green */
+    button[kind="primary"], 
+    [data-testid="stHorizontalBlock"] > div:first-child .stButton button,
+    button:contains("Clear Cache"), 
+    button:contains("Clear Results") {
+        background-color: #4CAF50 !important;
+        color: white !important;
     }
+    
     /* Style the status container for better appearance */
     [data-testid="stVerticalBlock"] > div > [data-testid="stContainer"] {
         padding: 1rem;
