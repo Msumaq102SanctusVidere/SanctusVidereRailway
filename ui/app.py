@@ -561,10 +561,24 @@ def main():
         color: white !important;
     }
     
-    /* Fixed selector for the left column */
-    div[data-testid="column"]:first-of-type {
-        background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(20, 30, 45, 0.8)) !important;
-        border-radius: 8px !important;
+    /* Add blueprint corner accents to containers */
+    .stContainer:before, 
+    [data-testid="column"]:first-child [data-testid="stVerticalBlock"]:before,
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:nth-child(3):before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 80px;
+        height: 80px;
+        background-image: 
+            linear-gradient(rgba(100, 181, 246, 0.07) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(100, 181, 246, 0.07) 1px, transparent 1px);
+        background-size: 10px 10px;
+        opacity: 0.7;
+        border-radius: 0 10px 0 20px;
+        pointer-events: none;
+        z-index: 0;
     }
     
     /* Make ALL buttons green */
@@ -666,92 +680,127 @@ def main():
                 # The button click will naturally trigger a rerun
             st.markdown('</div>', unsafe_allow_html=True)
         
-        # Upload Drawing component
-        upload_ok = integrated_upload_drawing()
-        if upload_ok:
-            # After upload completes, refresh the list
-            refresh_drawings()
+        # Create beautiful container for Upload Drawing section
+        with st.container():
+            # Apply custom styling via HTML/CSS for the sidebar container
+            st.markdown("""
+            <style>
+            /* Style for the sidebar Upload Drawing container */
+            [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:nth-child(3) {
+                background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(20, 30, 45, 0.8)) !important;
+                padding: 20px !important;
+                border-radius: 10px !important;
+                border: 1px solid rgba(100, 181, 246, 0.1) !important;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+                margin-top: 20px !important;
+                margin-bottom: 20px !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Upload Drawing component
+            upload_ok = integrated_upload_drawing()
+            if upload_ok:
+                # After upload completes, refresh the list
+                refresh_drawings()
 
     # --- Three-Column Layout ---
     col1, col2, col3 = st.columns([1, 1, 2])
 
     # --- Left Column: Drawing Selection ---
     with col1:
-        st.subheader("Select Drawings")
-    
-        # Add manual refresh button (new addition to solve the missing drawings issue)
-        if st.button("Refresh Drawings List"):
-            st.session_state["skip_next_refresh"] = False  # Ensure skip flag is off
-            refresh_drawings()
-            st.success("✅ Drawings list refreshed!")
-    
-        # Special notification if upload just completed
-        if st.session_state.get("refresh_drawings_needed", False):
-            st.success("✨ New drawing has been uploaded!")
-    
-        # Drawing list component (integrated version)
-        selected = integrated_drawing_list(st.session_state.drawings)
-        if selected is not None:
-            st.session_state.selected_drawings = selected
-
-        # Single delete button for all selected drawings
-        if st.session_state.selected_drawings:
-            if st.button("Delete Selected Drawings"):
-                delete_count = 0
-                error_count = 0
-                
-                # Save a copy of selected drawings to process
-                drawings_to_delete = list(st.session_state.selected_drawings)
-                
-                # Clear the selected drawings list immediately to avoid UI state issues
-                # This is the key fix: clearing selection before processing deletions
-                st.session_state.selected_drawings = []
-                
-                # Get user_id for deletion
-                user_id = st.session_state.get("user_id")
-                
-                # Process each drawing from our saved copy
-                for drawing in drawings_to_delete:
-                    try:
-                        # Log before deletion attempt
-                        logger.info(f"Attempting to delete drawing: {drawing} for user: {user_id}")
-                        
-                        # Call delete API with user_id and capture response
-                        response = delete_drawing(drawing, user_id)
-                        logger.info(f"Delete API response: {response}")
-                        
-                        # Consider 404 errors as success for UI purposes
-                        if response and response.get('success'):
-                            delete_count += 1
-                            logger.info(f"Successfully deleted drawing: {drawing}")
-                        else:
-                            error_msg = response.get('error', 'Unknown error')
-                            logger.error(f"API reported error deleting {drawing}: {error_msg}")
-                            
-                            # Check if it's a 404 error (drawing not found)
-                            if "404" in str(error_msg) or "not found" in str(error_msg).lower():
-                                # Treat "not found" as success for UI purposes
-                                logger.info(f"Drawing {drawing} not found, treating as already deleted")
-                                delete_count += 1
-                            else:
-                                st.error(f"Failed to delete {drawing}: {error_msg}")
-                                error_count += 1
-                    except Exception as e:
-                        logger.error(f"Exception when deleting {drawing}: {e}")
-                        st.error(f"Failed to delete {drawing}: {e}")
-                        error_count += 1
-                
-                # REVISED: Follow the automatic refresh pattern instead of forcing a rerun
-                # Refresh the drawings list to show current state
+        # Create a beautiful container for the left column content
+        with st.container():
+            # Apply custom styling via HTML/CSS for the left column
+            st.markdown("""
+            <style>
+            /* Style for the left column container */
+            [data-testid="column"]:first-child [data-testid="stVerticalBlock"] {
+                background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(20, 30, 45, 0.8)) !important;
+                padding: 25px !important;
+                border-radius: 10px !important;
+                border: 1px solid rgba(100, 181, 246, 0.1) !important;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+                margin-top: 5px !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            st.subheader("Select Drawings")
+        
+            # Add manual refresh button (new addition to solve the missing drawings issue)
+            if st.button("Refresh Drawings List"):
+                st.session_state["skip_next_refresh"] = False  # Ensure skip flag is off
                 refresh_drawings()
-                
-                # Set the flag that indicates drawings need to be refreshed
-                # This follows the pattern from automatic refresh
-                st.session_state["refresh_drawings_needed"] = True
-                
-                # Show summary message
-                if delete_count > 0:
-                    st.success(f"Successfully processed {delete_count} drawings.")
+                st.success("✅ Drawings list refreshed!")
+        
+            # Special notification if upload just completed
+            if st.session_state.get("refresh_drawings_needed", False):
+                st.success("✨ New drawing has been uploaded!")
+        
+            # Drawing list component (integrated version)
+            selected = integrated_drawing_list(st.session_state.drawings)
+            if selected is not None:
+                st.session_state.selected_drawings = selected
+
+            # Single delete button for all selected drawings
+            if st.session_state.selected_drawings:
+                if st.button("Delete Selected Drawings"):
+                    delete_count = 0
+                    error_count = 0
+                    
+                    # Save a copy of selected drawings to process
+                    drawings_to_delete = list(st.session_state.selected_drawings)
+                    
+                    # Clear the selected drawings list immediately to avoid UI state issues
+                    # This is the key fix: clearing selection before processing deletions
+                    st.session_state.selected_drawings = []
+                    
+                    # Get user_id for deletion
+                    user_id = st.session_state.get("user_id")
+                    
+                    # Process each drawing from our saved copy
+                    for drawing in drawings_to_delete:
+                        try:
+                            # Log before deletion attempt
+                            logger.info(f"Attempting to delete drawing: {drawing} for user: {user_id}")
+                            
+                            # Call delete API with user_id and capture response
+                            response = delete_drawing(drawing, user_id)
+                            logger.info(f"Delete API response: {response}")
+                            
+                            # Consider 404 errors as success for UI purposes
+                            if response and response.get('success'):
+                                delete_count += 1
+                                logger.info(f"Successfully deleted drawing: {drawing}")
+                            else:
+                                error_msg = response.get('error', 'Unknown error')
+                                logger.error(f"API reported error deleting {drawing}: {error_msg}")
+                                
+                                # Check if it's a 404 error (drawing not found)
+                                if "404" in str(error_msg) or "not found" in str(error_msg).lower():
+                                    # Treat "not found" as success for UI purposes
+                                    logger.info(f"Drawing {drawing} not found, treating as already deleted")
+                                    delete_count += 1
+                                else:
+                                    st.error(f"Failed to delete {drawing}: {error_msg}")
+                                    error_count += 1
+                        except Exception as e:
+                            logger.error(f"Exception when deleting {drawing}: {e}")
+                            st.error(f"Failed to delete {drawing}: {e}")
+                            error_count += 1
+                    
+                    # REVISED: Follow the automatic refresh pattern instead of forcing a rerun
+                    # Refresh the drawings list to show current state
+                    refresh_drawings()
+                    
+                    # Set the flag that indicates drawings need to be refreshed
+                    # This follows the pattern from automatic refresh
+                    st.session_state["refresh_drawings_needed"] = True
+                    
+                    # Show summary message
+                    if delete_count > 0:
+                        st.success(f"Successfully processed {delete_count} drawings.")
 
     # --- Middle Column: Query, Analysis Control & Status ---
     with col2:
