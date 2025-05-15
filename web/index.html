@@ -26,76 +26,190 @@
     <style>
         /* Sample Output Section Styles */
         .sample-output-section {
+            background-color: #0f1a2b;
+            color: #ffffff;
+            border-radius: 8px;
+            padding: 20px;
             margin-top: 30px;
             margin-bottom: 30px;
-            background-color: #f9f9f9;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        
+        .sample-section-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        
+        .sample-section-header i {
+            color: #3498db;
+            font-size: 24px;
+            margin-right: 15px;
+        }
+        
+        .sample-section-header h2 {
+            font-size: 24px;
+            margin: 0;
+            font-weight: 600;
+        }
+        
+        .sample-instruction {
+            color: #bbc8d7;
+            margin-bottom: 20px;
+            font-size: 16px;
+            line-height: 1.5;
         }
         
         .sample-buttons {
             display: flex;
-            gap: 15px;
+            gap: 10px;
             margin-bottom: 20px;
             flex-wrap: wrap;
         }
         
         .sample-button {
-            background-color: #3498db;
             color: white;
             border: none;
-            padding: 10px 15px;
-            border-radius: 5px;
+            padding: 12px 20px;
+            border-radius: 6px;
             cursor: pointer;
             font-weight: 500;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            font-size: 15px;
+        }
+        
+        .office-button {
+            background-color: #1e3a5f;
+        }
+        
+        .hvac-button {
+            background-color: #2980b9;
+        }
+        
+        .partition-button {
+            background-color: #3498db;
+        }
+        
+        .lighting-button {
+            background-color: #5dade2;
         }
         
         .sample-button:hover {
-            background-color: #2980b9;
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
         }
         
         .sample-button.active {
-            background-color: #2c3e50;
+            background-color: #f39c12;
+            box-shadow: 0 2px 6px rgba(243, 156, 18, 0.4);
+        }
+        
+        .output-container {
+            background-color: white;
+            border-radius: 8px;
+            position: relative;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
         .output-display {
-            background-color: white;
+            color: #333;
+            padding: 25px;
             border-radius: 8px;
-            padding: 20px;
             max-height: 500px;
             overflow-y: auto;
-            box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
             display: none; /* Initially hidden */
+            line-height: 1.6;
+        }
+        
+        .scroll-indicator {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            font-size: 20px;
+            color: #bbbbbb;
+            z-index: 10;
+        }
+        
+        .scroll-top {
+            top: 5px;
+            background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%);
+            padding-bottom: 15px;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+        
+        .scroll-bottom {
+            bottom: 5px;
+            background: linear-gradient(to top, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%);
+            padding-top: 15px;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
         }
         
         .output-display h1 {
-            color: #333;
-            font-size: 24px;
+            color: #1e3a5f;
+            font-size: 22px;
+            font-weight: 600;
             margin-top: 0;
+            margin-bottom: 20px;
         }
         
         .output-display h2 {
-            color: #444;
+            color: #2c3e50;
             font-size: 20px;
-            margin-top: 20px;
+            font-weight: 600;
+            margin-top: 25px;
+            margin-bottom: 15px;
         }
         
         .output-display h3 {
-            color: #555;
+            color: #34495e;
             font-size: 18px;
+            font-weight: 500;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .output-display p {
+            margin-bottom: 15px;
+            font-size: 15px;
+        }
+        
+        .output-display strong {
+            font-weight: 600;
+            color: #2c3e50;
         }
         
         .output-display ul {
             margin-left: 20px;
+            margin-bottom: 20px;
         }
         
         .output-display li {
-            margin-bottom: 5px;
+            margin-bottom: 10px;
+            font-size: 15px;
+        }
+        
+        /* Custom scrollbar for output */
+        .output-display::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .output-display::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        
+        .output-display::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 10px;
+        }
+        
+        .output-display::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
         }
     </style>
 </head>
@@ -147,228 +261,243 @@
                 </div>
                 
                 <!-- Sample Output Section -->
-                <h2><i class="fas fa-file-alt icon-header"></i> Sample Outputs</h2>
                 <div class="sample-output-section">
-                    <p>Click on the buttons below to see real examples of Sanctus Videre's analysis capabilities:</p>
+                    <div class="sample-section-header">
+                        <i class="fas fa-file-alt"></i>
+                        <h2>Sample Outputs</h2>
+                    </div>
+                    
+                    <p class="sample-instruction">Click on the buttons below to see real examples of Sanctus Videre's analysis capabilities:</p>
+                    
                     <div class="sample-buttons">
-                        <button class="sample-button" data-sample="sample1">Office Finishes</button>
-                        <button class="sample-button" data-sample="sample2">HVAC Plan</button>
-                        <button class="sample-button" data-sample="sample3">Partition Details</button>
-                        <button class="sample-button" data-sample="sample4">Lighting Plan</button>
+                        <button class="sample-button office-button" data-sample="sample1">Office Finishes</button>
+                        <button class="sample-button hvac-button" data-sample="sample2">HVAC Plan</button>
+                        <button class="sample-button partition-button" data-sample="sample3">Partition Details</button>
+                        <button class="sample-button lighting-button" data-sample="sample4">Lighting Plan</button>
                     </div>
                     
                     <!-- Output Display Area -->
-                    <div id="sample1" class="output-display">
-                        <h1>Private Office Finishes Analysis</h1>
-
-                        <h2>Standard Private Office Finish Package</h2>
-
-                        <p>Based on the third floor finish plan (A2.3.2) and finish schedule (A10.6.1), private offices consistently use the following finish package:</p>
-
-                        <ul>
-                            <li><strong>Flooring</strong>: C2 - BENTLEY ALLEGRO carpet
-                                <br/>  - Size: 18"x36" tiles
-                                <br/>  - Backing: NEXSTEP CUSHION
-                                <br/>  - Pattern: TBD (to be coordinated with architect)
-                                <br/>  - Finish: PULSE 800243
-                                <br/>  - Class B Flame Spread Rating
-                            </li>
-
-                            <li><strong>Base</strong>: RB1 - Rubber base
-                                <br/>  - Likely Johnsonite 4" Toeless Base in Black (40)
-                            </li>
-
-                            <li><strong>Walls</strong>: P1 - Paint
-                                <br/>  - Kelly Moore KMW46 / Picket Fence (White)
-                            </li>
-
-                            <li><strong>Ceiling</strong>: ACT1 - Acoustic Ceiling Tile type 1</li>
-                        </ul>
-
-                        <h2>Construction Management Insights</h2>
-
-                        <ul>
-                            <li><strong>Material Coordination</strong>: The carpet pattern orientation requires coordination with the architect prior to installation. This should be scheduled as a pre-installation meeting to avoid costly rework.</li>
+                    <div class="output-container">
+                        <div class="scroll-indicator scroll-top" style="display: none;">
+                            <i class="fas fa-chevron-up"></i>
+                        </div>
                         
-                            <li><strong>Fire Rating Compliance</strong>: The C2 carpet has a Class B Flame Spread Rating requirement. This is critical for code compliance and should be verified through submittal review before materials are ordered.</li>
+                        <div id="sample1" class="output-display">
+                            <h1>Private Office Finishes Analysis</h1>
+
+                            <h2>Standard Private Office Finish Package</h2>
+
+                            <p>Based on the third floor finish plan (A2.3.2) and finish schedule (A10.6.1), private offices consistently use the following finish package:</p>
+
+                            <ul>
+                                <li><strong>Flooring</strong>: C2 - BENTLEY ALLEGRO carpet
+                                    <br>  - Size: 18"x36" tiles
+                                    <br>  - Backing: NEXSTEP CUSHION
+                                    <br>  - Pattern: TBD (to be coordinated with architect)
+                                    <br>  - Finish: PULSE 800243
+                                    <br>  - Class B Flame Spread Rating
+                                </li>
+
+                                <li><strong>Base</strong>: RB1 - Rubber base
+                                    <br>  - Likely Johnsonite 4" Toeless Base in Black (40)
+                                </li>
+
+                                <li><strong>Walls</strong>: P1 - Paint
+                                    <br>  - Kelly Moore KMW46 / Picket Fence (White)
+                                </li>
+
+                                <li><strong>Ceiling</strong>: ACT1 - Acoustic Ceiling Tile type 1</li>
+                            </ul>
+
+                            <h2>Construction Management Insights</h2>
+
+                            <ul>
+                                <li><strong>Material Coordination</strong>: The carpet pattern orientation requires coordination with the architect prior to installation. This should be scheduled as a pre-installation meeting to avoid costly rework.</li>
+                            
+                                <li><strong>Fire Rating Compliance</strong>: The C2 carpet has a Class B Flame Spread Rating requirement. This is critical for code compliance and should be verified through submittal review before materials are ordered.</li>
+                            
+                                <li><strong>Transition Details</strong>: The drawings specify to "feather out levels approximately 5'-0" long to provide smooth transition where floor materials change." This is particularly important where private offices (C2 carpet) meet open office areas (C1 carpet) or circulation spaces (CN2 concrete).</li>
+                            
+                                <li><strong>Mock-Up Requirements</strong>: A 10'x10' mock-up installation of floor finishes is required for owner/architect review. This should be scheduled early in the construction process to allow time for adjustments.</li>
+                            
+                                <li><strong>Consistency Across Floors</strong>: While the query focuses on the third floor, the finish schedule shows that private offices on Level 1 (rooms 107, 108) use a similar finish package (CPT-1, RB-1, PT-1, ACT-1), suggesting a consistent design approach throughout the building.</li>
+                            
+                                <li><strong>Material Differentiation</strong>: Private offices use a different carpet specification (C2) than open offices (C1) and conference rooms (C3/C4/C6). This differentiation should be clearly communicated to installers to prevent mixing of materials.</li>
+                            
+                                <li><strong>Quantity Takeoffs</strong>: With numerous private offices using the same finish package, accurate quantity takeoffs are essential. Based on the floor plan, approximately 20+ private offices on the third floor will require the C2 carpet specification.</li>
+                            
+                                <li><strong>Quality Control</strong>: The finish schedule notes that carpet installation should "use largest tile size" and "minimize number of seams," indicating a focus on aesthetic quality that should be emphasized during installation supervision.</li>
+                            </ul>
+
+                            <p>This consistent finish package across all private offices simplifies material procurement and installation while creating a unified aesthetic throughout the private office spaces.</p>
+                        </div>
                         
-                            <li><strong>Transition Details</strong>: The drawings specify to "feather out levels approximately 5'-0" long to provide smooth transition where floor materials change." This is particularly important where private offices (C2 carpet) meet open office areas (C1 carpet) or circulation spaces (CN2 concrete).</li>
+                        <div id="sample2" class="output-display">
+                            <h1>Drawing M_201: HVAC Plan Summary</h1>
+
+                            <h2>High-Level Summary</h2>
+                            <p>Drawing M_201 is a comprehensive mechanical HVAC plan showing the layout of ductwork, diffusers, equipment, and related mechanical systems for a government building project in Phoenix, Arizona. The drawing covers both basement and first floor areas, detailing the HVAC systems serving various spaces including offices, storage rooms, toilet rooms, IT closets, and a dock area. The drawing was initially issued for construction on 03/01/2024 and has been updated with Bulletin 1 on 01/10/2025.</p>
+
+                            <h2>Detailed Analysis</h2>
+
+                            <h3>Spaces Served</h3>
+                            <p>The HVAC plan covers multiple spaces including:</p>
+                            <ul>
+                                <li>Dock (Room 100)</li>
+                                <li>S/R Room 101 (Server/Storage Room)</li>
+                                <li>Storage (Room 102)</li>
+                                <li>Toilet (Room 103)</li>
+                                <li>Electrical Closet (Room 104)</li>
+                                <li>IT Closet (Room 105)</li>
+                                <li>Facilities & Shop (Room 106)</li>
+                                <li>Offices (Rooms 107, 108, 110)</li>
+                                <li>Vestibule (Room 111)</li>
+                                <li>Corridor (Room 159)</li>
+                                <li>S/R Teller Room (Room 170)</li>
+                                <li>Transfer Room (Room 171)</li>
+                            </ul>
+
+                            <h3>HVAC Equipment</h3>
+                            <ul>
+                                <li><strong>Variable Air Volume (VAV) Units:</strong>
+                                    <br>   - Multiple VAV boxes (VAV 01, VAV 03, VAV 04, VAV 05, VAV 06) serving different zones
+                                    <br>   - Strategically positioned for zone control
+                                </li>
+
+                                <li><strong>Heat Pumps:</strong>
+                                    <br>   - References to HP-01, HP-03, HP-05 (existing units)
+                                    <br>   - Connection labeled "UP TO HP-3"
+                                </li>
+
+                                <li><strong>Exhaust Systems:</strong>
+                                    <br>   - EF-01, EF-2 (balanced to 2200 CFM with hood)
+                                    <br>   - OED W/WMS (Opposed Blade Damper with Wall Mounting System)
+                                </li>
+                            </ul>
+
+                            <h2>Construction Manager Insights</h2>
+
+                            <ul>
+                                <li><strong>Phasing and Coordination:</strong>
+                                    <br>   - This is a multi-phase project with references to Phase 1 and Phase 2 areas
+                                    <br>   - The drawing shows both new work and modifications to existing systems (XM)
+                                    <br>   - Careful coordination required between phases to maintain operations
+                                </li>
+
+                                <li><strong>System Integration Challenges:</strong>
+                                    <br>   - Multiple mechanical systems (supply, return, exhaust, compressed air) must be coordinated
+                                    <br>   - Vertical transitions between floors (marked "UP" and "DN") require structural coordination
+                                    <br>   - Ductwork must be coordinated with structural grid lines (A, B, C, etc.)
+                                </li>
+
+                                <li><strong>Testing and Balancing Requirements:</strong>
+                                    <br>   - Specific requirements to balance all grilles and diffusers to match pre-demolition airflows
+                                    <br>   - EF-2 must be balanced to 2200 CFM with hood
+                                    <br>   - All VAV boxes will require proper commissioning and control integration
+                                </li>
+                            </ul>
+                        </div>
                         
-                            <li><strong>Mock-Up Requirements</strong>: A 10'x10' mock-up installation of floor finishes is required for owner/architect review. This should be scheduled early in the construction process to allow time for adjustments.</li>
+                        <div id="sample3" class="output-display">
+                            <h1>Comprehensive Analysis of Partition Drawing Details</h1>
+
+                            <h2>Overview of Partition Types</h2>
+                            <p>Based on the drawing details provided, this appears to be a comprehensive set of partition wall details showing various configurations (Types 1-15) with specific applications and construction requirements. The drawings provide critical information for construction managers regarding partition wall assemblies throughout a commercial or institutional building project.</p>
+
+                            <h2>Non-Fire Rated Partition Configurations (Types A-E)</h2>
+                            <p>The drawings show several non-fire rated partition configurations:</p>
+
+                            <ul>
+                                <li><strong>Full-Height Partitions (Type A)</strong>: Extend framing, insulation, and finish materials to the deck above</li>
+                                <li><strong>Partial-Height Finish Partitions (Type B)</strong>: Where ceiling occurs, finish materials extend 6" above ceiling</li>
+                                <li><strong>Ceiling-Braced Partitions (Type C)</strong>: Non-fire rated partitions braced at ceiling level</li>
+                                <li><strong>Partial-Height Partitions (Type D)</strong>: Reference drawing A10/A-401 for specific construction details</li>
+                                <li><strong>Furring Partitions (Type E)</strong>: Includes bracing at top as necessary</li>
+                            </ul>
+
+                            <h2>Security Partitions (Types 6-9)</h2>
+                            <p>Several specialized security partitions are detailed for cash areas:</p>
+                            <ul>
+                                <li><strong>Type 6/6.1</strong>: 5/8" impact-resistant gypsum board with 6" metal studs and optional vapor barrier primer</li>
+                                <li><strong>Type 7</strong>: 3-5/8" metal studs with 14 GA barrier mesh on one side (CP room only)</li>
+                                <li><strong>Type 8</strong>: 8" CMU (Concrete Masonry Units) with tooled joints at exposed surfaces</li>
+                                <li><strong>Type 9</strong>: Bullet-resistant partition with 7/16" Level 3 bullet-resistant fiberglass panels, 6" metal studs, and impact-resistant gypsum board</li>
+                            </ul>
+
+                            <h2>Critical Construction Management Considerations</h2>
+
+                            <ul>
+                                <li><strong>Coordination Requirements</strong>: Partition types reference other drawings (e.g., A10/A-401) for additional details, requiring careful coordination between drawing sets.</li>
+
+                                <li><strong>Schedule Implications</strong>: Security partitions and wet area partitions require specialized materials and installation techniques that may impact scheduling and sequencing.</li>
+
+                                <li><strong>Quality Control Focus Areas</strong>: 
+                                    <br>   - Proper installation of waterproofing membranes in shower areas
+                                    <br>   - Correct extension of partitions above ceilings
+                                    <br>   - Proper installation of security features in cash areas
+                                </li>
+
+                                <li><strong>Material Procurement Planning</strong>: 
+                                    <br>   - Special order items like bullet-resistant panels and barrier mesh require advance procurement
+                                    <br>   - Impact-resistant gypsum board for security areas
+                                </li>
+                            </ul>
+                        </div>
                         
-                            <li><strong>Consistency Across Floors</strong>: While the query focuses on the third floor, the finish schedule shows that private offices on Level 1 (rooms 107, 108) use a similar finish package (CPT-1, RB-1, PT-1, ACT-1), suggesting a consistent design approach throughout the building.</li>
+                        <div id="sample4" class="output-display">
+                            <h1>Analysis of Drawing E_2_1_LightingPlan</h1>
+
+                            <h2>Project Information</h2>
+                            <p>This drawing is the lighting plan (E2.1) for the <strong>Paradise Valley Medical Plaza</strong> project, located at the southwest corner of Scottsdale Road and Jackrabbit Road. The client is Dr. Vartevan, with project number 2459.00. The engineering firm is Akribis Engineering, LLC (Job No. 25072), providing mechanical, plumbing, and electrical services. The project appears to be a healthcare clinic with approximately 4,237 square feet of floor area.</p>
+
+                            <h2>Drawing Content</h2>
+                            <p>This lighting plan shows the complete electrical lighting layout for a medical facility, including:</p>
+
+                            <ul>
+                                <li><strong>Room Layout</strong>: The facility includes:
+                                    <br>   - Exam rooms (100.06-100.10)
+                                    <br>   - Procedure rooms (100.23, 100.24, 100.27)
+                                    <br>   - Waiting areas (100.01, 100.26)
+                                    <br>   - Offices (100.12-100.14, 100.16)
+                                    <br>   - Support spaces (Break room 100.15, Storage 100.21-100.22)
+                                    <br>   - Corridors (100.11, 100.17, 100.20)
+                                    <br>   - Restrooms (100.02, 100.25)
+                                    <br>   - Utility rooms (Janitor 100.18, Electrical 100.19)
+                                </li>
+                            </ul>
+
+                            <h2>Construction Management Insights</h2>
+
+                            <ul>
+                                <li><strong>Healthcare Code Compliance</strong>:
+                                    <br>   - The project must comply with NEC Article 517 for patient care areas
+                                    <br>   - Metallic conduit or hospital-grade HCF type MC cable is required (standard MC cable not allowed)
+                                    <br>   - Per NEC 517.13, insulated copper grounding conductors are required for receptacles and fixed electrical equipment in patient care areas
+                                    <br>   - These requirements will increase material and labor costs compared to standard commercial construction
+                                </li>
+
+                                <li><strong>Energy Code Compliance</strong>:
+                                    <br>   - The project follows 2021 IECC requirements
+                                    <br>   - Allowed lighting power density: 0.81 watts/sq ft
+                                    <br>   - Total allowed watts: 3,432W
+                                    <br>   - All fixtures are energy-efficient LED technology
+                                    <br>   - Sensors must be programmed for manual-on, auto-off per IECC C405.2.2.2 and C405.2.2.3.1
+                                    <br>   - This requires careful commissioning and programming of the control system
+                                </li>
+
+                                <li><strong>Installation Coordination</strong>:
+                                    <br>   - Various mounting types (recessed, surface, pendant, wall) require different installation methods
+                                    <br>   - Coordinate ceiling grid layout with 2×2 and 2×4 troffer locations
+                                    <br>   - Ensure proper backing for surface-mounted and wall-mounted fixtures
+                                    <br>   - Coordinate recessed can locations with other ceiling elements
+                                    <br>   - Sequence installation to ensure rough-in electrical work is completed before ceiling closure
+                                </li>
+                            </ul>
+                        </div>
                         
-                            <li><strong>Material Differentiation</strong>: Private offices use a different carpet specification (C2) than open offices (C1) and conference rooms (C3/C4/C6). This differentiation should be clearly communicated to installers to prevent mixing of materials.</li>
-                        
-                            <li><strong>Quantity Takeoffs</strong>: With numerous private offices using the same finish package, accurate quantity takeoffs are essential. Based on the floor plan, approximately 20+ private offices on the third floor will require the C2 carpet specification.</li>
-                        
-                            <li><strong>Quality Control</strong>: The finish schedule notes that carpet installation should "use largest tile size" and "minimize number of seams," indicating a focus on aesthetic quality that should be emphasized during installation supervision.</li>
-                        </ul>
-
-                        <p>This consistent finish package across all private offices simplifies material procurement and installation while creating a unified aesthetic throughout the private office spaces.</p>
-                    </div>
-                    
-                    <div id="sample2" class="output-display">
-                        <h1>Drawing M_201: HVAC Plan Summary</h1>
-
-                        <h2>High-Level Summary</h2>
-                        <p>Drawing M_201 is a comprehensive mechanical HVAC plan showing the layout of ductwork, diffusers, equipment, and related mechanical systems for a government building project in Phoenix, Arizona. The drawing covers both basement and first floor areas, detailing the HVAC systems serving various spaces including offices, storage rooms, toilet rooms, IT closets, and a dock area. The drawing was initially issued for construction on 03/01/2024 and has been updated with Bulletin 1 on 01/10/2025.</p>
-
-                        <h2>Detailed Analysis</h2>
-
-                        <h3>Spaces Served</h3>
-                        <p>The HVAC plan covers multiple spaces including:</p>
-                        <ul>
-                            <li>Dock (Room 100)</li>
-                            <li>S/R Room 101 (Server/Storage Room)</li>
-                            <li>Storage (Room 102)</li>
-                            <li>Toilet (Room 103)</li>
-                            <li>Electrical Closet (Room 104)</li>
-                            <li>IT Closet (Room 105)</li>
-                            <li>Facilities & Shop (Room 106)</li>
-                            <li>Offices (Rooms 107, 108, 110)</li>
-                            <li>Vestibule (Room 111)</li>
-                            <li>Corridor (Room 159)</li>
-                            <li>S/R Teller Room (Room 170)</li>
-                            <li>Transfer Room (Room 171)</li>
-                        </ul>
-
-                        <h3>HVAC Equipment</h3>
-                        <ul>
-                            <li><strong>Variable Air Volume (VAV) Units:</strong>
-                                <br/>   - Multiple VAV boxes (VAV 01, VAV 03, VAV 04, VAV 05, VAV 06) serving different zones
-                                <br/>   - Strategically positioned for zone control
-                            </li>
-
-                            <li><strong>Heat Pumps:</strong>
-                                <br/>   - References to HP-01, HP-03, HP-05 (existing units)
-                                <br/>   - Connection labeled "UP TO HP-3"
-                            </li>
-
-                            <li><strong>Exhaust Systems:</strong>
-                                <br/>   - EF-01, EF-2 (balanced to 2200 CFM with hood)
-                                <br/>   - OED W/WMS (Opposed Blade Damper with Wall Mounting System)
-                            </li>
-                        </ul>
-
-                        <h2>Construction Manager Insights</h2>
-
-                        <ul>
-                            <li><strong>Phasing and Coordination:</strong>
-                                <br/>   - This is a multi-phase project with references to Phase 1 and Phase 2 areas
-                                <br/>   - The drawing shows both new work and modifications to existing systems (XM)
-                                <br/>   - Careful coordination required between phases to maintain operations
-                            </li>
-
-                            <li><strong>System Integration Challenges:</strong>
-                                <br/>   - Multiple mechanical systems (supply, return, exhaust, compressed air) must be coordinated
-                                <br/>   - Vertical transitions between floors (marked "UP" and "DN") require structural coordination
-                                <br/>   - Ductwork must be coordinated with structural grid lines (A, B, C, etc.)
-                            </li>
-
-                            <li><strong>Testing and Balancing Requirements:</strong>
-                                <br/>   - Specific requirements to balance all grilles and diffusers to match pre-demolition airflows
-                                <br/>   - EF-2 must be balanced to 2200 CFM with hood
-                                <br/>   - All VAV boxes will require proper commissioning and control integration
-                            </li>
-                        </ul>
-                    </div>
-                    
-                    <div id="sample3" class="output-display">
-                        <h1>Comprehensive Analysis of Partition Drawing Details</h1>
-
-                        <h2>Overview of Partition Types</h2>
-                        <p>Based on the drawing details provided, this appears to be a comprehensive set of partition wall details showing various configurations (Types 1-15) with specific applications and construction requirements. The drawings provide critical information for construction managers regarding partition wall assemblies throughout a commercial or institutional building project.</p>
-
-                        <h2>Non-Fire Rated Partition Configurations (Types A-E)</h2>
-                        <p>The drawings show several non-fire rated partition configurations:</p>
-
-                        <ul>
-                            <li><strong>Full-Height Partitions (Type A)</strong>: Extend framing, insulation, and finish materials to the deck above</li>
-                            <li><strong>Partial-Height Finish Partitions (Type B)</strong>: Where ceiling occurs, finish materials extend 6" above ceiling</li>
-                            <li><strong>Ceiling-Braced Partitions (Type C)</strong>: Non-fire rated partitions braced at ceiling level</li>
-                            <li><strong>Partial-Height Partitions (Type D)</strong>: Reference drawing A10/A-401 for specific construction details</li>
-                            <li><strong>Furring Partitions (Type E)</strong>: Includes bracing at top as necessary</li>
-                        </ul>
-
-                        <h2>Security Partitions (Types 6-9)</h2>
-                        <p>Several specialized security partitions are detailed for cash areas:</p>
-                        <ul>
-                            <li><strong>Type 6/6.1</strong>: 5/8" impact-resistant gypsum board with 6" metal studs and optional vapor barrier primer</li>
-                            <li><strong>Type 7</strong>: 3-5/8" metal studs with 14 GA barrier mesh on one side (CP room only)</li>
-                            <li><strong>Type 8</strong>: 8" CMU (Concrete Masonry Units) with tooled joints at exposed surfaces</li>
-                            <li><strong>Type 9</strong>: Bullet-resistant partition with 7/16" Level 3 bullet-resistant fiberglass panels, 6" metal studs, and impact-resistant gypsum board</li>
-                        </ul>
-
-                        <h2>Critical Construction Management Considerations</h2>
-
-                        <ul>
-                            <li><strong>Coordination Requirements</strong>: Partition types reference other drawings (e.g., A10/A-401) for additional details, requiring careful coordination between drawing sets.</li>
-
-                            <li><strong>Schedule Implications</strong>: Security partitions and wet area partitions require specialized materials and installation techniques that may impact scheduling and sequencing.</li>
-
-                            <li><strong>Quality Control Focus Areas</strong>: 
-                                <br/>   - Proper installation of waterproofing membranes in shower areas
-                                <br/>   - Correct extension of partitions above ceilings
-                                <br/>   - Proper installation of security features in cash areas
-                            </li>
-
-                            <li><strong>Material Procurement Planning</strong>: 
-                                <br/>   - Special order items like bullet-resistant panels and barrier mesh require advance procurement
-                                <br/>   - Impact-resistant gypsum board for security areas
-                            </li>
-                        </ul>
-                    </div>
-                    
-                    <div id="sample4" class="output-display">
-                        <h1>Analysis of Drawing E_2_1_LightingPlan</h1>
-
-                        <h2>Project Information</h2>
-                        <p>This drawing is the lighting plan (E2.1) for the <strong>Paradise Valley Medical Plaza</strong> project, located at the southwest corner of Scottsdale Road and Jackrabbit Road. The client is Dr. Vartevan, with project number 2459.00. The engineering firm is Akribis Engineering, LLC (Job No. 25072), providing mechanical, plumbing, and electrical services. The project appears to be a healthcare clinic with approximately 4,237 square feet of floor area.</p>
-
-                        <h2>Drawing Content</h2>
-                        <p>This lighting plan shows the complete electrical lighting layout for a medical facility, including:</p>
-
-                        <ul>
-                            <li><strong>Room Layout</strong>: The facility includes:
-                                <br/>   - Exam rooms (100.06-100.10)
-                                <br/>   - Procedure rooms (100.23, 100.24, 100.27)
-                                <br/>   - Waiting areas (100.01, 100.26)
-                                <br/>   - Offices (100.12-100.14, 100.16)
-                                <br/>   - Support spaces (Break room 100.15, Storage 100.21-100.22)
-                                <br/>   - Corridors (100.11, 100.17, 100.20)
-                                <br/>   - Restrooms (100.02, 100.25)
-                                <br/>   - Utility rooms (Janitor 100.18, Electrical 100.19)
-                            </li>
-                        </ul>
-
-                        <h2>Construction Management Insights</h2>
-
-                        <ul>
-                            <li><strong>Healthcare Code Compliance</strong>:
-                                <br/>   - The project must comply with NEC Article 517 for patient care areas
-                                <br/>   - Metallic conduit or hospital-grade HCF type MC cable is required (standard MC cable not allowed)
-                                <br/>   - Per NEC 517.13, insulated copper grounding conductors are required for receptacles and fixed electrical equipment in patient care areas
-                                <br/>   - These requirements will increase material and labor costs compared to standard commercial construction
-                            </li>
-
-                            <li><strong>Energy Code Compliance</strong>:
-                                <br/>   - The project follows 2021 IECC requirements
-                                <br/>   - Allowed lighting power density: 0.81 watts/sq ft
-                                <br/>   - Total allowed watts: 3,432W
-                                <br/>   - All fixtures are energy-efficient LED technology
-                                <br/>   - Sensors must be programmed for manual-on, auto-off per IECC C405.2.2.2 and C405.2.2.3.1
-                                <br/>   - This requires careful commissioning and programming of the control system
-                            </li>
-
-                            <li><strong>Installation Coordination</strong>:
-                                <br/>   - Various mounting types (recessed, surface, pendant, wall) require different installation methods
-                                <br/>   - Coordinate ceiling grid layout with 2×2 and 2×4 troffer locations
-                                <br/>   - Ensure proper backing for surface-mounted and wall-mounted fixtures
-                                <br/>   - Coordinate recessed can locations with other ceiling elements
-                                <br/>   - Sequence installation to ensure rough-in electrical work is completed before ceiling closure
-                            </li>
-                        </ul>
+                        <div class="scroll-indicator scroll-bottom" style="display: none;">
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -477,6 +606,8 @@
         document.addEventListener('DOMContentLoaded', function() {
             const sampleButtons = document.querySelectorAll('.sample-button');
             const outputDisplays = document.querySelectorAll('.output-display');
+            const scrollTop = document.querySelector('.scroll-top');
+            const scrollBottom = document.querySelector('.scroll-bottom');
             
             // Add click event to all sample buttons
             sampleButtons.forEach(button => {
@@ -496,6 +627,38 @@
                     // Show selected output and set button as active
                     document.getElementById(sampleId).style.display = 'block';
                     this.classList.add('active');
+                    
+                    // Check scroll status after content is shown
+                    checkScrollIndicators(document.getElementById(sampleId));
+                });
+            });
+            
+            // Function to check if scroll indicators should be shown
+            function checkScrollIndicators(element) {
+                if (element.scrollHeight > element.clientHeight) {
+                    // Content is scrollable
+                    if (element.scrollTop > 20) {
+                        scrollTop.style.display = 'block';
+                    } else {
+                        scrollTop.style.display = 'none';
+                    }
+                    
+                    if (element.scrollTop + element.clientHeight < element.scrollHeight - 20) {
+                        scrollBottom.style.display = 'block';
+                    } else {
+                        scrollBottom.style.display = 'none';
+                    }
+                } else {
+                    // Content fits without scrolling
+                    scrollTop.style.display = 'none';
+                    scrollBottom.style.display = 'none';
+                }
+            }
+            
+            // Add scroll event listeners to all output displays
+            outputDisplays.forEach(display => {
+                display.addEventListener('scroll', function() {
+                    checkScrollIndicators(this);
                 });
             });
             
@@ -503,6 +666,11 @@
             if (sampleButtons.length > 0 && outputDisplays.length > 0) {
                 sampleButtons[0].classList.add('active');
                 outputDisplays[0].style.display = 'block';
+                
+                // Initial check for scroll indicators
+                setTimeout(() => {
+                    checkScrollIndicators(outputDisplays[0]);
+                }, 100);
             }
             
             // Existing review form code
