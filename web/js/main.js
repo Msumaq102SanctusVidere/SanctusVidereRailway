@@ -9,13 +9,10 @@ const AUTH0_CONFIG = {
     appUrl: "https://app.sanctusvidere.com"
 };
 
-// Stripe configuration
+// Stripe configuration - SIMPLE VERSION WITH PAYMENT LINK
 const STRIPE_CONFIG = {
-    publishableKey: "pk_live_51ROpaaK5y9nM8CqJQQ9bdPcDJQ8pq0TMAVCWyPJh4KpEcaOPS56zFH75Qo8mTGzEynHmFrSPYape6uHgFFH5bTa100Ex8HUFBR",
-    priceId: "price_1ROqZ6K5y9nM8CqJthphEvaN",
-    testAccounts: ["test2@example.com"], // Your test account that bypasses payment
-    successUrl: "https://app.sanctusvidere.com", // Where to redirect after successful payment
-    cancelUrl: "https://sanctusvidere.com"  // Where to redirect if payment is cancelled
+    paymentLink: "https://buy.stripe.com/cN2aFI9XK2r2gAofYY",
+    testAccounts: ["test2@example.com"] // Your test account that bypasses payment
 };
 
 // Wait for the Auth0 SDK to load
@@ -31,19 +28,6 @@ async function waitForAuth0SDK() {
     }
 }
 
-// Wait for the Stripe SDK to load
-async function waitForStripeSDK() {
-    const maxAttempts = 50; // Wait up to 5 seconds
-    let attempts = 0;
-    while (typeof Stripe === 'undefined' && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-    }
-    if (typeof Stripe === 'undefined') {
-        throw new Error("Stripe SDK failed to load within 5 seconds");
-    }
-}
-
 // Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', async function() {
     try {
@@ -51,9 +35,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         // Initialize Lock
         initializeLock();
-        
-        // Initialize Stripe
-        await waitForStripeSDK();
         
         // Check if we're on the logged-out page and need to show login
         if (window.location.pathname.includes('logged-out.html')) {
@@ -63,8 +44,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Detect and fix URL format if needed
         fixUrlFormat();
         
-        // Handle Stripe redirect if returning from payment
-        handleStripeRedirect();
+        // Handle successful payment return
+        handlePaymentReturn();
     } catch (err) {
         console.error(err.message);
     }
@@ -103,74 +84,63 @@ function fixUrlFormat() {
     }
 }
 
-// Handle redirect from Stripe Checkout
-function handleStripeRedirect() {
+// Handle return from payment
+function handlePaymentReturn() {
     const urlParams = new URLSearchParams(window.location.search);
-    const paymentStatus = urlParams.get('payment_status');
     
-    if (paymentStatus === 'success') {
-        console.log("Successful payment detected");
+    // Check if this is a return from payment (Stripe will add parameters to the URL)
+    if (urlParams.has('payment_status')) {
+        const paymentStatus = urlParams.get('payment_status');
         
-        // Store subscription status in localStorage
-        localStorage.setItem('subscription_active', 'true');
-        localStorage.setItem('subscription_date', Date.now().toString());
-        
-        // Remove payment_status from URL (optional)
-        const newUrl = window.location.pathname + 
-            window.location.search.replace(/[?&]payment_status=success/, '');
-        window.history.replaceState({}, document.title, newUrl);
+        if (paymentStatus === 'success' || paymentStatus === 'paid') {
+            console.log("Payment successful, setting subscription status");
+            
+            // Store subscription status
+            localStorage.setItem('subscription_active', 'true');
+            localStorage.setItem('subscription_date', Date.now().toString());
+            
+            // Clean up URL
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+        }
     }
 }
 
-// Check if user has an active subscription
-function checkSubscription(email) {
-    // If user is in test accounts list, automatically grant access
+// Check if user is a test account or has subscription
+function isSubscribed(email) {
+    // Test accounts automatically bypass payment
     if (STRIPE_CONFIG.testAccounts.includes(email)) {
         console.log("Test account detected, bypassing subscription check");
         return true;
     }
     
-    // Check if user has a stored subscription
+    // Check local storage for subscription status
     const hasSubscription = localStorage.getItem('subscription_active') === 'true';
-    
-    // In a real implementation, you would verify with your backend
-    // This is a simplified demo version
-    
     return hasSubscription;
 }
 
-// Redirect to Stripe Checkout
-function redirectToStripeCheckout(email, userId) {
-    // In a real implementation, this should call your backend to create a checkout session
-    // For demo purposes, we'll use a simplified approach
+// Redirect to Stripe payment link
+function redirectToPayment(email, userId) {
+    // Construct the payment link with success/cancel URLs
+    const successUrl = encodeURIComponent(`${AUTH0_CONFIG.appUrl}?payment_status=success&user_id=${userId}`);
+    const cancelUrl = encodeURIComponent(AUTH0_CONFIG.mainUrl);
     
-    // Store user info before redirecting
-    localStorage.setItem('pending_subscription_email', email);
-    localStorage.setItem('pending_subscription_user_id', userId);
+    // Create the full URL with parameters
+    let paymentUrl = STRIPE_CONFIG.paymentLink;
     
-    // Create a temporary form to submit for redirect
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = 'https://buy.stripe.com/test_session'; // Replace with your actual Stripe Checkout URL
+    // Add client_reference_id if the link doesn't have parameters yet
+    if (!paymentUrl.includes('?')) {
+        paymentUrl += `?client_reference_id=${userId}`;
+    } else {
+        paymentUrl += `&client_reference_id=${userId}`;
+    }
     
-    // Add required fields
-    const addField = (name, value) => {
-        const hiddenField = document.createElement('input');
-        hiddenField.type = 'hidden';
-        hiddenField.name = name;
-        hiddenField.value = value;
-        form.appendChild(hiddenField);
-    };
+    // Add success and cancel URLs
+    paymentUrl += `&success_url=${successUrl}&cancel_url=${cancelUrl}`;
     
-    addField('price', STRIPE_CONFIG.priceId);
-    addField('client_reference_id', userId);
-    addField('customer_email', email);
-    addField('success_url', STRIPE_CONFIG.successUrl + '?payment_status=success');
-    addField('cancel_url', STRIPE_CONFIG.cancelUrl);
-    
-    // Submit the form
-    document.body.appendChild(form);
-    form.submit();
+    // Redirect to payment
+    console.log("Redirecting to payment:", paymentUrl);
+    window.location.href = paymentUrl;
 }
 
 // Setup login button on logged-out page
@@ -239,16 +209,16 @@ function initializeLock() {
             if (profile.email) localStorage.setItem('auth_user_email', profile.email);
             localStorage.setItem('auth_login_time', Date.now().toString());
             
-            // Check subscription status
-            if (checkSubscription(userEmail)) {
+            // Check if user is subscribed or is a test account
+            if (isSubscribed(userEmail)) {
                 // User has subscription, redirect to app
                 const appUrl = `${AUTH0_CONFIG.appUrl}?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(idToken)}`;
                 console.log(`User has subscription, redirecting to app:`, appUrl);
                 window.location.replace(appUrl);
             } else {
-                // User needs to subscribe, redirect to Stripe
-                console.log(`User needs subscription, redirecting to Stripe checkout`);
-                redirectToStripeCheckout(userEmail, userId);
+                // User needs to subscribe, redirect to payment link
+                console.log(`User needs subscription, redirecting to payment`);
+                redirectToPayment(userEmail, userId);
             }
         });
     });
