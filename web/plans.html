@@ -5,104 +5,263 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Choose Your Plan - Sanctus Videre</title>
     
-    <!-- Add your favicon and other common head elements from your index.html -->
+    <!-- Add your favicon and other common head elements -->
     <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     
-    <!-- Include your CSS file -->
-    <link rel="stylesheet" href="css/style.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        /* Plan page specific styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: #0f1a2b;
+            color: #fff;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        /* Subtle grid background */
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 0, 0, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: -1;
+        }
+        
+        /* Glowing effect in background */
+        body::after {
+            content: '';
+            position: absolute;
+            top: 35%;
+            left: 30%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(89, 86, 233, 0.15) 0%, rgba(15, 26, 43, 0) 70%);
+            z-index: -1;
+            filter: blur(50px);
+        }
+        
+        /* Header styling */
+        header {
+            background-color: rgba(15, 26, 43, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .logo {
+            max-height: 50px;
+            transition: transform 0.3s ease;
+        }
+        
+        .logo:hover {
+            transform: scale(1.05);
+        }
+        
+        /* Plans container */
         .plans-container {
             max-width: 1200px;
-            margin: 2rem auto;
+            margin: 4rem auto;
             padding: 1rem;
         }
         
         .plans-header {
             text-align: center;
-            margin-bottom: 3rem;
+            margin-bottom: 4rem;
+            position: relative;
         }
         
         .plans-header h1 {
-            font-size: 2.5rem;
+            font-size: 3.2rem;
             margin-bottom: 1rem;
-            color: #333;
+            color: #fff;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #5956E9 0%, #9491FF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            position: relative;
+            display: inline-block;
+            z-index: 2;
+            text-shadow: 0 5px 15px rgba(89, 86, 233, 0.4);
+        }
+        
+        .plans-header h1::after {
+            content: '';
+            position: absolute;
+            width: 60px;
+            height: 4px;
+            background: linear-gradient(90deg, #5956E9, #9491FF);
+            bottom: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-radius: 2px;
         }
         
         .plans-header p {
             font-size: 1.2rem;
-            color: #666;
+            color: rgba(255, 255, 255, 0.7);
             max-width: 800px;
-            margin: 0 auto;
+            margin: 1.5rem auto 0;
+            font-weight: 300;
+            line-height: 1.5;
         }
         
+        /* Plans grid */
         .plans-grid {
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            gap: 2rem;
+            gap: 2.5rem;
         }
         
         .plan-card {
-            background: #fff;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            padding: 2rem;
-            width: 320px;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            background: rgba(30, 40, 60, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 14px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+                        inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+            padding: 2.5rem;
+            width: 340px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             display: flex;
             flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .plan-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, #5956E9, #9491FF);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.4s ease;
         }
         
         .plan-card:hover {
             transform: translateY(-10px);
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+                        inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+        }
+        
+        .plan-card:hover::before {
+            transform: scaleX(1);
         }
         
         .plan-name {
             font-size: 1.8rem;
-            font-weight: bold;
+            font-weight: 700;
             margin-bottom: 0.5rem;
-            color: #333;
+            color: #fff;
+            position: relative;
+            padding-bottom: 0.5rem;
+        }
+        
+        .plan-name::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 40px;
+            height: 3px;
+            background: rgba(89, 86, 233, 0.6);
+            border-radius: 2px;
         }
         
         .plan-price {
-            font-size: 2.2rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-            color: #5956E9; /* Match your brand color */
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin: 1.5rem 0 0.3rem;
+            color: #5956E9;
+            background: linear-gradient(135deg, #5956E9 0%, #9491FF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -1px;
         }
         
         .plan-period {
             font-size: 1rem;
-            color: #777;
-            margin-top: -0.5rem;
-            margin-bottom: 1.5rem;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 2rem;
+            font-weight: 400;
         }
         
         .plan-description {
             margin-bottom: 2rem;
             flex-grow: 1;
-            line-height: 1.6;
-            color: #555;
+            line-height: 1.7;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.95rem;
         }
         
         .plan-select-btn {
-            background-color: #5956E9; /* Match your brand color */
+            background: linear-gradient(135deg, #5956E9 0%, #6e6bff 100%);
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             padding: 1rem 2rem;
             font-size: 1.1rem;
-            font-weight: bold;
+            font-weight: 600;
             cursor: pointer;
-            transition: background-color 0.3s ease;
+            transition: all 0.3s ease;
             width: 100%;
+            box-shadow: 0 4px 20px rgba(89, 86, 233, 0.3);
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+        }
+        
+        .plan-select-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0));
+            transition: all 0.6s ease;
+            z-index: -1;
         }
         
         .plan-select-btn:hover {
-            background-color: #4644c4; /* Slightly darker */
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(89, 86, 233, 0.5);
+        }
+        
+        .plan-select-btn:hover::before {
+            left: 100%;
+        }
+        
+        .plan-select-btn:active {
+            transform: translateY(1px);
         }
         
         /* Responsive adjustments */
@@ -116,33 +275,81 @@
                 width: 100%;
                 max-width: 400px;
             }
-        }
-        
-        /* You may want to include your header/footer styles from your main site */
-        header {
-            background-color: #fff;
-            padding: 1rem 2rem;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .logo {
-            max-height: 50px;
+            
+            .plans-header h1 {
+                font-size: 2.5rem;
+            }
         }
         
         .back-link {
             display: inline-block;
-            margin-top: 2rem;
-            color: #5956E9;
+            margin-top: 3rem;
+            color: rgba(255, 255, 255, 0.7);
             text-decoration: none;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            position: relative;
+            padding-left: 25px;
         }
         
         .back-link:hover {
-            text-decoration: underline;
+            color: #5956E9;
+        }
+        
+        .back-link::before {
+            content: '←';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            transition: all 0.3s ease;
+        }
+        
+        .back-link:hover::before {
+            left: -5px;
+        }
+        
+        /* Floating elements for visual interest */
+        .floating-element {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.1;
+            z-index: -1;
+        }
+        
+        .float-1 {
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, #5956E9 0%, rgba(89, 86, 233, 0) 70%);
+            top: 10%;
+            right: -150px;
+            animation: float 15s ease-in-out infinite;
+        }
+        
+        .float-2 {
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, #5956E9 0%, rgba(89, 86, 233, 0) 70%);
+            bottom: 10%;
+            left: -100px;
+            animation: float 20s ease-in-out infinite reverse;
+        }
+        
+        @keyframes float {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            25% { transform: translate(10px, 15px) rotate(5deg); }
+            50% { transform: translate(5px, -10px) rotate(10deg); }
+            75% { transform: translate(-10px, 5px) rotate(5deg); }
+            100% { transform: translate(0, 0) rotate(0deg); }
         }
     </style>
 </head>
 <body>
-    <!-- Include your site header here - modify as needed to match your site's layout -->
+    <!-- Floating background elements -->
+    <div class="floating-element float-1"></div>
+    <div class="floating-element float-2"></div>
+    
+    <!-- Header with logo -->
     <header>
         <a href="index.html">
             <img src="images/sanctus-videre-logo.png" alt="Sanctus Videre" class="logo">
@@ -190,13 +397,13 @@
             </div>
         </div>
         
-        <a href="index.html" class="back-link">← Back to Home</a>
+        <a href="index.html" class="back-link">Back to Home</a>
     </div>
     
-    <!-- Add Auth0 script -->
-    <script src="https://cdn.auth0.com/js/lock/12.0.0/lock.min.js"></script>
+    <!-- Auth0 script -->
+    <script src="https://cdn.auth0.com/js/lock/12.0/lock.min.js"></script>
     
-    <!-- Add your main.js -->
+    <!-- Main script -->
     <script src="js/main.js"></script>
     
     <script>
@@ -224,18 +431,25 @@
                 });
             });
             
-            // Custom handler for auth result to use selected plan
-            if (typeof lock !== 'undefined' && lock) {
-                lock.on('authenticated', function(authResult) {
-                    // The standard handler in main.js will run, but we can add our own logic
-                    // to check for a selected plan
-                    const selectedPlan = localStorage.getItem('selected_plan');
-                    if (selectedPlan) {
-                        // Clear it after use
-                        localStorage.removeItem('selected_plan');
-                    }
+            // Add subtle hover effects to plan cards
+            const planCards = document.querySelectorAll('.plan-card');
+            planCards.forEach(card => {
+                card.addEventListener('mouseenter', function() {
+                    planCards.forEach(c => {
+                        if (c !== this) {
+                            c.style.opacity = '0.7';
+                            c.style.transform = 'scale(0.98)';
+                        }
+                    });
                 });
-            }
+                
+                card.addEventListener('mouseleave', function() {
+                    planCards.forEach(c => {
+                        c.style.opacity = '1';
+                        c.style.transform = '';
+                    });
+                });
+            });
         });
     </script>
 </body>
