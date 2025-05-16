@@ -905,5 +905,19 @@
             }
         });
     </script>
+    <!-- Direct login button handler -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Inline script running");
+            const loginButton = document.getElementById('login-button');
+            if (loginButton) {
+                console.log("Login button found in inline script");
+                loginButton.addEventListener('click', function() {
+                    console.log("Login button clicked - redirecting to plans page");
+                    window.location.href = 'plans.html';
+                });
+            }
+        });
+    </script>
 </body>
 </html>
