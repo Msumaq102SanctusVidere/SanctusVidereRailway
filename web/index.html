@@ -211,6 +211,61 @@
         .output-display::-webkit-scrollbar-thumb:hover {
             background: #a1a1a1;
         }
+
+        /* Style for user status indicator */
+        .user-status {
+            background-color: rgba(30, 40, 60, 0.7);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none; /* Initially hidden */
+            align-items: center;
+            font-size: 0.9rem;
+        }
+
+        .user-status i {
+            margin-right: 8px;
+            color: #5956E9;
+        }
+
+        .user-status .subscription-badge {
+            background: linear-gradient(135deg, #5956E9 0%, #9491FF 100%);
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-left: 8px;
+            font-weight: 500;
+        }
+
+        /* Separate buttons for login and signup */
+        .auth-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .login-button {
+            background-color: #5956E9;
+            border: none;
+        }
+
+        .signup-button {
+            background-color: transparent;
+            border: 2px solid #5956E9;
+            color: #5956E9;
+        }
+
+        .signup-button:hover {
+            background-color: rgba(89, 86, 233, 0.1);
+        }
+
+        .app-button {
+            background: linear-gradient(135deg, #5956E9 0%, #9491FF 100%);
+            border: none;
+            display: none; /* Initially hidden */
+        }
     </style>
 </head>
 <body>
@@ -753,19 +808,40 @@
                 </div>
             </div>
 
-            <!-- Right Column: Simplified Login Section -->
+            <!-- Right Column: Authentication Options -->
             <div class="column right-column">
-                <!-- Simplified Auth0 Login Panel -->
+                <!-- User status indicator (shown when logged in) -->
+                <div class="user-status" id="user-status">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Welcome back! You are logged in</span>
+                    <span class="subscription-badge" id="subscription-type">Monthly</span>
+                </div>
+                
+                <!-- Authentication Panel -->
                 <div class="auth0-login-panel" id="login-panel">
                     <h2><i class="fas fa-user-circle icon-header"></i> Dashboard Access</h2>
                     
-                    <button class="button primary-button" id="login-button" style="width: 100%; margin-bottom: 10px;">
-                        <i class="fas fa-sign-in-alt"></i> Login / Create Account
-                    </button>
-                    
-                    <button class="button primary-button" onclick="logout()" style="width: 100%;">
-                        <i class="fas fa-sign-out-alt"></i> Logout
-                    </button>
+                    <div class="auth-buttons" id="auth-buttons">
+                        <!-- Login button for existing users -->
+                        <button class="button primary-button login-button" id="login-button">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </button>
+                        
+                        <!-- Signup button for new users -->
+                        <button class="button signup-button" id="signup-button">
+                            <i class="fas fa-user-plus"></i> Create Account
+                        </button>
+                        
+                        <!-- Direct app access button (shown when logged in) -->
+                        <button class="button primary-button app-button" id="app-button">
+                            <i class="fas fa-external-link-alt"></i> Open Dashboard
+                        </button>
+                        
+                        <!-- Logout button -->
+                        <button class="button primary-button" id="logout-button" onclick="logout()" style="display: none;">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </button>
+                    </div>
                     
                     <p class="login-info">Access our AI-powered drawing analysis dashboard</p>
                 </div>
@@ -903,18 +979,89 @@
                     reviewFormContainer.style.display = 'none';
                 });
             }
-        });
-    </script>
-    <!-- Direct login button handler -->
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log("Inline script running");
+
+            // Check if user is logged in and has a subscription
+            function checkUserStatus() {
+                const hasToken = localStorage.getItem('auth_id_token');
+                const hasSubscription = localStorage.getItem('subscription_active') === 'true';
+                const subscriptionType = localStorage.getItem('subscription_plan') || 'Monthly';
+                
+                const userStatus = document.getElementById('user-status');
+                const loginButton = document.getElementById('login-button');
+                const signupButton = document.getElementById('signup-button');
+                const appButton = document.getElementById('app-button');
+                const logoutButton = document.getElementById('logout-button');
+                const subscriptionBadge = document.getElementById('subscription-type');
+                
+                if (hasToken) {
+                    // User is logged in
+                    if (hasSubscription) {
+                        // User has subscription - show app button
+                        userStatus.style.display = 'flex';
+                        loginButton.style.display = 'none';
+                        signupButton.style.display = 'none';
+                        appButton.style.display = 'block';
+                        logoutButton.style.display = 'block';
+                        
+                        // Set subscription badge text
+                        subscriptionBadge.textContent = subscriptionType.charAt(0).toUpperCase() + subscriptionType.slice(1);
+                    } else {
+                        // User is logged in but no subscription
+                        userStatus.style.display = 'none';
+                        loginButton.style.display = 'none';
+                        signupButton.style.display = 'block';
+                        appButton.style.display = 'none';
+                        logoutButton.style.display = 'block';
+                    }
+                } else {
+                    // User is not logged in
+                    userStatus.style.display = 'none';
+                    loginButton.style.display = 'block';
+                    signupButton.style.display = 'block';
+                    appButton.style.display = 'none';
+                    logoutButton.style.display = 'none';
+                }
+            }
+            
+            // Run status check on page load
+            checkUserStatus();
+            
+            // Set up button click handlers
             const loginButton = document.getElementById('login-button');
+            const signupButton = document.getElementById('signup-button');
+            const appButton = document.getElementById('app-button');
+            
             if (loginButton) {
-                console.log("Login button found in inline script");
                 loginButton.addEventListener('click', function() {
-                    console.log("Login button clicked - redirecting to plans page");
+                    console.log("Login button clicked");
+                    // For existing users, show Auth0 login directly
+                    if (typeof login === 'function') {
+                        login();
+                    } else {
+                        // Fallback if login function not available
+                        alert("Login function not available. Please try again later.");
+                    }
+                });
+            }
+            
+            if (signupButton) {
+                signupButton.addEventListener('click', function() {
+                    console.log("Signup button clicked");
+                    // For new users, go to plans page
                     window.location.href = 'plans.html';
+                });
+            }
+            
+            if (appButton) {
+                appButton.addEventListener('click', function() {
+                    console.log("App button clicked");
+                    // Get user ID from localStorage
+                    const userId = localStorage.getItem('auth_user_id');
+                    const idToken = localStorage.getItem('auth_id_token');
+                    
+                    // Redirect to Streamlit app
+                    const appUrl = `https://app.sanctusvidere.com?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(idToken)}`;
+                    window.location.href = appUrl;
                 });
             }
         });
