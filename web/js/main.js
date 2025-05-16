@@ -239,8 +239,13 @@ function isSubscribed(email) {
 
 // Redirect to Stripe payment link
 function redirectToPayment(email, userId, plan = 'monthly') {
-    // Add this new line
-    console.log("ACTUAL PAYMENT REDIRECT - PLAN TYPE:", plan, "TYPE OF PLAN:", typeof plan);
+    // Add explicit debug logs
+    console.log("REDIRECT_TO_PAYMENT FUNCTION CALLED");
+    console.log("Email:", email);
+    console.log("UserId:", userId);
+    console.log("Plan:", plan);
+    console.log("Plan type:", typeof plan);
+    
     // Log the plan parameter to verify it's being passed correctly
     console.log("redirectToPayment called with plan:", plan);
     
@@ -306,6 +311,12 @@ function initializeLock() {
     
     // Set up the authenticated event handler
     lock.on('authenticated', function(authResult) {
+        // Add explicit debug logs at the start of authentication callback
+        console.log("AUTH0 AUTHENTICATION CALLBACK TRIGGERED!");
+        console.log("Auth result:", authResult);
+        console.log("Full localStorage contents:", Object.entries(localStorage));
+        console.log("Selected plan in localStorage:", localStorage.getItem('selected_plan'));
+        
         // Get the tokens from the authResult
         const idToken = authResult.idToken;
         const accessToken = authResult.accessToken;
@@ -316,6 +327,8 @@ function initializeLock() {
         
         // Get user profile
         lock.getUserInfo(accessToken, function(error, profile) {
+            console.log("getUserInfo callback triggered");
+            
             if (error) {
                 console.error("Error getting user info:", error);
                 
@@ -341,6 +354,7 @@ function initializeLock() {
             // Check if the user selected a plan before login
             const selectedPlan = localStorage.getItem('selected_plan');
             console.log("Selected plan found in localStorage:", selectedPlan);
+            console.log("Selected plan type:", typeof selectedPlan);
             
             // Check if user is subscribed or is a test account
             if (isSubscribed(userEmail)) {
@@ -369,6 +383,10 @@ function initializeLock() {
 // Login with Auth0 Lock only
 function login() {
     try {
+        console.log("Login function called");
+        console.log("Current localStorage contents:", Object.entries(localStorage));
+        console.log("Selected plan in localStorage:", localStorage.getItem('selected_plan'));
+        
         if (!lock) {
             // Initialize lock if not already done
             initializeLock();
