@@ -413,20 +413,75 @@
             const urlParams = new URLSearchParams(window.location.search);
             const userId = urlParams.get('user_id');
             
+            // Define the redirectToPayment function directly in plans.html
+            function redirectToPayment(email, userId, plan = 'monthly') {
+                console.log("Redirecting to plan:", plan);
+                
+                // Use the same STRIPE_CONFIG from main.js
+                const STRIPE_CONFIG = {
+                    paymentLinks: {
+                        daily: "https://buy.stripe.com/7sY8wQ8QK8OFfi7cUP3gk01",
+                        weekly: "https://buy.stripe.com/6oU9AUd702qh0nddYT3gk02",
+                        monthly: "https://buy.stripe.com/cN2aFI9XK2r2gAofYY"
+                    }
+                };
+                
+                const AUTH0_CONFIG = {
+                    domain: "dev-wl2dxopsswbbvkcb.us.auth0.com",
+                    clientId: "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU",
+                    mainUrl: "https://sanctusvidere.com",
+                    appUrl: "https://app.sanctusvidere.com"
+                };
+                
+                // Get the correct payment link based on the plan
+                const paymentLink = STRIPE_CONFIG.paymentLinks[plan];
+                console.log("Payment link for " + plan + ":", paymentLink);
+                
+                // Construct the payment link with success/cancel URLs
+                const successUrl = encodeURIComponent(`${AUTH0_CONFIG.appUrl}?payment_status=success&user_id=${userId}&plan=${plan}`);
+                const cancelUrl = encodeURIComponent(AUTH0_CONFIG.mainUrl);
+                
+                // Create the full URL with parameters
+                let paymentUrl = paymentLink;
+                
+                // Add client_reference_id if the link doesn't have parameters yet
+                if (!paymentUrl.includes('?')) {
+                    paymentUrl += `?client_reference_id=${userId}`;
+                } else {
+                    paymentUrl += `&client_reference_id=${userId}`;
+                }
+                
+                // Add success and cancel URLs
+                paymentUrl += `&success_url=${successUrl}&cancel_url=${cancelUrl}`;
+                
+                // Redirect to payment
+                console.log(`Redirecting to payment:`, paymentUrl);
+                window.location.href = paymentUrl;
+            }
+            
             // Add click handlers to all plan buttons
             const planButtons = document.querySelectorAll('.plan-select-btn');
             planButtons.forEach(button => {
                 button.addEventListener('click', function() {
                     const planType = this.getAttribute('data-plan');
+                    console.log("Button clicked with plan:", planType);
                     
                     if (userId) {
                         // User is already authenticated, redirect directly to payment
+                        console.log("Redirecting to payment with plan:", planType);
                         redirectToPayment(null, userId, planType);
                     } else {
                         // User is not authenticated, show login first
                         // Store the selected plan in localStorage to use after auth
+                        console.log("Storing plan for after auth:", planType);
                         localStorage.setItem('selected_plan', planType);
-                        login();
+                        // Here you would need to call login() from main.js
+                        if (typeof login === 'function') {
+                            login();
+                        } else {
+                            // Fallback - redirect to login page or show error
+                            alert("Login function not available. Please try again later.");
+                        }
                     }
                 });
             });
