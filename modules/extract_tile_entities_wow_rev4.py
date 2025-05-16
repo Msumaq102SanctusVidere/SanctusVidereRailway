@@ -836,6 +836,7 @@ DRAWING CONTEXT:
 
 IMPORTANT DRAWING CONVENTIONS:
 - In elevation and detail drawings, the title and identification tag are typically located BELOW the drawing they refer to
+- In detail drawings, if these mini-drawings are bounded by lines, they are used to distinguish one drawing from another
 - Titles may span across multiple tiles - look for partial titles that might continue in adjacent tiles
 - Pay special attention to text near the bottom of details that appears to be a title or label
 - Revision clouds (wavy red lines) often indicate changes or important information
@@ -868,12 +869,13 @@ CRITICAL INSTRUCTIONS:
 1. Focus ONLY on identifying separate mini-drawings - one JSON object per distinct {drawing_type}.
 2. If a mini-drawing is cut off, set "is_partial" to true and specify in "extends_beyond" which edges it extends beyond.
 3. If a mini-drawing has distinctive materials/components visible, list them in "materials".
-4. Keep the "description" brief but informative about what this particular mini-drawing shows.
-5. Pay special attention to identifying the correct "component_id" (callout/reference number) for each mini-drawing.
-6. Look for titles at the bottom of details and capture them completely, even if they appear to be part of a longer title.
-7. Extract text EXACTLY as shown without elaboration or modification.
-8. Text with revision clouds or red markings is especially important - always include it.
-9. Return an empty array [] if no mini-drawings are visible in this tile.
+4. A mini-drawing can be distinguished by the boundary lines that surround it.
+5. Keep the "description" brief but informative about what this particular mini-drawing shows.
+6. Pay special attention to identifying the correct "component_id" (callout/reference number) for each mini-drawing.
+7. Look for titles at the bottom of details and capture them completely, even if they appear to be part of a longer title.
+8. Extract text EXACTLY as shown without elaboration or modification.
+9. Text with revision clouds or red markings is especially important - always include it.
+10. Return an empty array [] if no mini-drawings are visible in this tile.
 
 The filename of the tile is: {tile_name}
 """
