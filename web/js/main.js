@@ -140,7 +140,7 @@ function checkUserStatus() {
         if (hasSubscription) {
             // User has subscription - show app button
             userStatus.style.display = 'flex';
-            loginButton.style.display = 'none';
+            loginButton.style.display = 'block';
             signupButton.style.display = 'none';
             appButton.style.display = 'block';
             logoutButton.style.display = 'block';
@@ -152,7 +152,7 @@ function checkUserStatus() {
         } else {
             // User is logged in but no subscription
             userStatus.style.display = 'none';
-            loginButton.style.display = 'none';
+            loginButton.style.display = 'block';
             signupButton.style.display = 'block';
             appButton.style.display = 'none';
             logoutButton.style.display = 'block';
