@@ -9,9 +9,13 @@ const AUTH0_CONFIG = {
     appUrl: "https://app.sanctusvidere.com"
 };
 
-// Stripe configuration - SIMPLE VERSION WITH PAYMENT LINK
+// Stripe configuration - MULTIPLE PAYMENT OPTIONS
 const STRIPE_CONFIG = {
-    paymentLink: "https://buy.stripe.com/cN2aFI9XK2r2gAofYY",
+    paymentLinks: {
+        daily: "https://buy.stripe.com/7sY8wQ8QK8OFfi7cUP3gk01", // Daily Subscription link
+        weekly: "https://buy.stripe.com/6oU9AUd702qh0nddYT3gk02", // Weekly Subscription link
+        monthly: "https://buy.stripe.com/cN2aFI9XK2r2gAofYY" // Monthly Subscription link
+    },
     testAccounts: ["test2@example.com"] // Your test account that bypasses payment
 };
 
@@ -39,6 +43,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Check if we're on the logged-out page and need to show login
         if (window.location.pathname.includes('logged-out.html')) {
             setupLoginButton();
+        }
+        
+        // Setup main login button to go to plans page
+        const loginButton = document.getElementById('login-button');
+        if (loginButton) {
+            loginButton.addEventListener('click', function() {
+                window.location.href = 'plans.html';
+            });
         }
         
         // Detect and fix URL format if needed
@@ -99,6 +111,12 @@ function handlePaymentReturn() {
             localStorage.setItem('subscription_active', 'true');
             localStorage.setItem('subscription_date', Date.now().toString());
             
+            // Store plan information if available
+            const plan = urlParams.get('plan');
+            if (plan) {
+                localStorage.setItem('subscription_plan', plan);
+            }
+            
             // Clean up URL
             const newUrl = window.location.pathname;
             window.history.replaceState({}, document.title, newUrl);
@@ -120,13 +138,16 @@ function isSubscribed(email) {
 }
 
 // Redirect to Stripe payment link
-function redirectToPayment(email, userId) {
+function redirectToPayment(email, userId, plan = 'monthly') {
+    // Get the correct payment link based on the plan
+    const paymentLink = STRIPE_CONFIG.paymentLinks[plan];
+    
     // Construct the payment link with success/cancel URLs
-    const successUrl = encodeURIComponent(`${AUTH0_CONFIG.appUrl}?payment_status=success&user_id=${userId}`);
+    const successUrl = encodeURIComponent(`${AUTH0_CONFIG.appUrl}?payment_status=success&user_id=${userId}&plan=${plan}`);
     const cancelUrl = encodeURIComponent(AUTH0_CONFIG.mainUrl);
     
     // Create the full URL with parameters
-    let paymentUrl = STRIPE_CONFIG.paymentLink;
+    let paymentUrl = paymentLink;
     
     // Add client_reference_id if the link doesn't have parameters yet
     if (!paymentUrl.includes('?')) {
@@ -139,7 +160,7 @@ function redirectToPayment(email, userId) {
     paymentUrl += `&success_url=${successUrl}&cancel_url=${cancelUrl}`;
     
     // Redirect to payment
-    console.log("Redirecting to payment:", paymentUrl);
+    console.log(`Redirecting to ${plan} payment:`, paymentUrl);
     window.location.href = paymentUrl;
 }
 
@@ -216,9 +237,9 @@ function initializeLock() {
                 console.log(`User has subscription, redirecting to app:`, appUrl);
                 window.location.replace(appUrl);
             } else {
-                // User needs to subscribe, redirect to payment link
-                console.log(`User needs subscription, redirecting to payment`);
-                redirectToPayment(userEmail, userId);
+                // User needs to subscribe, redirect to plans page
+                console.log(`User needs subscription, redirecting to plans page`);
+                window.location.href = `${AUTH0_CONFIG.mainUrl}/plans.html?user_id=${encodeURIComponent(userId)}`;
             }
         });
     });
@@ -284,6 +305,7 @@ function clearAuthData(clearUserID = true) {
     if (clearUserID) {
         localStorage.removeItem('subscription_active');
         localStorage.removeItem('subscription_date');
+        localStorage.removeItem('subscription_plan');
     }
     
     // Clear session storage too (standard security practice)
