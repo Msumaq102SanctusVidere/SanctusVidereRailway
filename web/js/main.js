@@ -239,6 +239,8 @@ function isSubscribed(email) {
 
 // Redirect to Stripe payment link
 function redirectToPayment(email, userId, plan = 'monthly') {
+    // Add this new line
+    console.log("ACTUAL PAYMENT REDIRECT - PLAN TYPE:", plan, "TYPE OF PLAN:", typeof plan);
     // Log the plan parameter to verify it's being passed correctly
     console.log("redirectToPayment called with plan:", plan);
     
