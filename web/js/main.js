@@ -1,3 +1,6 @@
+// MAIN.JS DEBUG - Direct variable
+console.log("Main.js loading directly");
+
 // Auth0 Lock widget
 let lock = null;
 
@@ -19,6 +22,33 @@ const STRIPE_CONFIG = {
     testAccounts: ["test2@example.com"] // Your test account that bypasses payment
 };
 
+// Direct login button handler - outside any event for reliability
+console.log("Setting up direct login button handler");
+function setupLoginButtonDirect() {
+    console.log("Direct setup function running");
+    const loginButton = document.getElementById('login-button');
+    console.log("Direct login button check:", loginButton);
+    
+    if (loginButton) {
+        console.log("Adding direct click handler to login button");
+        loginButton.addEventListener('click', function() {
+            console.log("Login button clicked directly!");
+            window.location.href = 'plans.html';
+        });
+    } else {
+        console.log("Login button not found in direct setup");
+    }
+}
+
+// Call it after a short delay to ensure DOM is ready
+setTimeout(setupLoginButtonDirect, 500);
+
+// Also try the standard way
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM Content Loaded Event");
+    setupLoginButtonDirect();
+});
+
 // Wait for the Auth0 SDK to load
 async function waitForAuth0SDK() {
     const maxAttempts = 50; // Wait up to 5 seconds (50 * 100ms)
@@ -34,8 +64,6 @@ async function waitForAuth0SDK() {
 
 // Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', async function() {
-    console.log("DOMContentLoaded event fired - DOM is ready");
-    
     try {
         await waitForAuth0SDK();
         
@@ -45,22 +73,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Check if we're on the logged-out page and need to show login
         if (window.location.pathname.includes('logged-out.html')) {
             setupLoginButton();
-        }
-        
-        // DEBUG: Setup main login button to go to plans page
-        console.log("Looking for login button with ID 'login-button'...");
-        const loginButton = document.getElementById('login-button');
-        console.log("Found login button:", loginButton);
-        
-        if (loginButton) {
-            console.log("Adding click event listener to login button");
-            loginButton.addEventListener('click', function() {
-                console.log("Login button clicked!");
-                console.log("Redirecting to plans.html");
-                window.location.href = 'plans.html';
-            });
-        } else {
-            console.log("LOGIN BUTTON NOT FOUND ON PAGE - Check the ID in HTML");
         }
         
         // Detect and fix URL format if needed
