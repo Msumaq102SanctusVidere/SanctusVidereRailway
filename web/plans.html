@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Choose Your Plan - Sanctus Videre</title>
+    
+    <!-- Add your favicon and other common head elements from your index.html -->
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    
+    <!-- You may want to include your main CSS file here -->
+    <link rel="stylesheet" href="/web/css/styles.css">
+    
+    <style>
+        /* Plan page specific styles */
+        .plans-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 1rem;
+        }
+        
+        .plans-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .plans-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+        
+        .plans-header p {
+            font-size: 1.2rem;
+            color: #666;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .plans-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2rem;
+        }
+        
+        .plan-card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            width: 320px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .plan-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        .plan-name {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+        
+        .plan-price {
+            font-size: 2.2rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #5956E9; /* Match your brand color */
+        }
+        
+        .plan-period {
+            font-size: 1rem;
+            color: #777;
+            margin-top: -0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .plan-description {
+            margin-bottom: 2rem;
+            flex-grow: 1;
+            line-height: 1.6;
+            color: #555;
+        }
+        
+        .plan-select-btn {
+            background-color: #5956E9; /* Match your brand color */
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            width: 100%;
+        }
+        
+        .plan-select-btn:hover {
+            background-color: #4644c4; /* Slightly darker */
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .plans-grid {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .plan-card {
+                width: 100%;
+                max-width: 400px;
+            }
+        }
+        
+        /* You may want to include your header/footer styles from your main site */
+        header {
+            background-color: #fff;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .logo {
+            max-height: 50px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-top: 2rem;
+            color: #5956E9;
+            text-decoration: none;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <!-- Include your site header here - modify as needed to match your site's layout -->
+    <header>
+        <a href="index.html">
+            <img src="/web/images/sanctus-videre-logo.png" alt="Sanctus Videre" class="logo">
+        </a>
+    </header>
+    
+    <div class="plans-container">
+        <div class="plans-header">
+            <h1>Choose Your Plan</h1>
+            <p>Select the subscription option that best fits your needs</p>
+        </div>
+        
+        <div class="plans-grid">
+            <!-- Daily Plan -->
+            <div class="plan-card">
+                <h2 class="plan-name">Daily Subscription</h2>
+                <div class="plan-price">$10</div>
+                <div class="plan-period">per day</div>
+                <div class="plan-description">
+                    Perfect for users to try out, get comfortable with the interface, start experimenting with how to ask a question and what to ask to get the most out of Sanctus Videre which makes a huge difference in output. This daily recurring subscription provides you a low initial payment to give Sanctus Videre a go which you can cancel at any time! You've got unlimited drawings upload and unlimited questions with analysis until you cancel.
+                </div>
+                <button class="plan-select-btn" data-plan="daily">Select Daily Plan</button>
+            </div>
+            
+            <!-- Weekly Plan -->
+            <div class="plan-card">
+                <h2 class="plan-name">Weekly Subscription</h2>
+                <div class="plan-price">$70</div>
+                <div class="plan-period">per week</div>
+                <div class="plan-description">
+                    You've tried out Sanctus Videre for a couple of days and you're truly pumped with the productivity potential you can get out of it. You want to try Sanctus Videre on a specific project for an extended period to test it out further. This is the perfect solution for you with minimal financial risk. You will be charged weekly on a recurring basis and can cancel at any time! You will have unlimited drawings upload and unlimited questions with analysis until you cancel.
+                </div>
+                <button class="plan-select-btn" data-plan="weekly">Select Weekly Plan</button>
+            </div>
+            
+            <!-- Monthly Plan -->
+            <div class="plan-card">
+                <h2 class="plan-name">Monthly Subscription</h2>
+                <div class="plan-price">$300</div>
+                <div class="plan-period">per month</div>
+                <div class="plan-description">
+                    You've figured out how to get the best out of Sanctus Videre. You've mastered how to ask questions and what to ask. You know what drawings to select for analysis, and you've built a strong memory bank for your project. You know exactly how to use the output to make your job more efficient and more productive. Sanctus Videre is an essential tool in your toolkit and you use it frequently. Unlimited drawings, questions/analysis. You will be charged on a monthly recurring basis until you cancel.
+                </div>
+                <button class="plan-select-btn" data-plan="monthly">Select Monthly Plan</button>
+            </div>
+        </div>
+        
+        <a href="index.html" class="back-link">← Back to Home</a>
+    </div>
+    
+    <!-- Add Auth0 script -->
+    <script src="https://cdn.auth0.com/js/lock/12.0.0/lock.min.js"></script>
+    
+    <!-- Add your main.js -->
+    <script src="main.js"></script>
+    
+    <script>
+        // Plans page specific script
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get userId from URL if available
+            const urlParams = new URLSearchParams(window.location.search);
+            const userId = urlParams.get('user_id');
+            
+            // Add click handlers to all plan buttons
+            const planButtons = document.querySelectorAll('.plan-select-btn');
+            planButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const planType = this.getAttribute('data-plan');
+                    
+                    if (userId) {
+                        // User is already authenticated, redirect directly to payment
+                        redirectToPayment(null, userId, planType);
+                    } else {
+                        // User is not authenticated, show login first
+                        // Store the selected plan in localStorage to use after auth
+                        localStorage.setItem('selected_plan', planType);
+                        login();
+                    }
+                });
+            });
+            
+            // Custom handler for auth result to use selected plan
+            if (typeof lock !== 'undefined' && lock) {
+                lock.on('authenticated', function(authResult) {
+                    // The standard handler in main.js will run, but we can add our own logic
+                    // to check for a selected plan
+                    const selectedPlan = localStorage.getItem('selected_plan');
+                    if (selectedPlan) {
+                        // Clear it after use
+                        localStorage.removeItem('selected_plan');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
