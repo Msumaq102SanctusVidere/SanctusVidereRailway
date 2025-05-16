@@ -24,60 +24,6 @@
     <script src="js/main.js"></script>
     
     <style>
-        /* Security Badges Section */
-        .absolute-security-badges {
-            position: fixed;
-            left: 20px;
-            top: 120px; /* Position below the logo */
-            width: 160px;
-            padding: 15px;
-            background-color: rgba(15, 20, 30, 0.85);
-            border-radius: 8px;
-            text-align: center;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            border: 1px solid rgba(52, 152, 219, 0.3);
-            z-index: 100;
-        }
-        
-        .absolute-security-badges h3 {
-            color: #ffffff;
-            font-size: 16px;
-            margin-top: 0;
-            margin-bottom: 12px;
-            font-weight: 500;
-        }
-        
-        .badge-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 15px;
-            margin-bottom: 10px;
-        }
-        
-        .security-badge {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        
-        .security-badge img {
-            height: 35px;
-            margin-bottom: 5px;
-            filter: drop-shadow(0 0 3px rgba(89, 86, 233, 0.4));
-        }
-        
-        .security-badge span {
-            color: #bbc8d7;
-            font-size: 12px;
-        }
-        
-        .badge-caption {
-            color: #8a9bab;
-            font-size: 11px;
-            margin: 5px 0 0 0;
-        }
-        
         /* Sample Output Section Styles */
         .sample-output-section {
             background-color: #0f1a2b;
@@ -172,7 +118,7 @@
             color: #333;
             padding: 25px;
             border-radius: 8px;
-            max-height: 700px; /* Increased from 500px */
+            max-height: 700px;
             overflow-y: auto;
             display: none; /* Initially hidden */
             line-height: 1.6;
@@ -328,22 +274,6 @@
         <a href="index.html">
             <img src="images/sanctus-videre-logo.png" alt="Sanctus Videre Logo" class="site-logo">
         </a>
-    </div>
-    
-    <!-- Security Badges Section in absolute position -->
-    <div class="absolute-security-badges">
-        <h3>Enterprise Security</h3>
-        <div class="badge-container">
-            <div class="security-badge">
-                <img src="images/auth0-badge.png" alt="Secured by Auth0">
-                <span>Authentication</span>
-            </div>
-            <div class="security-badge">
-                <img src="images/stripe-badge.png" alt="Payments by Stripe">
-                <span>Payments</span>
-            </div>
-        </div>
-        <p class="badge-caption">Powered by industry leaders in security and payments</p>
     </div>
     
     <div class="container">
