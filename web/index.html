@@ -1026,40 +1026,66 @@
             // Run status check on page load
             checkUserStatus();
             
-            // Set up button click handlers
+            // Clear existing event handlers (important to prevent double handlers)
             const loginButton = document.getElementById('login-button');
             const signupButton = document.getElementById('signup-button');
             const appButton = document.getElementById('app-button');
             
+            // Clear any existing event listeners by cloning and replacing elements
             if (loginButton) {
-                loginButton.addEventListener('click', function() {
+                const newLoginButton = loginButton.cloneNode(true);
+                loginButton.parentNode.replaceChild(newLoginButton, loginButton);
+            }
+            
+            if (signupButton) {
+                const newSignupButton = signupButton.cloneNode(true);
+                signupButton.parentNode.replaceChild(newSignupButton, signupButton);
+            }
+            
+            if (appButton) {
+                const newAppButton = appButton.cloneNode(true);
+                appButton.parentNode.replaceChild(newAppButton, appButton);
+            }
+            
+            // Get fresh references to buttons after cloning
+            const freshLoginButton = document.getElementById('login-button');
+            const freshSignupButton = document.getElementById('signup-button');
+            const freshAppButton = document.getElementById('app-button');
+            
+            // Add new event handlers
+            if (freshLoginButton) {
+                freshLoginButton.addEventListener('click', function() {
                     console.log("Login button clicked");
-                    // For existing users, show Auth0 login directly
-                    if (typeof login === 'function') {
-                        login();
+                    const hasToken = localStorage.getItem('auth_id_token');
+                    const hasSubscription = localStorage.getItem('subscription_active') === 'true';
+                    
+                    if (hasToken && hasSubscription) {
+                        // Already logged in with subscription - go to app
+                        const userId = localStorage.getItem('auth_user_id');
+                        const idToken = localStorage.getItem('auth_id_token');
+                        const appUrl = `https://app.sanctusvidere.com?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(idToken)}`;
+                        window.location.href = appUrl;
+                    } else if (typeof window.login === 'function') {
+                        // Show Auth0 login widget
+                        window.login();
                     } else {
-                        // Fallback if login function not available
                         alert("Login function not available. Please try again later.");
                     }
                 });
             }
             
-            if (signupButton) {
-                signupButton.addEventListener('click', function() {
+            if (freshSignupButton) {
+                freshSignupButton.addEventListener('click', function() {
                     console.log("Signup button clicked");
-                    // For new users, go to plans page
                     window.location.href = 'plans.html';
                 });
             }
             
-            if (appButton) {
-                appButton.addEventListener('click', function() {
+            if (freshAppButton) {
+                freshAppButton.addEventListener('click', function() {
                     console.log("App button clicked");
-                    // Get user ID from localStorage
                     const userId = localStorage.getItem('auth_user_id');
                     const idToken = localStorage.getItem('auth_id_token');
-                    
-                    // Redirect to Streamlit app
                     const appUrl = `https://app.sanctusvidere.com?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(idToken)}`;
                     window.location.href = appUrl;
                 });
