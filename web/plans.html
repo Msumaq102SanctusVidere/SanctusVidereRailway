@@ -371,7 +371,7 @@
                 <div class="plan-description">
                     Perfect for users to try out, get comfortable with the interface, start experimenting with how to ask a question and what to ask to get the most out of Sanctus Videre which makes a huge difference in output. This daily recurring subscription provides you a low initial payment to give Sanctus Videre a go which you can cancel at any time! You've got unlimited drawings upload and unlimited questions with analysis until you cancel.
                 </div>
-                <button class="plan-select-btn" data-plan="daily">Select Daily Plan</button>
+                <button class="plan-select-btn" onclick="handlePlanSelection('daily')">Select Daily Plan</button>
             </div>
             
             <!-- Weekly Plan -->
@@ -382,7 +382,7 @@
                 <div class="plan-description">
                     You've tried out Sanctus Videre for a couple of days and you're truly pumped with the productivity potential you can get out of it. You want to try Sanctus Videre on a specific project for an extended period to test it out further. This is the perfect solution for you with minimal financial risk. You will be charged weekly on a recurring basis and can cancel at any time! You will have unlimited drawings upload and unlimited questions with analysis until you cancel.
                 </div>
-                <button class="plan-select-btn" data-plan="weekly">Select Weekly Plan</button>
+                <button class="plan-select-btn" onclick="handlePlanSelection('weekly')">Select Weekly Plan</button>
             </div>
             
             <!-- Monthly Plan -->
@@ -393,7 +393,7 @@
                 <div class="plan-description">
                     You've figured out how to get the best out of Sanctus Videre. You've mastered how to ask questions and what to ask. You know what drawings to select for analysis, and you've built a strong memory bank for your project. You know exactly how to use the output to make your job more efficient and more productive. Sanctus Videre is an essential tool in your toolkit and you use it frequently. Unlimited drawings, questions/analysis. You will be charged on a monthly recurring basis until you cancel.
                 </div>
-                <button class="plan-select-btn" data-plan="monthly">Select Monthly Plan</button>
+                <button class="plan-select-btn" onclick="handlePlanSelection('monthly')">Select Monthly Plan</button>
             </div>
         </div>
         
@@ -407,86 +407,33 @@
     <script src="js/main.js"></script>
     
     <script>
-        // Plans page specific script
-        document.addEventListener('DOMContentLoaded', function() {
-            // Get userId from URL if available
-            const urlParams = new URLSearchParams(window.location.search);
-            const userId = urlParams.get('user_id');
+        // Simple direct plan selection handler
+        function handlePlanSelection(planType) {
+            console.log("Plan selected:", planType);
             
-            // Define the redirectToPayment function directly in plans.html
-            function redirectToPayment(email, userId, plan = 'monthly') {
-                console.log("Redirecting to plan:", plan);
-                
-                // Use the same STRIPE_CONFIG from main.js
-                const STRIPE_CONFIG = {
-                    paymentLinks: {
-                        daily: "https://buy.stripe.com/7sY8wQ8QK8OFfi7cUP3gk01",
-                        weekly: "https://buy.stripe.com/6oU9AUd702qh0nddYT3gk02",
-                        monthly: "https://buy.stripe.com/cN2aFI9XK2r2gAofYY"
-                    }
-                };
-                
-                const AUTH0_CONFIG = {
-                    domain: "dev-wl2dxopsswbbvkcb.us.auth0.com",
-                    clientId: "BAXPcs4GZAZodDtErS0UxTmugyxbEcZU",
-                    mainUrl: "https://sanctusvidere.com",
-                    appUrl: "https://app.sanctusvidere.com"
-                };
-                
-                // Get the correct payment link based on the plan
-                const paymentLink = STRIPE_CONFIG.paymentLinks[plan.toLowerCase()];
-                console.log("Payment link for " + plan + ":", paymentLink);
-                
-                // Construct the payment link with success/cancel URLs
-                const successUrl = encodeURIComponent(`${AUTH0_CONFIG.appUrl}?payment_status=success&user_id=${userId}&plan=${plan}`);
-                const cancelUrl = encodeURIComponent(AUTH0_CONFIG.mainUrl);
-                
-                // Create the full URL with parameters
-                let paymentUrl = paymentLink;
-                
-                // Add client_reference_id if the link doesn't have parameters yet
-                if (!paymentUrl.includes('?')) {
-                    paymentUrl += `?client_reference_id=${userId}`;
-                } else {
-                    paymentUrl += `&client_reference_id=${userId}`;
-                }
-                
-                // Add success and cancel URLs
-                paymentUrl += `&success_url=${successUrl}&cancel_url=${cancelUrl}`;
-                
-                // Redirect to payment
-                console.log(`Redirecting to payment:`, paymentUrl);
-                window.location.href = paymentUrl;
+            // Payment links configuration
+            const PAYMENT_LINKS = {
+                daily: "https://buy.stripe.com/7sY8wQ8QK8OFfi7cUP3gk01",
+                weekly: "https://buy.stripe.com/6oU9AUd702qh0nddYT3gk02",
+                monthly: "https://buy.stripe.com/cN2aFI9XK2r2gAofYY"
+            };
+            
+            // Get the URL for the selected plan
+            const paymentUrl = PAYMENT_LINKS[planType.toLowerCase()];
+            
+            if (!paymentUrl) {
+                console.error("Invalid plan type:", planType);
+                alert("Sorry, there was an error with your plan selection. Please try again.");
+                return;
             }
             
-            // Add click handlers to all plan buttons
-            const planButtons = document.querySelectorAll('.plan-select-btn');
-            planButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const planType = this.getAttribute('data-plan');
-                    console.log("Button clicked with plan:", planType);
-                    
-                    if (userId) {
-                        // User is already authenticated, redirect directly to payment
-                        console.log("Redirecting to payment with plan:", planType);
-                        redirectToPayment(null, userId, planType);
-                    } else {
-                        // User is not authenticated, show login first
-                        // Store the selected plan in localStorage to use after auth
-                        console.log("Storing plan for after auth:", planType);
-                        localStorage.setItem('selected_plan', planType);
-                        // Here you would need to call login() from main.js
-                        if (typeof login === 'function') {
-                            login();
-                        } else {
-                            // Fallback - redirect to login page or show error
-                            alert("Login function not available. Please try again later.");
-                        }
-                    }
-                });
-            });
-            
-            // Add subtle hover effects to plan cards
+            // Redirect directly to the payment URL
+            console.log("Redirecting to payment URL:", paymentUrl);
+            window.location.href = paymentUrl;
+        }
+        
+        // Add subtle hover effects to plan cards
+        document.addEventListener('DOMContentLoaded', function() {
             const planCards = document.querySelectorAll('.plan-card');
             planCards.forEach(card => {
                 card.addEventListener('mouseenter', function() {
