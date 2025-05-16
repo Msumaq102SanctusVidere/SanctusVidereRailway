@@ -1,3 +1,4 @@
+console.log("MAIN.JS LOADED - VERSION: " + Date.now());
 // MAIN.JS DEBUG - Direct variable
 console.log("Main.js loading directly");
 
