@@ -34,10 +34,33 @@ function setupLoginButtonDirect() {
         console.log("Adding direct click handler to login button");
         loginButton.addEventListener('click', function() {
             console.log("Login button clicked directly!");
-            window.location.href = 'plans.html';
+            login();
         });
     } else {
         console.log("Login button not found in direct setup");
+    }
+
+    // Set up sign up button
+    const signupButton = document.getElementById('signup-button');
+    if (signupButton) {
+        console.log("Adding click handler to signup button");
+        signupButton.addEventListener('click', function() {
+            console.log("Signup button clicked!");
+            window.location.href = 'plans.html';
+        });
+    }
+
+    // Set up app access button
+    const appButton = document.getElementById('app-button');
+    if (appButton) {
+        console.log("Adding click handler to app button");
+        appButton.addEventListener('click', function() {
+            console.log("App button clicked!");
+            const userId = localStorage.getItem('auth_user_id');
+            const idToken = localStorage.getItem('auth_id_token');
+            const appUrl = `${AUTH0_CONFIG.appUrl}?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(idToken)}`;
+            window.location.href = appUrl;
+        });
     }
 }
 
@@ -48,6 +71,7 @@ setTimeout(setupLoginButtonDirect, 500);
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM Content Loaded Event");
     setupLoginButtonDirect();
+    checkUserStatus();
 });
 
 // Wait for the Auth0 SDK to load
@@ -89,6 +113,59 @@ document.addEventListener('DOMContentLoaded', async function() {
     setupReviewForm();
     setupDirectAccess();
 });
+
+// Check user status and update UI accordingly
+function checkUserStatus() {
+    const hasToken = localStorage.getItem('auth_id_token');
+    const hasSubscription = localStorage.getItem('subscription_active') === 'true';
+    const subscriptionType = localStorage.getItem('subscription_plan') || 'Monthly';
+    
+    console.log("Checking user status:", { hasToken, hasSubscription, subscriptionType });
+    
+    const userStatus = document.getElementById('user-status');
+    const loginButton = document.getElementById('login-button');
+    const signupButton = document.getElementById('signup-button');
+    const appButton = document.getElementById('app-button');
+    const logoutButton = document.getElementById('logout-button');
+    
+    if (!userStatus) {
+        console.log("User status element not found, likely not on homepage");
+        return;
+    }
+    
+    const subscriptionBadge = document.getElementById('subscription-type');
+    
+    if (hasToken) {
+        // User is logged in
+        if (hasSubscription) {
+            // User has subscription - show app button
+            userStatus.style.display = 'flex';
+            loginButton.style.display = 'none';
+            signupButton.style.display = 'none';
+            appButton.style.display = 'block';
+            logoutButton.style.display = 'block';
+            
+            // Set subscription badge text
+            if (subscriptionBadge) {
+                subscriptionBadge.textContent = subscriptionType.charAt(0).toUpperCase() + subscriptionType.slice(1);
+            }
+        } else {
+            // User is logged in but no subscription
+            userStatus.style.display = 'none';
+            loginButton.style.display = 'none';
+            signupButton.style.display = 'block';
+            appButton.style.display = 'none';
+            logoutButton.style.display = 'block';
+        }
+    } else {
+        // User is not logged in
+        userStatus.style.display = 'none';
+        loginButton.style.display = 'block';
+        signupButton.style.display = 'block';
+        appButton.style.display = 'none';
+        logoutButton.style.display = 'none';
+    }
+}
 
 // Check and fix URL format if needed
 function fixUrlFormat() {
@@ -162,8 +239,14 @@ function isSubscribed(email) {
 
 // Redirect to Stripe payment link
 function redirectToPayment(email, userId, plan = 'monthly') {
+    // Log the plan parameter to verify it's being passed correctly
+    console.log("redirectToPayment called with plan:", plan);
+    
     // Get the correct payment link based on the plan
-    const paymentLink = STRIPE_CONFIG.paymentLinks[plan];
+    const paymentLink = STRIPE_CONFIG.paymentLinks[plan.toLowerCase()];
+    
+    // Log the selected payment link for debugging
+    console.log("Payment link for " + plan + ":", paymentLink);
     
     // Construct the payment link with success/cancel URLs
     const successUrl = encodeURIComponent(`${AUTH0_CONFIG.appUrl}?payment_status=success&user_id=${userId}&plan=${plan}`);
@@ -253,12 +336,23 @@ function initializeLock() {
             if (profile.email) localStorage.setItem('auth_user_email', profile.email);
             localStorage.setItem('auth_login_time', Date.now().toString());
             
+            // Check if the user selected a plan before login
+            const selectedPlan = localStorage.getItem('selected_plan');
+            console.log("Selected plan found in localStorage:", selectedPlan);
+            
             // Check if user is subscribed or is a test account
             if (isSubscribed(userEmail)) {
                 // User has subscription, redirect to app
                 const appUrl = `${AUTH0_CONFIG.appUrl}?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(idToken)}`;
                 console.log(`User has subscription, redirecting to app:`, appUrl);
                 window.location.replace(appUrl);
+            } else if (selectedPlan) {
+                // User selected a plan before login, redirect to payment for that plan
+                console.log(`User selected ${selectedPlan} plan, redirecting to payment`);
+                // Clear the selected plan from localStorage
+                localStorage.removeItem('selected_plan');
+                // Redirect to payment
+                redirectToPayment(userEmail, userId, selectedPlan);
             } else {
                 // User needs to subscribe, redirect to plans page
                 console.log(`User needs subscription, redirecting to plans page`);
@@ -285,6 +379,12 @@ function login() {
         alert("Authentication service unavailable. Please try again later.");
     }
 }
+
+// Make login function available globally
+window.login = login;
+
+// Make redirectToPayment function available globally
+window.redirectToPayment = redirectToPayment;
 
 // Logout function - Using standard practices
 function logout() {
@@ -397,12 +497,18 @@ function setupReviewForm() {
 
 // Show review form
 function showReviewForm() {
-    document.getElementById('review-form-container').style.display = 'flex';
+    const reviewFormContainer = document.getElementById('review-form-container');
+    if (reviewFormContainer) {
+        reviewFormContainer.style.display = 'flex';
+    }
 }
 
 // Hide review form
 function hideReviewForm() {
-    document.getElementById('review-form-container').style.display = 'none';
+    const reviewFormContainer = document.getElementById('review-form-container');
+    if (reviewFormContainer) {
+        reviewFormContainer.style.display = 'none';
+    }
 }
 
 // Save review to localStorage for demo
