@@ -34,6 +34,8 @@ async function waitForAuth0SDK() {
 
 // Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', async function() {
+    console.log("DOMContentLoaded event fired - DOM is ready");
+    
     try {
         await waitForAuth0SDK();
         
@@ -45,12 +47,20 @@ document.addEventListener('DOMContentLoaded', async function() {
             setupLoginButton();
         }
         
-        // Setup main login button to go to plans page
+        // DEBUG: Setup main login button to go to plans page
+        console.log("Looking for login button with ID 'login-button'...");
         const loginButton = document.getElementById('login-button');
+        console.log("Found login button:", loginButton);
+        
         if (loginButton) {
+            console.log("Adding click event listener to login button");
             loginButton.addEventListener('click', function() {
+                console.log("Login button clicked!");
+                console.log("Redirecting to plans.html");
                 window.location.href = 'plans.html';
             });
+        } else {
+            console.log("LOGIN BUTTON NOT FOUND ON PAGE - Check the ID in HTML");
         }
         
         // Detect and fix URL format if needed
@@ -59,7 +69,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Handle successful payment return
         handlePaymentReturn();
     } catch (err) {
-        console.error(err.message);
+        console.error("Error during initialization:", err.message);
     }
     
     // Set up other components
