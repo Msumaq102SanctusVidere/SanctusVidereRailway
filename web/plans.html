@@ -434,7 +434,7 @@
                 };
                 
                 // Get the correct payment link based on the plan
-                const paymentLink = STRIPE_CONFIG.paymentLinks[plan];
+                const paymentLink = STRIPE_CONFIG.paymentLinks[plan.toLowerCase()];
                 console.log("Payment link for " + plan + ":", paymentLink);
                 
                 // Construct the payment link with success/cancel URLs
