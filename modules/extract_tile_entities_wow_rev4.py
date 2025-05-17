@@ -1090,7 +1090,8 @@ IMPORTANT CONSIDERATIONS:
 - In {drawing_type} drawings, multiple mini-drawings are often shown on the same sheet
 - Each mini-drawing typically has its own title and ID
 - When boundary lines are clearly visible, use them to distinguish separate components
-- For partition details, different partition types are usually shown as separate mini-drawings
+- For partition details, different partition types (e.g., "PARTITION TYPE 6", "PARTITION TYPE 7") are always separate mini-drawings
+- Pay special attention to type numbers in titles - these indicate distinct components
 
 Return a JSON array with these fields for each component:
 [
@@ -1326,43 +1327,47 @@ def is_likely_continuation(comp_a, comp_b, drawing_type="generic"):
         comp_a["component_id"] != comp_b["component_id"]):
         return False
     
-    # Set drawing-type specific tolerances and thresholds, but less restrictive
+    # Set drawing-type specific tolerances and thresholds
     tolerances = {
-        "detail": 30,        # More balanced than original 50
-        "elevation": 35,     # More balanced than original 50
-        "partition": 30,     # More balanced than original 50
-        "section": 35,       # More balanced than original 50
-        "plan": 50,          # Original value
-        "generic": 50        # Default value
+        "detail": 25,         # Much lower tolerance for details
+        "partition": 25,      # Lower tolerance for partition types
+        "elevation": 30,      # Lower tolerance for elevations
+        "section": 30,        # Lower tolerance for sections
+        "plan": 50,           # Original value for plans
+        "generic": 50         # Default value
     }
     
     overlap_thresholds = {
-        "detail": 0.4,       # More balanced than original 0.3
-        "elevation": 0.35,   # More balanced than original 0.3
-        "partition": 0.45,   # More balanced than original 0.3
-        "section": 0.35,     # More balanced than original 0.3
-        "plan": 0.3,         # Original value
-        "generic": 0.3       # Default value
+        "detail": 0.4,        # Higher overlap required for details
+        "partition": 0.4,     # Higher for partitions
+        "elevation": 0.35,    # Higher for elevations
+        "section": 0.35,      # Higher for sections
+        "plan": 0.3,          # Original value for plans
+        "generic": 0.3        # Default value
     }
     
     # Get appropriate values based on drawing type
     tolerance = tolerances.get(drawing_type, tolerances["generic"])
     min_overlap = overlap_thresholds.get(drawing_type, overlap_thresholds["generic"])
     
+    # Add title comparison for detail drawings
+    if drawing_type in ["detail", "partition"]:
+        title_a = comp_a.get("title", "").strip()
+        title_b = comp_b.get("title", "").strip()
+        
+        # If both have title text and they contain different type numbers
+        if title_a and title_b:
+            # Look for "TYPE X" or "TYPE-X" patterns
+            type_pattern = r'TYPE[- ](\d+)'
+            match_a = re.search(type_pattern, title_a.upper())
+            match_b = re.search(type_pattern, title_b.upper())
+            
+            # If both have type numbers and they're different, these are different components
+            if match_a and match_b and match_a.group(1) != match_b.group(1):
+                return False
+    
     bbox_a = comp_a["global_bbox"]
     bbox_b = comp_b["global_bbox"]
-    
-    # For detail drawings, add title verification, but only for clear cases
-    if drawing_type in ["detail", "partition"] and comp_a.get("title", "") and comp_b.get("title", ""):
-        title_a = comp_a.get("title", "").strip().upper()
-        title_b = comp_b.get("title", "").strip().upper()
-        
-        # Only consider very clearly different titles
-        if (len(title_a) > 5 and len(title_b) > 5 and 
-            title_a != title_b and
-            not title_a.startswith(title_b) and 
-            not title_b.startswith(title_a)):
-            return False
     
     # Check if one component extends to an edge and the other starts at that edge
     # Component A extends right, B continues from left
@@ -1371,6 +1376,7 @@ def is_likely_continuation(comp_a, comp_b, drawing_type="generic"):
             overlap_percent(bbox_a["y"], bbox_a["height"], bbox_b["y"], bbox_b["height"]) > min_overlap):
             return True
     
+    # [Rest of the existing comparison logic remains the same]
     # Component A extends left, B continues from right
     if "left" in comp_a.get("cut_edges", []) and "right" in comp_b.get("cut_edges", []):
         if (abs(bbox_b["x"] + bbox_b["width"] - bbox_a["x"]) < tolerance and
