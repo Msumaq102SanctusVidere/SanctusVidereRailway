@@ -188,6 +188,86 @@ def analyze_general_notes_tile(sheet_folder, tile, drawing_goals):
     except Exception as e:
         print(f"❌ Error on {filename}: {e}")
         return {"filename": filename, "error": str(e)}
+def analyze_all_elevation_detail_tiles(sheet_folder, sheet_name, drawing_type):
+    """Streamlined analysis for elevation/detail drawings with clear, focused steps"""
+    print(f"📊 Analyzing {sheet_name} as {drawing_type} drawing...")
+    
+    # Load metadata and drawing goals
+    metadata_file = sheet_folder / f"{sheet_name}_tile_metadata.json"
+    try:
+        with open(metadata_file) as f:
+            metadata = json.load(f)
+    except Exception as e:
+        print(f"❌ Could not load metadata for {sheet_name}: {e}")
+        return
+    
+    drawing_goals = load_drawing_goals(sheet_folder, sheet_name)
+    
+    # Sort tiles in reading order (top-to-bottom, left-to-right)
+    sorted_tiles = sorted(metadata.get("tiles", []), key=lambda t: (t["y"], t["x"]))
+    if not sorted_tiles:
+        print(f"❌ No tiles found in metadata for {sheet_name}")
+        return
+    
+    # STEP 1: Identify component boundaries across all tiles
+    print(f"🔍 STEP 1: Identifying {drawing_type} component boundaries...")
+    boundary_results = []
+    
+    for tile in sorted_tiles:
+        filename = tile["filename"]
+        print(f"  → Scanning tile {filename}")
+        result = identify_component_boundaries(sheet_folder, tile, drawing_goals, drawing_type)
+        boundary_results.append(result)
+    
+    # STEP 2: Group components that span multiple tiles
+    print(f"🔗 STEP 2: Grouping related {drawing_type} components...")
+    # Pass drawing_type to ensure appropriate grouping parameters
+    component_groups = group_components_across_tiles(boundary_results, drawing_type)
+    
+    # STEP 3: Detailed analysis of each grouped component
+    print(f"🔬 STEP 3: Analyzing {len(component_groups)} {drawing_type} components in detail...")
+    final_components = []
+    
+    for i, group in enumerate(component_groups):
+        comp_id = group.get("component_id", f"COMP_{i+1}")
+        print(f"  → Analyzing {drawing_type} component {comp_id}")
+        
+        # For each component, analyze all related tiles together
+        detailed_result = analyze_component_detail(
+            sheet_folder, 
+            group["tiles"], 
+            group["bbox"], 
+            drawing_goals, 
+            drawing_type
+        )
+        
+        # Flag potential issues but don't block extraction
+        if detailed_result.get("material_coherence_warning", False):
+            print(f"⚠️ Notice: Possible material inconsistency in component {comp_id}")
+            detailed_result["possible_material_mixing"] = True
+        
+        final_components.append(detailed_result)
+    
+    # No aggressive post-processing - just flag issues
+    for component in final_components:
+        if component.get("possible_material_mixing", False):
+            component["note"] = "This component might contain materials from multiple drawings"
+    
+    # Save both intermediate and final results
+    print(f"💾 Saving analysis results...")
+    
+    # Save boundary detection results for debugging
+    boundary_path = sheet_folder / f"{sheet_name}_{drawing_type}_boundaries.json"
+    with open(boundary_path, "w") as f:
+        json.dump(boundary_results, f, indent=2)
+    
+    # Save final component analysis
+    final_path = sheet_folder / f"{sheet_name}_{drawing_type}_analysis.json"
+    with open(final_path, "w") as f:
+        json.dump(final_components, f, indent=2)
+    
+    print(f"✅ Analysis complete. Found {len(final_components)} {drawing_type} components.")
+    return final_components
 
 def build_general_notes_prompt(tile_name, drawing_goals):
     """Build prompt for analyzing general notes pages"""
@@ -842,16 +922,13 @@ IMPORTANT DRAWING CONVENTIONS:
 - Revision clouds (wavy red lines) often indicate changes or important information
 - Scale notations are typically near titles
 
-CRITICAL MATERIAL BOUNDARY INSTRUCTIONS:
-- Each separate mini-drawing has its OWN distinct set of materials and annotations
-- Materials and notes found in one mini-drawing MUST NOT be mixed with adjacent mini-drawings
-- Even if mini-drawings appear visually similar or share common elements, they are DISTINCT components
-- In partition type details, each partition type (e.g., "WALL TYPE A", "WALL TYPE B") is a separate mini-drawing
-- Look for thin boundary lines that separate one mini-drawing from another
-- When in doubt about whether something belongs to a particular mini-drawing, check for:
+MATERIAL GUIDANCE:
+- When clear boundary lines are present, each mini-drawing typically has its own set of materials
+- Look for leader lines connecting materials to specific elements
+- For partition type details, different partition types usually have different materials
+- When in doubt about whether something belongs to a particular mini-drawing, check for visual cues like:
   * Leader lines connecting materials to specific elements
   * Containment within boundary lines
-  * Visual separation from other mini-drawings
 
 CRITICAL EXTRACTION REQUIREMENTS:
 - EXTRACT ALL TEXT VISIBLE IN THE TILE EXACTLY AS IT APPEARS
@@ -887,7 +964,6 @@ CRITICAL INSTRUCTIONS:
 8. Extract text EXACTLY as shown without elaboration or modification.
 9. Text with revision clouds or red markings is especially important - always include it.
 10. Return an empty array [] if no mini-drawings are visible in this tile.
-11. CRITICAL: DO NOT mix materials or annotations between different mini-drawings.
 
 The filename of the tile is: {tile_name}
 """
@@ -1001,21 +1077,20 @@ def identify_component_boundaries(sheet_folder, tile, drawing_goals, drawing_typ
             with open(image_path, "rb") as img_file:
                 image_base64 = base64.b64encode(img_file.read()).decode("utf-8")
             
-            # Enhanced prompt with stronger boundary detection instructions
+            # More balanced prompt
             prompt = f"""
-Look at this tile from a construction {drawing_type.upper()} drawing. Your only task is to identify the boundaries of distinct components.
-
-CRITICAL BOUNDARY INSTRUCTIONS:
-1. For {drawing_type} drawings, each individual mini-drawing is separated by boundary lines
-2. Each distinct mini-drawing has its OWN title, ID, and materials
-3. Do NOT group separate mini-drawings together - maintain strict separation
-4. Look carefully for thin boundary lines that separate one mini-drawing from another
-5. {"For partition type details, each partition type (WALL TYPE A, WALL TYPE B, etc.) is a SEPARATE component" if drawing_type == "detail" else ""}
+Look at this tile from a construction {drawing_type.upper()} drawing. Your task is to identify the boundaries of distinct components.
 
 For each separate {drawing_type} component visible in this image:
-1. Find its exact boundaries (look for thin lines that separate one mini-drawing from another)
+1. Find its boundaries (look for lines that separate one mini-drawing from another)
 2. Look for any ID tag (like "A1", "D3", etc.)
 3. Identify its title (usually below the component)
+
+IMPORTANT CONSIDERATIONS:
+- In {drawing_type} drawings, multiple mini-drawings are often shown on the same sheet
+- Each mini-drawing typically has its own title and ID
+- When boundary lines are clearly visible, use them to distinguish separate components
+- For partition details, different partition types are usually shown as separate mini-drawings
 
 Return a JSON array with these fields for each component:
 [
@@ -1171,164 +1246,75 @@ def group_components_across_tiles(boundary_results, drawing_type="generic"):
             "num_tiles": len(tiles)
         })
     
-    # For detail/partition drawings, be more conservative with spatial grouping
-    if drawing_type in ["detail", "partition", "elevation", "section"]:
-        # Individually process remaining components for detail drawings
-        for i, comp_a in enumerate(all_components):
-            if i in processed:
+    # Now process remaining components for spatial grouping
+    for i, comp_a in enumerate(all_components):
+        if i in processed:
+            continue
+            
+        current_group = [comp_a]
+        processed.add(i)
+        
+        # Find adjacent components that match this one's cut edges
+        for j, comp_b in enumerate(all_components):
+            if j in processed or i == j:
                 continue
                 
-            # Only process this component if it doesn't have a meaningful ID
-            if comp_a["component_id"] != "unknown" and not comp_a["component_id"].startswith("COMP_"):
-                grouped_components.append({
-                    "component_id": comp_a["component_id"],
-                    "title": comp_a["title"],
-                    "bbox": comp_a["global_bbox"],
-                    "tiles": [{
-                        "filename": comp_a["source_tile"],
-                        "position": comp_a["tile_position"],
-                        "local_bbox": comp_a["local_bbox"]
-                    }],
-                    "is_partial": comp_a["is_partial"],
-                    "num_tiles": 1
+            # Pass drawing_type to is_likely_continuation
+            if is_likely_continuation(comp_a, comp_b, drawing_type):
+                current_group.append(comp_b)
+                processed.add(j)
+        
+        # If we found a group, create a grouped component
+        if len(current_group) > 1:
+            tiles = []
+            for comp in current_group:
+                tiles.append({
+                    "filename": comp["source_tile"],
+                    "position": comp["tile_position"],
+                    "local_bbox": comp["local_bbox"]
                 })
-                processed.add(i)
-                continue
-                
-            current_group = [comp_a]
-            processed.add(i)
             
-            # Find adjacent components that match this one's cut edges
-            for j, comp_b in enumerate(all_components):
-                if j in processed or i == j:
-                    continue
-                
-                # Pass the drawing type to is_likely_continuation
-                if is_likely_continuation(comp_a, comp_b, drawing_type):
-                    current_group.append(comp_b)
-                    processed.add(j)
+            # Calculate encompassing bounding box
+            min_x = min(c["global_bbox"]["x"] for c in current_group)
+            min_y = min(c["global_bbox"]["y"] for c in current_group)
+            max_x = max(c["global_bbox"]["x"] + c["global_bbox"]["width"] for c in current_group)
+            max_y = max(c["global_bbox"]["y"] + c["global_bbox"]["height"] for c in current_group)
             
-            # Only create a group if we found multiple components
-            if len(current_group) > 1:
-                tiles = []
-                for comp in current_group:
-                    tiles.append({
-                        "filename": comp["source_tile"],
-                        "position": comp["tile_position"],
-                        "local_bbox": comp["local_bbox"]
-                    })
-                
-                # Calculate encompassing bounding box
-                min_x = min(c["global_bbox"]["x"] for c in current_group)
-                min_y = min(c["global_bbox"]["y"] for c in current_group)
-                max_x = max(c["global_bbox"]["x"] + c["global_bbox"]["width"] for c in current_group)
-                max_y = max(c["global_bbox"]["y"] + c["global_bbox"]["height"] for c in current_group)
-                
-                global_bbox = {
-                    "x": min_x,
-                    "y": min_y,
-                    "width": max_x - min_x,
-                    "height": max_y - min_y
-                }
-                
-                # Get the most complete title
-                title = max((c["title"] for c in current_group if c["title"]), key=len, default="")
-                
-                # Use the most specific component ID
-                comp_id = next((c["component_id"] for c in current_group if c["component_id"] != "unknown"), f"COMP_{len(grouped_components)+1}")
-                
-                grouped_components.append({
-                    "component_id": comp_id,
-                    "title": title,
-                    "bbox": global_bbox,
-                    "tiles": tiles,
-                    "is_partial": any(c["is_partial"] for c in current_group),
-                    "num_tiles": len(tiles)
-                })
-            else:
-                # Single component, add directly
-                grouped_components.append({
-                    "component_id": comp_a["component_id"],
-                    "title": comp_a["title"],
-                    "bbox": comp_a["global_bbox"],
-                    "tiles": [{
-                        "filename": comp_a["source_tile"],
-                        "position": comp_a["tile_position"],
-                        "local_bbox": comp_a["local_bbox"]
-                    }],
-                    "is_partial": comp_a["is_partial"],
-                    "num_tiles": 1
-                })
-    else:
-        # For other drawing types, use the original approach for remaining components
-        for i, comp_a in enumerate(all_components):
-            if i in processed:
-                continue
-                
-            current_group = [comp_a]
-            processed.add(i)
+            global_bbox = {
+                "x": min_x,
+                "y": min_y,
+                "width": max_x - min_x,
+                "height": max_y - min_y
+            }
             
-            # Find adjacent components that match this one's cut edges
-            for j, comp_b in enumerate(all_components):
-                if j in processed or i == j:
-                    continue
-                    
-                # Check if these components might be continuations
-                if is_likely_continuation(comp_a, comp_b, drawing_type):
-                    current_group.append(comp_b)
-                    processed.add(j)
+            # Get the most complete title
+            title = max((c["title"] for c in current_group if c["title"]), key=len, default="")
             
-            # If we found a group, create a grouped component
-            if len(current_group) > 1:
-                tiles = []
-                for comp in current_group:
-                    tiles.append({
-                        "filename": comp["source_tile"],
-                        "position": comp["tile_position"],
-                        "local_bbox": comp["local_bbox"]
-                    })
-                
-                # Calculate encompassing bounding box
-                min_x = min(c["global_bbox"]["x"] for c in current_group)
-                min_y = min(c["global_bbox"]["y"] for c in current_group)
-                max_x = max(c["global_bbox"]["x"] + c["global_bbox"]["width"] for c in current_group)
-                max_y = max(c["global_bbox"]["y"] + c["global_bbox"]["height"] for c in current_group)
-                
-                global_bbox = {
-                    "x": min_x,
-                    "y": min_y,
-                    "width": max_x - min_x,
-                    "height": max_y - min_y
-                }
-                
-                # Get the most complete title
-                title = max((c["title"] for c in current_group if c["title"]), key=len, default="")
-                
-                # Use the most specific component ID
-                comp_id = next((c["component_id"] for c in current_group if c["component_id"] != "unknown"), f"COMP_{len(grouped_components)+1}")
-                
-                grouped_components.append({
-                    "component_id": comp_id,
-                    "title": title,
-                    "bbox": global_bbox,
-                    "tiles": tiles,
-                    "is_partial": any(c["is_partial"] for c in current_group),
-                    "num_tiles": len(tiles)
-                })
-            else:
-                # Add any remaining components as individual items
-                grouped_components.append({
-                    "component_id": comp_a["component_id"],
-                    "title": comp_a["title"],
-                    "bbox": comp_a["global_bbox"],
-                    "tiles": [{
-                        "filename": comp_a["source_tile"],
-                        "position": comp_a["tile_position"],
-                        "local_bbox": comp_a["local_bbox"]
-                    }],
-                    "is_partial": comp_a["is_partial"],
-                    "num_tiles": 1
-                })
+            # Use the most specific component ID
+            comp_id = next((c["component_id"] for c in current_group if c["component_id"] != "unknown"), f"COMP_{len(grouped_components)+1}")
+            
+            grouped_components.append({
+                "component_id": comp_id,
+                "title": title,
+                "bbox": global_bbox,
+                "tiles": tiles,
+                "is_partial": any(c["is_partial"] for c in current_group),
+                "num_tiles": len(tiles)
+            })
+        else:
+            # Add any remaining components as individual items
+            grouped_components.append({
+                "component_id": comp_a["component_id"],
+                "title": comp_a["title"],
+                "bbox": comp_a["global_bbox"],
+                "tiles": [{
+                    "filename": comp_a["source_tile"],
+                    "position": comp_a["tile_position"],
+                    "local_bbox": comp_a["local_bbox"]
+                }],
+                "is_partial": comp_a["is_partial"],
+                "num_tiles": 1
+            })
     
     return grouped_components
 
@@ -1340,22 +1326,22 @@ def is_likely_continuation(comp_a, comp_b, drawing_type="generic"):
         comp_a["component_id"] != comp_b["component_id"]):
         return False
     
-    # Set drawing-type specific tolerances and thresholds
+    # Set drawing-type specific tolerances and thresholds, but less restrictive
     tolerances = {
-        "detail": 15,        # Much stricter for details
-        "elevation": 20,     # Stricter for elevations too
-        "partition": 15,     # Strict for partition types
-        "section": 20,       # Stricter for sections
-        "plan": 50,          # Original value for plans
+        "detail": 30,        # More balanced than original 50
+        "elevation": 35,     # More balanced than original 50
+        "partition": 30,     # More balanced than original 50
+        "section": 35,       # More balanced than original 50
+        "plan": 50,          # Original value
         "generic": 50        # Default value
     }
     
     overlap_thresholds = {
-        "detail": 0.6,       # Higher overlap required for details
-        "elevation": 0.5,    # Higher for elevations
-        "partition": 0.7,    # Highest for partition types
-        "section": 0.5,      # Higher for sections
-        "plan": 0.3,         # Original value for plans
+        "detail": 0.4,       # More balanced than original 0.3
+        "elevation": 0.35,   # More balanced than original 0.3
+        "partition": 0.45,   # More balanced than original 0.3
+        "section": 0.35,     # More balanced than original 0.3
+        "plan": 0.3,         # Original value
         "generic": 0.3       # Default value
     }
     
@@ -1366,13 +1352,16 @@ def is_likely_continuation(comp_a, comp_b, drawing_type="generic"):
     bbox_a = comp_a["global_bbox"]
     bbox_b = comp_b["global_bbox"]
     
-    # For detail drawings, add extra verification
-    if drawing_type in ["detail", "partition", "elevation", "section"]:
-        # Check if either component has a title - if both do, they're likely separate
-        title_a = comp_a.get("title", "").strip()
-        title_b = comp_b.get("title", "").strip()
-        if title_a and title_b and title_a != title_b:
-            # Different titles means different components in detail drawings
+    # For detail drawings, add title verification, but only for clear cases
+    if drawing_type in ["detail", "partition"] and comp_a.get("title", "") and comp_b.get("title", ""):
+        title_a = comp_a.get("title", "").strip().upper()
+        title_b = comp_b.get("title", "").strip().upper()
+        
+        # Only consider very clearly different titles
+        if (len(title_a) > 5 and len(title_b) > 5 and 
+            title_a != title_b and
+            not title_a.startswith(title_b) and 
+            not title_b.startswith(title_a)):
             return False
     
     # Check if one component extends to an edge and the other starts at that edge
@@ -1476,7 +1465,7 @@ def analyze_component_detail(sheet_folder, tiles, bbox, drawing_goals, drawing_t
             result["error"] = f"Image loading error: {str(img_err)}"
             return result
         
-        # Enhanced prompt with material verification instructions
+        # Enhanced prompt
         prompt = f"""
 Analyze this {drawing_type.upper()} drawing component and describe what you see.
 
@@ -1486,18 +1475,11 @@ Focus on identifying:
 3. Key materials
 4. Important annotations
 
-MATERIAL COHERENCE VERIFICATION:
-- CRITICAL: Verify that all materials you identify appear to belong to the SAME component
-- If you notice materials that seem to belong to different components or mini-drawings, FLAG this in your response
-- Indicators of mixed materials include:
-  * Conflicting or redundant materials that wouldn't logically be used together
-  * Materials that appear visually separated by boundary lines
-  * Materials with leader lines pointing to different sections
-  * Different text styles or groupings suggesting different components
+Note: If you see materials that appear to belong to clearly separate components based on obvious visual boundaries, you can mention this in your description.
 
 Filename: {primary_filename}
 """
-        system_message = "You are analyzing an architectural drawing. Respond with a brief description and flag any potential material mixing issues."
+        system_message = "You are analyzing an architectural drawing. Respond with a brief description."
         
         # Make API call with careful error handling
         try:
@@ -1528,9 +1510,13 @@ Filename: {primary_filename}
                 
             text_response = response.content[0].text.strip()
             
-            # Check for material mixing warnings in the response
-            if "flag" in text_response.lower() or "warning" in text_response.lower() or "mix" in text_response.lower() or "different component" in text_response.lower():
+            # Less aggressive check for material mixing warnings
+            suspicious_phrases = ["clearly separate", "different component", "boundary between", "separate drawing"]
+            has_warning = any(phrase in text_response.lower() for phrase in suspicious_phrases)
+            
+            if has_warning:
                 result["material_coherence_warning"] = True
+                # But don't let this block extraction
             
             # Try to extract structured data from the response
             if text_response.startswith("{") and text_response.endswith("}"):
